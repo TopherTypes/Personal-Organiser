@@ -127,6 +127,7 @@ Use a simple, human approach:
 
 Where the version lives:
 - Maintain a single version constant (e.g., `src/version.js`) and display it somewhere (e.g., footer or “About”).
+- For this repo baseline, update `APP_VERSION` in `src/version.js` and add matching release notes in `CHANGELOG.md` whenever behaviour changes.
 
 > If a change alters stored data shape or sync rules, bump at least **MINOR** and add a decision entry.
 

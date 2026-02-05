@@ -22,6 +22,16 @@ Create a new entry at the top using the template below:
 
 ---
 
+## D-008 — 2026-02-05 — Baseline app shell structure and single in-app version constant
+
+- **Decision:** I decided to establish a static GitHub Pages-ready baseline with `index.html` at repo root, UI modules under `src/`, and a single SemVer constant in `src/version.js` displayed in the UI footer.
+- **Context:** Development needs a safe, consistent starting point that works on GitHub Pages and keeps version communication clear.
+- **Options considered:** (1) defer app shell until sync implementation, (2) spread version strings across docs/UI files, (3) create a thin shell now with a single version source.
+- **Why:** A minimal shell enables incremental delivery and manual validation, while a single version constant prevents drift between runtime and release notes.
+- **Consequences / follow-ups:** Future behavior changes should update `APP_VERSION` and `CHANGELOG.md` together; paths must remain relative (`./...`) for GitHub Pages portability.
+
+---
+
 ## D-007 — 2026-02-05 — Non-goals for v1
 
 - **Decision:** I decided v1 will explicitly exclude: multi-user/collaboration, attachments, calendar integration, email integration, full-text global search, encryption beyond Google, and complex roles/permissions.
