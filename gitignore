@@ -1,0 +1,46 @@
+# --- Secrets / auth / local config ---
+.env
+.env.*
+*.secret
+*.secrets.*
+config.local.*
+secrets.*
+tokens.*
+token.*
+credentials.*
+oauth*
+client_secret*
+client_secrets*
+google_oauth*
+drive_oauth*
+
+# --- Local data / exports / backups ---
+data/
+exports/
+backups/
+*.backup
+*.bak
+*.export.json
+*.export.zip
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Node (if used for dev tooling) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+.cache/
+
+# --- Python (if used for a simple server/scripts) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
