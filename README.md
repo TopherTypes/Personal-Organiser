@@ -81,7 +81,7 @@ The app is hosted on **GitHub Pages**, with data stored in **my Google Drive**.
 - `index.html` — app shell/entry point (GitHub Pages root)
 - `src/` — app JS/CSS modules
 - `assets/` — icons/images/fonts
-- `docs/` — product spec + decisions
+- `docs/` — product spec + decisions log (`SPECS.md`, `DECISIONS.md`)
 
 > Use relative paths (e.g., `./src/...`) rather than absolute (`/src/...`) for GitHub Pages portability.
 
@@ -102,6 +102,14 @@ You can open `index.html` directly, but some browser features behave better with
 
 Then visit:
 - `http://localhost:8000`
+
+---
+
+
+## Versioning
+
+- The app version is defined in `./src/version.js` as a single SemVer constant.
+- Displayed app version and `CHANGELOG.md` entries must stay aligned for each behaviour release.
 
 ---
 
