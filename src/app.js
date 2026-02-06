@@ -9,7 +9,11 @@ import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard
  */
 const state = {
   activeMode: "work",
-  hasEnteredMode: false
+  hasEnteredMode: false,
+  activeModuleByMode: {
+    work: "dashboard",
+    personal: "dashboard"
+  }
 };
 
 const appRoot = document.querySelector("#app");
@@ -37,7 +41,16 @@ function renderApp() {
   content.className = "content";
 
   if (state.hasEnteredMode) {
-    content.append(renderSidebar({ mode: state.activeMode }), renderModeDashboard(state.activeMode));
+    content.append(
+      renderSidebar({
+        mode: state.activeMode,
+        activeModule: state.activeModuleByMode[state.activeMode],
+        onModuleSelect: handleModuleSelect
+      }),
+      renderModeDashboard(state.activeMode, {
+        activeModule: state.activeModuleByMode[state.activeMode]
+      })
+    );
   } else {
     content.append(renderLandingDashboard({ onEnterMode: handleEnterMode }));
   }
@@ -66,6 +79,14 @@ function handleModeChange(mode) {
   }
 
   state.activeMode = mode;
+  renderApp();
+}
+
+/**
+ * Handles module selection from the sidebar.
+ */
+function handleModuleSelect(moduleKey) {
+  state.activeModuleByMode[state.activeMode] = moduleKey;
   renderApp();
 }
 
