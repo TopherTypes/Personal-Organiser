@@ -23,6 +23,16 @@ Create a new entry at the top using the template below:
 ---
 
 
+## D-011 — 2026-02-06 — Work Projects module with link-centric data model and safe unlink-on-delete
+
+- **Decision:** I decided to implement Work → Projects as a localStorage-first module with explicit links to people and meetings, including project-level role tagging for people and confirmation-based delete that unlinks related entities rather than removing them.
+- **Context:** The product needs a single work container to connect meetings and stakeholders while preserving data safety in a static GitHub Pages deployment.
+- **Options considered:** (1) keep Projects as a placeholder, (2) create project records without cross-entity links, (3) implement link-aware CRUD with project, meeting, and person entry points.
+- **Why:** Option (3) satisfies acceptance criteria and no-silent-loss requirements by making links editable from relevant screens and by protecting existing person/meeting records during project deletion.
+- **Consequences / follow-ups:** Adds project storage key `second-brain.work.projects.work` with versioned envelope and introduces a person-role link convention inside projects; future task-link support can extend the same linking pattern.
+
+---
+
 ## D-009 — 2026-02-06 — Work People module in static localStorage-first MVP
 
 - **Decision:** I decided to implement the Work mode `People` module as a fully client-side localStorage feature with archive-first deletion, list search/filter/sort, and a timestamped contact trail log per person.

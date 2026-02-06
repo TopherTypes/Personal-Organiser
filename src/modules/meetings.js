@@ -1,3 +1,4 @@
+import { loadProjects } from "./projects-store.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
 
@@ -20,6 +21,7 @@ export function renderWorkMeetingsModule({
   setUnsavedChangesGuard = () => {}
 } = {}) {
   const state = createMeetingsUiState(mode, initialPrefill);
+  const projects = loadProjects(mode);
   const section = document.createElement("section");
   section.className = "mode-dashboard meetings-module";
 
@@ -134,7 +136,7 @@ export function renderWorkMeetingsModule({
     }
 
     for (const meeting of meetings) {
-      list.appendChild(renderMeetingRow(meeting, people, {
+      list.appendChild(renderMeetingRow(meeting, people, projects, {
         onOpen: () => openEditor(meeting, { source: "list" }),
         onArchiveToggle: () => {
           archiveMeeting(mode, meeting.id, !meeting.archived);
@@ -229,11 +231,17 @@ export function renderWorkMeetingsModule({
     attendeesInput.value = (state.draft.attendeeIds || []).join(", ");
     attendeesWrap.appendChild(attendeesInput);
 
-    const projectInput = buildLabeledInput(
-      "Linked project ID (optional, project module pending)",
-      "text",
-      state.draft.projectId || ""
-    );
+    const projectWrap = document.createElement("label");
+    projectWrap.className = "field-label";
+    projectWrap.textContent = "Project";
+    const projectSelect = document.createElement("select");
+    projectSelect.className = "field-input";
+    addOption(projectSelect, "", "No project link");
+    projects.forEach((project) => {
+      addOption(projectSelect, project.id, project.title);
+    });
+    projectSelect.value = state.draft.projectId || "";
+    projectWrap.appendChild(projectSelect);
 
     const notesWrap = document.createElement("label");
     notesWrap.className = "field-label";
@@ -279,7 +287,7 @@ export function renderWorkMeetingsModule({
       statusWrap,
       chairInput.wrapper,
       attendeesWrap,
-      projectInput.wrapper,
+      projectWrap,
       notesWrap
     );
 
@@ -319,7 +327,7 @@ export function renderWorkMeetingsModule({
         .split(",")
         .map((personId) => personId.trim())
         .filter(Boolean);
-      state.draft.projectId = projectInput.input.value.trim();
+      state.draft.projectId = projectSelect.value;
       state.draft.allowPostStatusEdits = toggle.checked;
       if (!notesInput.disabled) {
         state.draft.notes = notesInput.value;
@@ -338,7 +346,7 @@ export function renderWorkMeetingsModule({
       statusSelect,
       chairInput.input,
       attendeesInput,
-      projectInput.input,
+      projectSelect,
       toggle
     ].forEach((field) => field.addEventListener("input", syncDraft));
 
@@ -501,7 +509,7 @@ function renderMonthlyCalendar(state, meetingsInRange, allMeetings, range, openE
   return grid;
 }
 
-function renderMeetingRow(meeting, people, { onOpen, onArchiveToggle }) {
+function renderMeetingRow(meeting, people, projects, { onOpen, onArchiveToggle }) {
   const row = document.createElement("article");
   row.className = "meeting-row";
 
@@ -522,7 +530,9 @@ function renderMeetingRow(meeting, people, { onOpen, onArchiveToggle }) {
     meeting.type === "one-on-one" ? "1:1" : "Standard",
     meeting.chairId ? `Chair: ${meeting.chairId}` : "No chair",
     attendeeNames ? `Attendees: ${attendeeNames}` : "No attendees",
-    meeting.projectId ? `Project: ${meeting.projectId}` : "No project link"
+    meeting.projectId
+      ? `Project: ${projects.find((project) => project.id === meeting.projectId)?.title || meeting.projectId}`
+      : "No project link"
   ].join(" · ");
 
   const trail = document.createElement("small");
@@ -591,6 +601,11 @@ function saveMeeting(mode, draft, source) {
   }
   if (!draft.date) {
     return { ok: false, error: "Meeting date is required." };
+  }
+
+  const validProjectIds = new Set(loadProjects(mode).map((project) => project.id));
+  if (draft.projectId && !validProjectIds.has(draft.projectId)) {
+    return { ok: false, error: "Selected project no longer exists." };
   }
 
   const now = new Date().toISOString();
@@ -685,7 +700,7 @@ function archiveMeeting(mode, meetingId, shouldArchive) {
   persistMeetings(mode, updated);
 }
 
-function loadMeetings(mode) {
+export function loadMeetings(mode) {
   if (mode !== "work") {
     return [];
   }

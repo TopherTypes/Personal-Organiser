@@ -33,6 +33,23 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.4.0] - 2026-02-06
+
+### Added
+- Work mode **Projects** module with localStorage-backed CRUD, card view sorted by derived latest activity, slide-over create/edit form, and dedicated full-details view.
+- Project entity model (`title`, `description`, `startDate`, `targetDate`, required `status`) with people-role links supporting multi-role assignments.
+- Project link controls from three entry points: project editor (link people/meetings), meeting editor (single project selection), and person editor (project role assignment).
+- Delete confirmation flow that reports impacted links and removes only links while preserving people and meeting records.
+
+### Changed
+- Meetings editor now uses project dropdown values instead of free-text IDs and validates project existence before save.
+- Version increased to `0.4.0` due to new user-facing behavior and added persisted project schema.
+
+### Fixed
+- N/A.
+
+---
+
 ## [0.3.0] - 2026-02-06
 
 ### Added
