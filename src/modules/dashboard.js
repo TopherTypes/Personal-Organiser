@@ -1,4 +1,6 @@
-import { renderWorkMeetingsModule } from "./meetings.js";
+import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
+import { renderWorkProjectsModule } from "./projects.js";
+import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 /**
@@ -69,6 +71,14 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       people: loadPeople("work"),
       initialPrefill: uiContext.meetingPrefill || null,
       setUnsavedChangesGuard: uiContext.setUnsavedChangesGuard
+    });
+  }
+
+  if (mode === "work" && activeModule === "projects") {
+    return renderWorkProjectsModule({
+      mode,
+      people: loadPeople("work"),
+      meetings: loadMeetings("work")
     });
   }
 
@@ -239,6 +249,7 @@ function renderWorkPeopleModule(uiContext = {}) {
       const activePerson = state.editingId ? findPersonById(state.mode, state.editingId) : null;
       formWrap.appendChild(
         createPersonForm({
+          mode: state.mode,
           person: activePerson,
           onCancel: () => {
             state.isFormOpen = false;
@@ -246,18 +257,19 @@ function renderWorkPeopleModule(uiContext = {}) {
             renderPeopleModule();
           },
           onSave: (payload) => {
-            const saveResult = savePerson(state.mode, payload, state.editingId);
+            const saveResult = savePerson(state.mode, payload.person, state.editingId);
             if (!saveResult.ok) {
               state.feedback = saveResult.error;
               renderPeopleModule();
               return;
             }
 
+            applyPersonProjectLinks(state.mode, saveResult.person.id, payload.projectLinks);
             state.isFormOpen = false;
             state.editingId = null;
             state.feedback = saveResult.wasEdit
-              ? `Updated ${payload.name}.`
-              : `Added ${payload.name}.`;
+              ? `Updated ${payload.person.name}.`
+              : `Added ${payload.person.name}.`;
             renderPeopleModule();
           }
         })
@@ -396,7 +408,7 @@ function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate, onSc
 /**
  * Creates create/edit form with required MVP fields.
  */
-function createPersonForm({ person, onCancel, onSave }) {
+function createPersonForm({ mode, person, onCancel, onSave }) {
   const form = document.createElement("form");
   form.className = "people-form";
 
@@ -423,6 +435,20 @@ function createPersonForm({ person, onCancel, onSave }) {
     form.appendChild(field.row);
   }
 
+  const projectLinksField = document.createElement("div");
+  projectLinksField.className = "field-row";
+
+  const projectLabel = document.createElement("span");
+  projectLabel.className = "field-label";
+  projectLabel.textContent = "Project links and roles";
+
+  const projects = loadProjects(mode);
+  const existingLinks = person ? loadPersonProjectLinks(mode, person.id) : [];
+  const linkControls = buildPersonProjectLinkControls(projects, existingLinks);
+
+  projectLinksField.append(projectLabel, linkControls.wrap);
+  form.appendChild(projectLinksField);
+
   const actions = document.createElement("div");
   actions.className = "person-actions";
 
@@ -443,14 +469,17 @@ function createPersonForm({ person, onCancel, onSave }) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     onSave({
-      name: fields.name.control.value.trim(),
-      role: fields.role.control.value.trim(),
-      organisation: fields.organisation.control.value.trim(),
-      relationship: fields.relationship.control.value.trim(),
-      email: fields.email.control.value.trim(),
-      phone: fields.phone.control.value.trim(),
-      lastContactDate: fields.lastContactDate.control.value,
-      notes: fields.notes.control.value.trim()
+      person: {
+        name: fields.name.control.value.trim(),
+        role: fields.role.control.value.trim(),
+        organisation: fields.organisation.control.value.trim(),
+        relationship: fields.relationship.control.value.trim(),
+        email: fields.email.control.value.trim(),
+        phone: fields.phone.control.value.trim(),
+        lastContactDate: fields.lastContactDate.control.value,
+        notes: fields.notes.control.value.trim()
+      },
+      projectLinks: linkControls.read()
     });
   });
 
@@ -483,6 +512,66 @@ function createField(labelText, type, value, required = false) {
 
   row.append(label, control);
   return { row, control };
+}
+
+function buildPersonProjectLinkControls(projects, existingLinks) {
+  const wrap = document.createElement("div");
+  wrap.className = "project-people-role-grid";
+
+  const controls = projects.map((project) => {
+    const row = document.createElement("div");
+    row.className = "project-person-role-row";
+
+    const name = document.createElement("strong");
+    name.textContent = project.title;
+
+    const existing = existingLinks.find((link) => link.projectId === project.id);
+    const roles = document.createElement("select");
+    roles.className = "field-input";
+    roles.multiple = true;
+    roles.size = 3;
+
+    PROJECT_PERSON_ROLES.forEach((role) => {
+      const option = document.createElement("option");
+      option.value = role;
+      option.textContent = role;
+      option.selected = Boolean(existing?.roles.includes(role));
+      roles.appendChild(option);
+    });
+
+    row.append(name, roles);
+    wrap.appendChild(row);
+    return { projectId: project.id, roles };
+  });
+
+  return {
+    wrap,
+    read() {
+      return controls
+        .map((entry) => ({
+          projectId: entry.projectId,
+          roles: Array.from(entry.roles.selectedOptions).map((option) => option.value)
+        }))
+        .filter((entry) => entry.roles.length > 0);
+    }
+  };
+}
+
+/**
+ * Reconciles project links when editing people from the People module.
+ */
+function applyPersonProjectLinks(mode, personId, projectLinks) {
+  const allProjects = loadProjects(mode);
+  const selectedProjectIds = new Set(projectLinks.map((entry) => entry.projectId));
+
+  allProjects.forEach((project) => {
+    const selected = projectLinks.find((entry) => entry.projectId === project.id);
+    upsertProjectPersonLink(mode, project.id, personId, selected?.roles || []);
+
+    if (!selectedProjectIds.has(project.id)) {
+      upsertProjectPersonLink(mode, project.id, personId, []);
+    }
+  });
 }
 
 /**
@@ -555,7 +644,7 @@ function savePerson(mode, payload, editingId) {
 
     people[index] = updated;
     persistPeople(mode, people);
-    return { ok: true, wasEdit: true };
+    return { ok: true, wasEdit: true, person: updated };
   }
 
   const nextPerson = {
@@ -582,7 +671,7 @@ function savePerson(mode, payload, editingId) {
 
   people.push(nextPerson);
   persistPeople(mode, people);
-  return { ok: true, wasEdit: false };
+  return { ok: true, wasEdit: false, person: nextPerson };
 }
 
 /**

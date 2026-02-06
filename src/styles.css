@@ -405,3 +405,29 @@ body {
     max-height: none;
   }
 }
+
+.projects-module,
+.project-details-view {
+  display: grid;
+  gap: 1rem;
+}
+
+.projects-card-list,
+.project-overview-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.project-people-role-grid {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.project-person-role-row {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.5rem;
+}
