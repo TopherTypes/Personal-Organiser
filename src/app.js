@@ -13,7 +13,12 @@ const state = {
   activeModuleByMode: {
     work: "dashboard",
     personal: "dashboard"
-  }
+  },
+  meetingPrefillByMode: {
+    work: null,
+    personal: null
+  },
+  hasUnsavedChanges: false
 };
 
 const appRoot = document.querySelector("#app");
@@ -48,7 +53,14 @@ function renderApp() {
         onModuleSelect: handleModuleSelect
       }),
       renderModeDashboard(state.activeMode, {
-        activeModule: state.activeModuleByMode[state.activeMode]
+        activeModule: state.activeModuleByMode[state.activeMode],
+        uiContext: {
+          meetingPrefill: state.meetingPrefillByMode[state.activeMode],
+          onScheduleOneOnOne: handleScheduleOneOnOne,
+          setUnsavedChangesGuard: (value) => {
+            state.hasUnsavedChanges = value;
+          }
+        }
       })
     );
   } else {
@@ -59,6 +71,8 @@ function renderApp() {
 
   shell.append(topBar, content, footer);
   appRoot.appendChild(shell);
+
+  state.meetingPrefillByMode[state.activeMode] = null;
 }
 
 /**
@@ -78,6 +92,10 @@ function handleModeChange(mode) {
     return;
   }
 
+  if (!confirmNavigation()) {
+    return;
+  }
+
   state.activeMode = mode;
   renderApp();
 }
@@ -86,8 +104,40 @@ function handleModeChange(mode) {
  * Handles module selection from the sidebar.
  */
 function handleModuleSelect(moduleKey) {
+  if (!confirmNavigation()) {
+    return;
+  }
+
   state.activeModuleByMode[state.activeMode] = moduleKey;
   renderApp();
+}
+
+/**
+ * Receives a person record and pre-fills a new 1:1 meeting draft.
+ */
+function handleScheduleOneOnOne(person) {
+  if (!confirmNavigation()) {
+    return;
+  }
+
+  state.activeModuleByMode[state.activeMode] = "meetings";
+  state.meetingPrefillByMode[state.activeMode] = {
+    name: `1:1 with ${person.name}`,
+    type: "one-on-one",
+    attendeeIds: [person.id]
+  };
+  renderApp();
+}
+
+/**
+ * Prompts before module/mode changes when form edits are unsaved.
+ */
+function confirmNavigation() {
+  if (!state.hasUnsavedChanges) {
+    return true;
+  }
+
+  return window.confirm("You have unsaved changes. Leave this screen anyway?");
 }
 
 /**

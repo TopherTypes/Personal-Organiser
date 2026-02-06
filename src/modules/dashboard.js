@@ -1,3 +1,4 @@
+import { renderWorkMeetingsModule } from "./meetings.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 /**
@@ -57,9 +58,18 @@ function createModeCard(name, description, mode, onEnterMode) {
 /**
  * Renders mode content based on selected sidebar module.
  */
-export function renderModeDashboard(mode, { activeModule = "dashboard" } = {}) {
+export function renderModeDashboard(mode, { activeModule = "dashboard", uiContext = {} } = {}) {
   if (mode === "work" && activeModule === "people") {
-    return renderWorkPeopleModule();
+    return renderWorkPeopleModule(uiContext);
+  }
+
+  if (mode === "work" && activeModule === "meetings") {
+    return renderWorkMeetingsModule({
+      mode,
+      people: loadPeople("work"),
+      initialPrefill: uiContext.meetingPrefill || null,
+      setUnsavedChangesGuard: uiContext.setUnsavedChangesGuard
+    });
   }
 
   return renderPlaceholderModule(mode, activeModule);
@@ -86,7 +96,7 @@ function renderPlaceholderModule(mode, activeModule) {
 /**
  * Renders the work mode People module with localStorage-backed CRUD support.
  */
-function renderWorkPeopleModule() {
+function renderWorkPeopleModule(uiContext = {}) {
   const state = createPeopleUiState("work");
 
   const section = document.createElement("section");
@@ -193,6 +203,11 @@ function renderWorkPeopleModule() {
       for (const person of result) {
         listWrap.appendChild(
           createPersonCard(person, {
+            onScheduleOneOnOne: (personRecord) => {
+              if (typeof uiContext.onScheduleOneOnOne === "function") {
+                uiContext.onScheduleOneOnOne(personRecord);
+              }
+            },
             onEdit: () => {
               state.editingId = person.id;
               state.isFormOpen = true;
@@ -272,7 +287,7 @@ function createPeopleUiState(mode) {
 /**
  * Creates a card row with key details and quick contact update controls.
  */
-function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate }) {
+function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate, onScheduleOneOnOne }) {
   const card = document.createElement("article");
   card.className = "person-card";
 
@@ -317,13 +332,19 @@ function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate }) {
   editButton.textContent = "Edit";
   editButton.addEventListener("click", onEdit);
 
+  const oneOnOneButton = document.createElement("button");
+  oneOnOneButton.type = "button";
+  oneOnOneButton.className = "ghost-button";
+  oneOnOneButton.textContent = "Schedule 1:1";
+  oneOnOneButton.addEventListener("click", () => onScheduleOneOnOne(person));
+
   const archiveButton = document.createElement("button");
   archiveButton.type = "button";
   archiveButton.className = "ghost-button";
   archiveButton.textContent = person.archived ? "Restore" : "Archive";
   archiveButton.addEventListener("click", onArchiveToggle);
 
-  actions.append(editButton, archiveButton);
+  actions.append(editButton, oneOnOneButton, archiveButton);
 
   const quick = document.createElement("form");
   quick.className = "quick-update";

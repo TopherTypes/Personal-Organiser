@@ -33,6 +33,26 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.3.0] - 2026-02-06
+
+### Added
+- Work mode **Meetings** module with localStorage-backed CRUD in a split layout (calendar + scoped list), including weekly default view (Monday start), monthly browse view, and slide-over editor.
+- Meeting note workflow with markdown-capable text entry, auto-save draft + explicit save, search/filter on meeting name and notes, and historical review support.
+- Meeting state model with lifecycle statuses (`scheduled`, `completed`, `rescheduled`, `cancelled`, `missed`) and both `statusHistory` + `auditTrail` metadata.
+- Non-destructive meeting archive/restore controls (no hard delete), aligned to data safety requirements.
+- People-module entry point for quick "Schedule 1:1" handoff that pre-fills a new meeting draft.
+- Unsaved changes guard for module/mode navigation in the SPA shell.
+
+### Changed
+- App shell now passes module UI context for cross-module entry points and unsaved-change signaling.
+- Meetings persistence now uses a versioned storage envelope with a safe migration path from legacy array shape plus backup snapshot key.
+- Version increased to `0.3.0` due to new end-user behavior and persisted data shape.
+
+### Fixed
+- N/A.
+
+---
+
 ## [0.2.0] - 2026-02-06
 
 ### Added

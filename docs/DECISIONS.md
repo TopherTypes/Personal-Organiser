@@ -33,6 +33,16 @@ Create a new entry at the top using the template below:
 
 ---
 
+## D-010 — 2026-02-06 — Meetings module v1 with local-first versioned schema and non-destructive lifecycle
+
+- **Decision:** I decided to implement a dedicated Work → Meetings module with weekly/monthly calendar views, list/detail review, markdown notes, and soft-delete archive behavior only.
+- **Context:** Meeting capture and retrospective review are required now on static GitHub Pages hosting with localStorage, while sync (Drive) is planned for a later phase.
+- **Options considered:** (1) keep Meetings as placeholder only, (2) implement list-only CRUD first, (3) implement split calendar/list module with status/audit metadata and soft-delete controls.
+- **Why:** Option (3) satisfies the functional acceptance criteria and data safety expectations without adding dependencies or backend assumptions.
+- **Consequences / follow-ups:** Adds new storage key `second-brain.work.meetings.work` using `{ schemaVersion, meetings[] }`, includes migration from legacy array format with backup (`.backup` key), and introduces `statusHistory`, `auditTrail`, and `lastUpdatedByField` metadata for future sync/conflict merge readiness.
+
+---
+
 ## D-008 — 2026-02-05 — Baseline app shell structure and single in-app version constant
 
 - **Decision:** I decided to establish a static GitHub Pages-ready baseline with `index.html` at repo root, UI modules under `src/`, and a single SemVer constant in `src/version.js` displayed in the UI footer.
