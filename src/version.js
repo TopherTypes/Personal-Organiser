@@ -6,7 +6,7 @@
  * - MINOR: backward-compatible feature additions
  * - PATCH: backward-compatible fixes
  */
-export const APP_VERSION = "0.4.0";
+export const APP_VERSION = "0.5.0";
 
 /**
  * Version bump guidance for contributors.

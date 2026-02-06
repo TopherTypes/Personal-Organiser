@@ -33,6 +33,23 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.5.0] - 2026-02-06
+
+### Added
+- Work mode **Tasks** module with localStorage-backed CRUD, side-menu entry, and slide-over create/edit panel.
+- Task assignment to existing People and Projects entities, with status filters plus assignee/project filters.
+- Non-destructive archive/restore workflow and optional archived visibility toggle.
+- Recurrence rule storage supporting `daily`, `weekly`, `monthly`, `weekdays`, `weekends`, and `custom` options.
+- Automated priority score based on due-date urgency plus effort/impact signals, with deterministic tie-breaking for stable ordering.
+
+### Changed
+- Version increased to `0.5.0` due to new user-facing behaviour and persisted task data shape.
+
+### Fixed
+- N/A.
+
+---
+
 ## [0.4.0] - 2026-02-06
 
 ### Added
