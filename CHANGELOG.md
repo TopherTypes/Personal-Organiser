@@ -33,6 +33,25 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.2.0] - 2026-02-06
+
+### Added
+- Work mode **People** module with localStorage-backed CRUD capabilities for contacts: create, read/list, update, and archive/restore (instead of destructive delete).
+- Sidebar module interaction model so selecting `People` opens its dedicated module view.
+- Dedicated contact create/edit form with MVP fields (`name`, `role/title`, `organisation`, `relationship`, `email`, `phone`, `lastContactDate`, `notes`).
+- Quick contact update interaction in list rows for logging a date + note.
+- Contact trail log per person to keep recent engagement history visible.
+- Search, filter, and sort controls for finding contacts quickly.
+
+### Changed
+- App shell state now tracks active module per mode to support module-level navigation.
+- Version increased to `0.2.0` due to new end-user behaviour and persisted data.
+
+### Fixed
+- N/A.
+
+---
+
 ## [0.1.0] - 2026-02-05
 
 ### Added

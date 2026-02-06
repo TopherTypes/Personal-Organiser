@@ -22,6 +22,17 @@ Create a new entry at the top using the template below:
 
 ---
 
+
+## D-009 — 2026-02-06 — Work People module in static localStorage-first MVP
+
+- **Decision:** I decided to implement the Work mode `People` module as a fully client-side localStorage feature with archive-first deletion, list search/filter/sort, and a timestamped contact trail log per person.
+- **Context:** The app is hosted on GitHub Pages with no backend, but stakeholder management needs real CRUD behavior while honoring the no-silent-loss data safety rule.
+- **Options considered:** (1) keep People as placeholder navigation only, (2) implement hard-delete CRUD quickly, (3) implement localStorage CRUD with non-destructive archive and engagement history.
+- **Why:** Option (3) delivers immediate product value in a static deployment, reduces irreversible data loss risk, and preserves an extensible data shape for later sync workflows.
+- **Consequences / follow-ups:** Adds a new persisted local schema (`second-brain.work.people.work.v1`) and requires future sync work to map `contactTrail` and `lastUpdatedByField` metadata safely.
+
+---
+
 ## D-008 — 2026-02-05 — Baseline app shell structure and single in-app version constant
 
 - **Decision:** I decided to establish a static GitHub Pages-ready baseline with `index.html` at repo root, UI modules under `src/`, and a single SemVer constant in `src/version.js` displayed in the UI footer.
