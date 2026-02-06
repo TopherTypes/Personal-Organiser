@@ -167,7 +167,8 @@ body {
 }
 
 .people-module,
-.meetings-module {
+.meetings-module,
+.tasks-module {
   display: grid;
   gap: 1rem;
 }
@@ -210,6 +211,7 @@ body {
 
 .people-list,
 .meetings-list,
+.tasks-list,
 .meeting-fields {
   display: grid;
   gap: 0.9rem;

@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-009 — 2026-02-06 — Work Tasks module with local-first safety and computed priority
+
+- **Decision:** I decided to implement a dedicated Work Tasks module with localStorage-backed CRUD, People/Project assignment links, archive-by-default safety controls, recurrence rule storage, and deterministic priority-score ordering.
+- **Context:** Work mode needed actionable task tracking similar to Meetings and Projects while remaining static-host compatible (GitHub Pages, no backend).
+- **Options considered:** (1) placeholder-only tasks, (2) basic list with manual ordering, (3) full local module with required filters and automated score ordering.
+- **Why:** Option (3) satisfies acceptance criteria while preserving data safety via non-destructive archive/restore and versioned storage envelope.
+- **Consequences / follow-ups:** Adds storage key `second-brain.work.tasks.work.v1` with `{ schemaVersion, tasks[] }`. Recurrence is stored as rules only (instance generation deferred). Priority ties use a stable ID hash to avoid volatile list reorder on refresh.
+
+---
+
 ## How to add a decision
 
 Create a new entry at the top using the template below:
