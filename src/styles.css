@@ -433,3 +433,18 @@ body {
   border-radius: 0.4rem;
   padding: 0.5rem;
 }
+
+.sprints-module,
+.sprint-detail-view,
+.sprints-list,
+.sprints-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.sprint-detail-view {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 1rem;
+}
