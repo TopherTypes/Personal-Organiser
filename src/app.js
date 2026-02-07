@@ -2,14 +2,17 @@ import { APP_VERSION, VERSION_BUMP_NOTE } from "./version.js";
 import { renderTopBar } from "./modules/topbar.js";
 import { renderSidebar } from "./modules/sidebar.js";
 import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js";
+import { loadSettings, saveSettings } from "./modules/settings.js";
 
 /**
  * In-memory app state for the baseline shell.
  * No persistence or sync is performed in this stage.
  */
+const initialSettings = loadSettings();
+
 const state = {
-  activeMode: "work",
-  hasEnteredMode: false,
+  activeMode: initialSettings.startMode === "personal" ? "personal" : "work",
+  hasEnteredMode: initialSettings.startMode !== "ask",
   activeModuleByMode: {
     work: "dashboard",
     personal: "dashboard"
@@ -18,7 +21,8 @@ const state = {
     work: null,
     personal: null
   },
-  hasUnsavedChanges: false
+  hasUnsavedChanges: false,
+  settings: initialSettings
 };
 
 const appRoot = document.querySelector("#app");
@@ -57,6 +61,8 @@ function renderApp() {
         uiContext: {
           meetingPrefill: state.meetingPrefillByMode[state.activeMode],
           onScheduleOneOnOne: handleScheduleOneOnOne,
+          onSettingsChange: handleSettingsChange,
+          settings: state.settings,
           setUnsavedChangesGuard: (value) => {
             state.hasUnsavedChanges = value;
           }
@@ -133,11 +139,30 @@ function handleScheduleOneOnOne(person) {
  * Prompts before module/mode changes when form edits are unsaved.
  */
 function confirmNavigation() {
-  if (!state.hasUnsavedChanges) {
+  if (!state.hasUnsavedChanges || !state.settings.confirmUnsavedChanges) {
     return true;
   }
 
   return window.confirm("You have unsaved changes. Leave this screen anyway?");
+}
+
+
+
+/**
+ * Applies user settings and triggers a re-render.
+ */
+function handleSettingsChange(nextSettings) {
+  state.settings = saveSettings(nextSettings);
+  applyUserSettings(state.settings);
+  renderApp();
+}
+
+/**
+ * Applies theme and layout preferences at document level.
+ */
+function applyUserSettings(settings) {
+  document.documentElement.dataset.theme = settings.theme;
+  document.body.dataset.density = settings.layoutDensity;
 }
 
 /**
@@ -157,4 +182,5 @@ function renderFooter() {
   return footer;
 }
 
+applyUserSettings(state.settings);
 renderApp();

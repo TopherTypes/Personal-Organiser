@@ -33,6 +33,30 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.7.0] - 2026-02-07
+
+### Added
+- Work and Personal **Settings** module for user customisation of app appearance and workflow behaviour.
+- Preferences for theme (`light`/`dark`), layout density (`comfortable`/`compact`), default startup mode (`ask`/`work`/`personal`), and unsaved-change warnings.
+
+### Changed
+- App bootstrap now loads saved settings from localStorage and applies theme/layout immediately.
+- Version increased to `0.7.0` due to new user-facing behaviour and persisted settings.
+
+### Deprecated
+- N/A.
+
+### Removed
+- N/A.
+
+### Fixed
+- N/A.
+
+### Security
+- N/A.
+
+---
+
 ## [0.6.0] - 2026-02-07
 
 ### Added

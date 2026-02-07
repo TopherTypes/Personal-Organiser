@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-013 — 2026-02-07 — User settings module for appearance and workflow preferences
+
+- **Decision:** I decided to implement a dedicated Settings module (Work + Personal) backed by localStorage for theme, layout density, startup mode, and unsaved-change confirmation preferences.
+- **Context:** The app needed user-level customisation without adding backend assumptions, while staying safe for static GitHub Pages hosting.
+- **Options considered:** (1) keep Settings as placeholder, (2) add ad-hoc toggles in top bar, (3) create a single settings module with explanatory controls and validated persistence.
+- **Why:** Option (3) keeps preferences discoverable, provides context for each setting, and allows behaviour changes without touching data schemas for other modules.
+- **Consequences / follow-ups:** Adds storage key `second-brain.ui.settings.v1`; app boot now can auto-enter preferred mode; navigation warning becomes user-configurable while default remains safety-first (enabled).
+
+---
+
 ## D-012 — 2026-02-07 — Work Sprints module with pace tracking and archive-first safety
 
 - **Decision:** I decided to implement Work → Sprints as a localStorage-backed module with slide-over create/edit, full-screen sprint details, task-to-sprint linking, and pace tracking from completion percentage versus sprint elapsed percentage.
