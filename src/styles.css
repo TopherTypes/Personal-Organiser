@@ -448,3 +448,45 @@ body {
   border-radius: 0.65rem;
   padding: 1rem;
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111523;
+  --surface: #1b2133;
+  --border: #333b52;
+  --text: #f2f5ff;
+  --muted: #b5bfd9;
+  --accent: #8aa5ff;
+  --accent-soft: #273663;
+  --danger-soft: #532d2d;
+}
+
+body[data-density="compact"] .top-bar,
+body[data-density="compact"] .content,
+body[data-density="compact"] .mode-dashboard,
+body[data-density="compact"] .sidebar,
+body[data-density="compact"] .footer {
+  padding: 0.6rem;
+}
+
+.settings-module,
+.settings-list,
+.settings-item {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.settings-label {
+  font-weight: 600;
+}
+
+.settings-hint {
+  color: var(--muted);
+}
