@@ -538,7 +538,7 @@ function stableTieBreaker(input) {
   return hash;
 }
 
-function loadTasks(mode) {
+export function loadTasks(mode) {
   const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
   const raw = localStorage.getItem(storageKey);
   if (!raw) {

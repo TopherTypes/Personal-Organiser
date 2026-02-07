@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-012 — 2026-02-07 — Work Sprints module with pace tracking and archive-first safety
+
+- **Decision:** I decided to implement Work → Sprints as a localStorage-backed module with slide-over create/edit, full-screen sprint details, task-to-sprint linking, and pace tracking from completion percentage versus sprint elapsed percentage.
+- **Context:** Work mode required a practical way to chunk tasks into manageable sprint windows without backend dependencies and without risking silent data loss.
+- **Options considered:** (1) keep Sprints as placeholder navigation only, (2) model sprints as a tag on tasks only, (3) implement dedicated sprint entities with local schema, validation, and archive/restore safety controls.
+- **Why:** Option (3) satisfies the acceptance criteria (CRUD, task linking, and progress/pace visibility) while preserving recoverability in a static GitHub Pages deployment.
+- **Consequences / follow-ups:** Adds storage key `second-brain.work.sprints.work` with `{ schemaVersion, sprints[] }`, includes legacy-array migration backup (`.backup` key), enforces one active sprint at a time, and validates active sprints to today's date window to keep sprint state consistent.
+
+---
+
 ## D-009 — 2026-02-06 — Work Tasks module with local-first safety and computed priority
 
 - **Decision:** I decided to implement a dedicated Work Tasks module with localStorage-backed CRUD, People/Project assignment links, archive-by-default safety controls, recurrence rule storage, and deterministic priority-score ordering.

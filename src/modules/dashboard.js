@@ -1,6 +1,7 @@
 import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
 import { renderWorkTasksModule } from "./tasks.js";
+import { renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
@@ -85,6 +86,10 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       people: loadPeople("work"),
       meetings: loadMeetings("work")
     });
+  }
+
+  if (mode === "work" && activeModule === "sprints") {
+    return renderWorkSprintsModule({ mode });
   }
 
   return renderPlaceholderModule(mode, activeModule);

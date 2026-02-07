@@ -33,6 +33,24 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.6.0] - 2026-02-07
+
+### Added
+- Work mode **Sprints** module with localStorage-backed CRUD, slide-over create/edit experience, and dedicated sprint full-screen detail view.
+- Sprint data model with `id`, `name`, `startDate`, `endDate`, `status`, linked `taskIds`, `createdAt`, `updatedAt`, and field-level update metadata for future merge/sync safety.
+- Task linking workflow allowing one task to belong to multiple sprints, including planning-only backlog add controls in the sprint detail view.
+- Sprint metrics for **forecast total** (task count), **completed total**, and **pace** (`Ahead`, `On track`, `Behind`) using completion-percent versus elapsed-time-percent.
+
+### Changed
+- Added single-active-sprint enforcement for `active` status and date-window validation requiring today's date to be within sprint start/end bounds.
+- Sprint archive/restore is now confirmation-gated and non-destructive to satisfy the no-silent-data-loss safety requirement.
+- Version increased to `0.6.0` due to new user-facing behaviour and added persisted sprint schema.
+
+### Fixed
+- N/A.
+
+---
+
 ## [0.5.0] - 2026-02-06
 
 ### Added
