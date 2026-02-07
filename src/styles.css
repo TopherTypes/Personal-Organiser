@@ -217,6 +217,55 @@ body {
   gap: 0.9rem;
 }
 
+.tasks-table {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  overflow-x: auto;
+  background: var(--surface);
+}
+
+.tasks-table-row {
+  min-width: 780px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.5fr 1fr 0.7fr 1.4fr;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tasks-table-row:last-child {
+  border-bottom: none;
+}
+
+.tasks-table-head {
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: #f7f9ff;
+}
+
+.tasks-cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tasks-cell-title {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tasks-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.tasks-row-actions .ghost-button {
+  margin-top: 0;
+  padding: 0.35rem 0.55rem;
+}
+
 .person-card,
 .people-form,
 .meetings-calendar-pane,
@@ -399,6 +448,10 @@ body {
   .week-grid,
   .month-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tasks-table-row {
+    min-width: 720px;
   }
 
   .meeting-slideover {

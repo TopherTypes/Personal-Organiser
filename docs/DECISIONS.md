@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-014 — 2026-02-07 — Compact pseudo-table layout for Work Tasks list
+
+- **Decision:** I decided to replace the Work Tasks card-list presentation with a compact pseudo-table row layout while keeping all existing task actions and persisted data unchanged.
+- **Context:** The prior task cards consumed too much vertical space, making sprint and workload planning harder because fewer tasks were visible at once.
+- **Options considered:** (1) Keep large cards and only tighten spacing, (2) switch to a semantic `<table>`, (3) implement a responsive pseudo-table built from grid rows.
+- **Why:** Option (3) improves scan-ability and density, keeps existing component patterns, and is safer for responsive behaviour in the current SPA module rendering approach.
+- **Consequences / follow-ups:** Task data schema and storage keys remain unchanged (no migration risk); future enhancements can add sortable columns if needed.
+
+---
+
 ## D-013 — 2026-02-07 — User settings module for appearance and workflow preferences
 
 - **Decision:** I decided to implement a dedicated Settings module (Work + Personal) backed by localStorage for theme, layout density, startup mode, and unsaved-change confirmation preferences.
