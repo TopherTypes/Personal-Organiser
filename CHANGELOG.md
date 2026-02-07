@@ -33,6 +33,30 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ---
 
+## [0.8.0] - 2026-02-07
+
+### Added
+- N/A.
+
+### Changed
+- Reworked Work Tasks list from large card blocks to a compact pseudo-table layout that shows key task fields in one row for faster scanning.
+- Preserved existing task actions (edit/archive/delete), filters, and localStorage persistence while improving on-screen task density.
+- Version increased to `0.8.0` due to user-facing behaviour change in task layout and information visibility.
+
+### Deprecated
+- N/A.
+
+### Removed
+- N/A.
+
+### Fixed
+- N/A.
+
+### Security
+- N/A.
+
+---
+
 ## [0.7.0] - 2026-02-07
 
 ### Added

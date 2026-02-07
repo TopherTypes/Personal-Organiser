@@ -143,11 +143,14 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
       empty.textContent = "No tasks match your current filters.";
       list.appendChild(empty);
     } else {
+      const table = createTaskTable();
+      list.appendChild(table);
+
       for (const task of filtered) {
         const assignee = people.find((person) => person.id === task.assigneeId);
         const project = projects.find((entry) => entry.id === task.projectId);
-        list.appendChild(
-          createTaskCard(task, {
+        table.appendChild(
+          createTaskTableRow(task, {
             assigneeLabel: assignee?.name || "Unassigned",
             projectLabel: project?.title || "No project",
             onEdit: () => {
@@ -210,51 +213,73 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
   return section;
 }
 
-function createTaskCard(task, { assigneeLabel, projectLabel, onEdit, onArchiveToggle, onDelete }) {
-  const card = document.createElement("article");
-  card.className = "person-card";
+/**
+ * Builds the compact pseudo-table shell used by the tasks list.
+ */
+function createTaskTable() {
+  const table = document.createElement("div");
+  table.className = "tasks-table";
 
-  const top = document.createElement("div");
-  top.className = "person-card-top";
+  const header = document.createElement("div");
+  header.className = "tasks-table-row tasks-table-head";
+  ["Task", "Status", "Assignee / Project", "Due", "Priority", "Actions"].forEach((label) => {
+    const headCell = document.createElement("strong");
+    headCell.className = "tasks-cell";
+    headCell.textContent = label;
+    header.appendChild(headCell);
+  });
 
-  const title = document.createElement("h3");
+  table.appendChild(header);
+  return table;
+}
+
+/**
+ * Renders a single task row for the compact task pseudo-table view.
+ */
+function createTaskTableRow(task, { assigneeLabel, projectLabel, onEdit, onArchiveToggle, onDelete }) {
+  const row = document.createElement("article");
+  row.className = "tasks-table-row";
+
+  const taskCell = document.createElement("div");
+  taskCell.className = "tasks-cell tasks-cell-title";
+
+  const title = document.createElement("strong");
   title.textContent = task.title;
 
-  const scorePill = document.createElement("span");
-  scorePill.className = "status-pill active";
-  scorePill.textContent = `Priority ${task.priorityScore}`;
-
-  top.append(title, scorePill);
-
-  const details = document.createElement("p");
-  details.className = "person-meta";
-  details.textContent = `${toTitleCase(task.status)} • Effort ${task.effort}/10 • Impact ${task.impact}/10`;
-
-  const relation = document.createElement("p");
-  relation.className = "person-meta";
-  relation.textContent = `${assigneeLabel} • ${projectLabel}`;
-
-  const recurrence = document.createElement("p");
-  recurrence.className = "person-meta";
-  recurrence.textContent = `Recurrence: ${toTitleCase(task.recurrence)}${
+  const taskMeta = document.createElement("small");
+  taskMeta.className = "person-meta";
+  taskMeta.textContent = `Effort ${task.effort}/10 • Impact ${task.impact}/10 • ${toTitleCase(task.recurrence)}${
     task.recurrence === "custom" && task.customRecurrence ? ` (${task.customRecurrence})` : ""
   }`;
 
-  const due = document.createElement("p");
-  due.className = "person-meta";
-  due.textContent = `Due: ${task.dueDate || "Not set"} • Updated: ${new Date(task.updatedAt).toLocaleString()}`;
+  taskCell.append(title, taskMeta);
+
+  const statusCell = document.createElement("div");
+  statusCell.className = "tasks-cell";
+  statusCell.textContent = toTitleCase(task.status);
+
+  const relationCell = document.createElement("div");
+  relationCell.className = "tasks-cell";
+  relationCell.textContent = `${assigneeLabel} • ${projectLabel}`;
+
+  const dueCell = document.createElement("div");
+  dueCell.className = "tasks-cell";
+  dueCell.textContent = task.dueDate || "Not set";
+
+  const priorityCell = document.createElement("div");
+  priorityCell.className = "tasks-cell";
+  priorityCell.textContent = String(task.priorityScore);
 
   const actions = document.createElement("div");
-  actions.className = "person-actions";
-
+  actions.className = "tasks-cell tasks-row-actions";
   actions.append(
     button("Edit", onEdit),
     button(task.archived ? "Restore" : "Archive", onArchiveToggle),
     button("Delete", onDelete)
   );
 
-  card.append(top, details, relation, recurrence, due, actions);
-  return card;
+  row.append(taskCell, statusCell, relationCell, dueCell, priorityCell, actions);
+  return row;
 }
 
 function createTaskForm({ task, people, projects, onSave, onCancel }) {
