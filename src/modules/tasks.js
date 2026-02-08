@@ -5,13 +5,31 @@ const TASK_SCHEMA_VERSION = 1;
 const PEOPLE_STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 const TASK_STATUSES = [
-  "backlog",
-  "in progress",
-  "blocked",
-  "on hold",
-  "completed",
-  "cancelled"
+  "Backlog",
+  "Ready",
+  "In Progress",
+  "Blocked",
+  "Waiting On",
+  "Done",
+  "Cancelled"
 ];
+
+/**
+ * Maps historic/legacy task status values to canonical status values from SPECS §7.2.
+ * This keeps older localStorage records loadable while converging all writes to canonical values.
+ */
+const LEGACY_STATUS_MIGRATION_MAP = {
+  backlog: "Backlog",
+  ready: "Ready",
+  "in progress": "In Progress",
+  blocked: "Blocked",
+  "on hold": "Waiting On",
+  "waiting on": "Waiting On",
+  completed: "Done",
+  done: "Done",
+  cancelled: "Cancelled",
+  canceled: "Cancelled"
+};
 
 const RECURRENCE_OPTIONS = [
   "none",
@@ -146,6 +164,7 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
       const table = createTaskTable();
       list.appendChild(table);
 
+      const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
         const assignee = people.find((person) => person.id === task.assigneeId);
         const project = projects.find((entry) => entry.id === task.projectId);
@@ -153,6 +172,7 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
           createTaskTableRow(task, {
             assigneeLabel: assignee?.name || "Unassigned",
             projectLabel: project?.title || "No project",
+            dependencyStateLabel: buildDependencyStateLabel(task, taskById),
             onEdit: () => {
               state.editingId = task.id;
               state.isPanelOpen = true;
@@ -222,7 +242,7 @@ function createTaskTable() {
 
   const header = document.createElement("div");
   header.className = "tasks-table-row tasks-table-head";
-  ["Task", "Status", "Assignee / Project", "Due", "Priority", "Actions"].forEach((label) => {
+  ["Task", "Status", "Dependencies", "Assignee / Project", "Due", "Priority", "Actions"].forEach((label) => {
     const headCell = document.createElement("strong");
     headCell.className = "tasks-cell";
     headCell.textContent = label;
@@ -236,7 +256,7 @@ function createTaskTable() {
 /**
  * Renders a single task row for the compact task pseudo-table view.
  */
-function createTaskTableRow(task, { assigneeLabel, projectLabel, onEdit, onArchiveToggle, onDelete }) {
+function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyStateLabel, onEdit, onArchiveToggle, onDelete }) {
   const row = document.createElement("article");
   row.className = "tasks-table-row";
 
@@ -262,6 +282,10 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, onEdit, onArchi
   relationCell.className = "tasks-cell";
   relationCell.textContent = `${assigneeLabel} • ${projectLabel}`;
 
+  const dependencyCell = document.createElement("div");
+  dependencyCell.className = "tasks-cell";
+  dependencyCell.textContent = dependencyStateLabel;
+
   const dueCell = document.createElement("div");
   dueCell.className = "tasks-cell";
   dueCell.textContent = task.dueDate || "Not set";
@@ -278,7 +302,7 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, onEdit, onArchi
     button("Delete", onDelete)
   );
 
-  row.append(taskCell, statusCell, relationCell, dueCell, priorityCell, actions);
+  row.append(taskCell, statusCell, dependencyCell, relationCell, dueCell, priorityCell, actions);
   return row;
 }
 
@@ -308,7 +332,7 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
   for (const value of TASK_STATUSES) {
     addOption(status, value, toTitleCase(value));
   }
-  status.value = task?.status || "backlog";
+  status.value = task?.status || "Backlog";
   statusWrap.appendChild(status);
 
   const assigneeWrap = document.createElement("label");
@@ -357,6 +381,20 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
   );
 
   const notes = createField("Notes", "textarea", task?.notes || "", false);
+  const blockedByTaskIds = createField(
+    "Blocked by task IDs (comma-separated)",
+    "text",
+    serialiseTaskIdList(task?.blockedByTaskIds),
+    false,
+    { placeholder: "task_ab12cd34, task_ef56gh78" }
+  );
+  const blockingTaskIds = createField(
+    "Blocking task IDs (comma-separated)",
+    "text",
+    serialiseTaskIdList(task?.blockingTaskIds),
+    false,
+    { placeholder: "task_xy98zt76" }
+  );
 
   const actions = document.createElement("div");
   actions.className = "meeting-actions";
@@ -373,6 +411,8 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
     dueDate.wrap,
     recurrenceWrap,
     customRecurrence.wrap,
+    blockedByTaskIds.wrap,
+    blockingTaskIds.wrap,
     notes.wrap,
     actions
   );
@@ -389,6 +429,8 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
       dueDate: dueDate.input.value,
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
+      blockedByTaskIds: parseTaskIdList(blockedByTaskIds.input.value),
+      blockingTaskIds: parseTaskIdList(blockingTaskIds.input.value),
       notes: notes.input.value.trim(),
       archived: Boolean(task?.archived)
     });
@@ -436,7 +478,8 @@ function saveTask(mode, payload, editingId = "") {
   if (!payload.title) {
     return { ok: false, error: "Task title is required." };
   }
-  if (!TASK_STATUSES.includes(payload.status)) {
+  const canonicalStatus = normaliseTaskStatus(payload.status);
+  if (!TASK_STATUSES.includes(canonicalStatus)) {
     return { ok: false, error: "Task status is invalid." };
   }
   if (!Number.isFinite(payload.effort) || payload.effort < 1 || payload.effort > 10) {
@@ -445,6 +488,13 @@ function saveTask(mode, payload, editingId = "") {
   if (!Number.isFinite(payload.impact) || payload.impact < 1 || payload.impact > 10) {
     return { ok: false, error: "Impact must be between 1 and 10." };
   }
+
+  if (!Array.isArray(payload.blockedByTaskIds) || !Array.isArray(payload.blockingTaskIds)) {
+    return { ok: false, error: "Dependency references are invalid." };
+  }
+
+  const normalisedBlockedByTaskIds = parseTaskIdList(payload.blockedByTaskIds);
+  const normalisedBlockingTaskIds = parseTaskIdList(payload.blockingTaskIds);
 
   const tasks = loadTasks(mode);
   const now = new Date().toISOString();
@@ -459,6 +509,9 @@ function saveTask(mode, payload, editingId = "") {
     tasks[index] = {
       ...existing,
       ...payload,
+      status: canonicalStatus,
+      blockedByTaskIds: normalisedBlockedByTaskIds,
+      blockingTaskIds: normalisedBlockingTaskIds,
       updatedAt: now,
       lastUpdatedByField: {
         ...existing.lastUpdatedByField,
@@ -471,6 +524,8 @@ function saveTask(mode, payload, editingId = "") {
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
+        blockedByTaskIds: now,
+        blockingTaskIds: now,
         notes: now,
         archived: now
       }
@@ -484,6 +539,9 @@ function saveTask(mode, payload, editingId = "") {
     normaliseTask({
       id: buildTaskId(),
       ...payload,
+      status: canonicalStatus,
+      blockedByTaskIds: normalisedBlockedByTaskIds,
+      blockingTaskIds: normalisedBlockingTaskIds,
       createdAt: now,
       updatedAt: now,
       lastUpdatedByField: {
@@ -496,6 +554,8 @@ function saveTask(mode, payload, editingId = "") {
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
+        blockedByTaskIds: now,
+        blockingTaskIds: now,
         notes: now,
         archived: now
       }
@@ -549,10 +609,13 @@ function computePriorityScore(task) {
     }
   }
 
-  const statusWeight = task.status === "blocked" ? 8 : task.status === "in progress" ? 12 : 0;
+  const statusWeight = task.status === "Blocked" ? 8 : task.status === "In Progress" ? 12 : 0;
+  const dependencyWeight = task.blockedByTaskIds.length > 0 ? -6 : 0;
   const recurrenceWeight = task.recurrence !== "none" ? 5 : 0;
 
-  return Math.round(dueDateWeight + task.impact * 6 - task.effort * 2 + statusWeight + recurrenceWeight);
+  return Math.round(
+    dueDateWeight + task.impact * 6 - task.effort * 2 + statusWeight + dependencyWeight + recurrenceWeight
+  );
 }
 
 function stableTieBreaker(input) {
@@ -573,11 +636,11 @@ export function loadTasks(mode) {
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.map(normaliseTask);
+      return migrateLoadedTasks(mode, parsed.map(normaliseTask));
     }
 
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.tasks)) {
-      return parsed.tasks.map(normaliseTask);
+      return migrateLoadedTasks(mode, parsed.tasks.map(normaliseTask));
     }
 
     return [];
@@ -597,12 +660,14 @@ function normaliseTask(task) {
     title: task.title || "",
     effort: Number(task.effort) || 5,
     impact: Number(task.impact) || 5,
-    status: TASK_STATUSES.includes(task.status) ? task.status : "backlog",
+    status: normaliseTaskStatus(task.status),
     assigneeId: task.assigneeId || "",
     projectId: task.projectId || "",
     dueDate: task.dueDate || "",
     recurrence: RECURRENCE_OPTIONS.includes(task.recurrence) ? task.recurrence : "none",
     customRecurrence: task.customRecurrence || "",
+    blockedByTaskIds: parseTaskIdList(task.blockedByTaskIds),
+    blockingTaskIds: parseTaskIdList(task.blockingTaskIds),
     notes: task.notes || "",
     archived: Boolean(task.archived),
     createdAt: task.createdAt || new Date().toISOString(),
@@ -612,6 +677,57 @@ function normaliseTask(task) {
         ? task.lastUpdatedByField
         : {}
   };
+}
+
+/**
+ * Persists migrated task records only when values changed during load-time migration.
+ */
+function migrateLoadedTasks(mode, tasks) {
+  const migrated = tasks.map((task) => normaliseTask(task));
+  const wasMigrated = JSON.stringify(tasks) !== JSON.stringify(migrated);
+  if (wasMigrated) {
+    persistTasks(mode, migrated);
+  }
+  return migrated;
+}
+
+function normaliseTaskStatus(status) {
+  const canonical = LEGACY_STATUS_MIGRATION_MAP[String(status || "").trim().toLowerCase()];
+  return TASK_STATUSES.includes(canonical) ? canonical : "Backlog";
+}
+
+function parseTaskIdList(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(",");
+  return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function serialiseTaskIdList(value) {
+  return parseTaskIdList(value).join(", ");
+}
+
+function buildDependencyStateLabel(task, taskById) {
+  const blockedByOpenCount = task.blockedByTaskIds.filter((id) => {
+    const dependency = taskById.get(id);
+    return dependency && !["Done", "Cancelled"].includes(dependency.status);
+  }).length;
+  const blockingOpenCount = task.blockingTaskIds.filter((id) => {
+    const dependency = taskById.get(id);
+    return dependency && !["Done", "Cancelled"].includes(dependency.status);
+  }).length;
+
+  if (blockedByOpenCount > 0 && blockingOpenCount > 0) {
+    return `Blocked (${blockedByOpenCount}) • Blocking (${blockingOpenCount})`;
+  }
+  if (blockedByOpenCount > 0) {
+    return `Blocked (${blockedByOpenCount})`;
+  }
+  if (blockingOpenCount > 0) {
+    return `Blocking (${blockingOpenCount})`;
+  }
+  if (task.blockedByTaskIds.length > 0 || task.blockingTaskIds.length > 0) {
+    return "Dependencies clear";
+  }
+  return "None";
 }
 
 function loadPeople(mode) {
