@@ -4,6 +4,12 @@ import { renderWorkTasksModule } from "./tasks.js";
 import { renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
 import { renderSettingsModule } from "./settings.js";
+import { renderPersonalTasksModule } from "./personal-tasks.js";
+import { renderPersonalProjectsModule } from "./personal-projects.js";
+import { renderPersonalDailyLogModule } from "./personal-daily-log.js";
+import { renderPersonalExerciseLogModule } from "./personal-exercise-log.js";
+import { renderPersonalPeopleModule } from "./personal-people.js";
+import { renderPersonalCalendarModule } from "./personal-calendar.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 /**
@@ -91,6 +97,30 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
 
   if (mode === "work" && activeModule === "sprints") {
     return renderWorkSprintsModule({ mode });
+  }
+
+  if (mode === "personal" && activeModule === "tasks") {
+    return renderPersonalTasksModule();
+  }
+
+  if (mode === "personal" && activeModule === "projects") {
+    return renderPersonalProjectsModule();
+  }
+
+  if (mode === "personal" && activeModule === "daily-log") {
+    return renderPersonalDailyLogModule();
+  }
+
+  if (mode === "personal" && activeModule === "exercise-log") {
+    return renderPersonalExerciseLogModule();
+  }
+
+  if (mode === "personal" && activeModule === "people") {
+    return renderPersonalPeopleModule();
+  }
+
+  if (mode === "personal" && activeModule === "calendar") {
+    return renderPersonalCalendarModule();
   }
 
   if (activeModule === "settings") {
