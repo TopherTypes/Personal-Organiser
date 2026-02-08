@@ -1,0 +1,62 @@
+name: Deploy GitHub Pages
+
+on:
+  # Deploy from main branch on every push.
+  push:
+    branches: [main]
+  # Allow manual deploys for troubleshooting.
+  workflow_dispatch:
+
+# Required for GitHub Pages deployments.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Prevent overlapping deployments from publishing duplicate artifacts.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Stage static site files
+        run: |
+          # Publish from a clean directory so the artifact always has one source.
+          rm -rf _site
+          mkdir -p _site
+          cp -R index.html favicon.ico src assets docs README.md CHANGELOG.md LICENSE _site/
+
+      - name: Upload Pages artifact
+        # Use exactly one upload step in one job to avoid multiple
+        # "github-pages" artifacts in the same workflow run.
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
