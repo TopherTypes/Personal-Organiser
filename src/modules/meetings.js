@@ -1,4 +1,5 @@
 import { loadProjects } from "./projects-store.js";
+import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
 
@@ -705,32 +706,13 @@ export function loadMeetings(mode) {
     return [];
   }
 
-  const raw = localStorage.getItem(MEETINGS_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-
-    /**
-     * Migration path: legacy arrays are upgraded to the versioned envelope.
-     * A backup copy is retained for rollback safety.
-     */
-    if (Array.isArray(parsed)) {
-      localStorage.setItem(`${MEETINGS_STORAGE_KEY}.backup`, raw);
-      persistMeetings(mode, parsed.map(normaliseMeeting));
-      return parsed.map(normaliseMeeting);
-    }
-
-    if (typeof parsed === "object" && parsed !== null && Array.isArray(parsed.meetings)) {
-      return parsed.meetings.map(normaliseMeeting);
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey: MEETINGS_STORAGE_KEY,
+    collectionKey: "meetings",
+    schemaVersion: MEETINGS_SCHEMA_VERSION,
+    normaliseItem: normaliseMeeting,
+    fallback: []
+  });
 }
 
 function persistMeetings(mode, meetings) {
@@ -738,15 +720,16 @@ function persistMeetings(mode, meetings) {
     return;
   }
 
-  const payload = {
+  persistVersionedCollection({
+    storageKey: MEETINGS_STORAGE_KEY,
+    collectionKey: "meetings",
     schemaVersion: MEETINGS_SCHEMA_VERSION,
-    meetings
-  };
-  localStorage.setItem(MEETINGS_STORAGE_KEY, JSON.stringify(payload));
+    records: meetings
+  });
 }
 
 
-function normaliseMeeting(meeting) {
+export function normaliseMeeting(meeting) {
   return {
     id: meeting.id || "",
     name: meeting.name || "",
@@ -773,7 +756,7 @@ function normaliseMeeting(meeting) {
 }
 
 function autoSaveDraft(mode, draft) {
-  localStorage.setItem(`second-brain.work.meetings.${mode}.draft`, JSON.stringify(draft));
+  safeJsonWrite(`second-brain.work.meetings.${mode}.draft`, draft);
 }
 
 function loadDraft(mode) {
@@ -781,11 +764,8 @@ function loadDraft(mode) {
   if (!raw) {
     return null;
   }
-  try {
-    return normaliseMeeting(JSON.parse(raw));
-  } catch {
-    return null;
-  }
+  const parsed = safeJsonParse(raw, null);
+  return parsed ? normaliseMeeting(parsed) : null;
 }
 
 function clearDraft(mode) {

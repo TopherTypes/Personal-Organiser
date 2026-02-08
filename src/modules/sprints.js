@@ -1,7 +1,7 @@
 import { loadTasks } from "./tasks.js";
+import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 
 const SPRINT_STORAGE_KEY = "second-brain.work.sprints.work";
-const SPRINT_BACKUP_KEY = `${SPRINT_STORAGE_KEY}.backup`;
 const SPRINT_SCHEMA_VERSION = 1;
 
 const SPRINT_STATUSES = ["planning", "active", "completed", "archived"];
@@ -675,29 +675,13 @@ export function loadSprints(mode = "work") {
     return [];
   }
 
-  const raw = localStorage.getItem(SPRINT_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      // Preserve original payload before envelope migration to avoid data loss.
-      localStorage.setItem(SPRINT_BACKUP_KEY, raw);
-      const migrated = parsed.map(normaliseSprint);
-      persistSprints(mode, migrated);
-      return migrated;
-    }
-
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.sprints)) {
-      return parsed.sprints.map(normaliseSprint);
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey: SPRINT_STORAGE_KEY,
+    collectionKey: "sprints",
+    schemaVersion: SPRINT_SCHEMA_VERSION,
+    normaliseItem: normaliseSprint,
+    fallback: []
+  });
 }
 
 function persistSprints(mode = "work", sprints = []) {
@@ -705,13 +689,15 @@ function persistSprints(mode = "work", sprints = []) {
     return;
   }
 
-  localStorage.setItem(
-    SPRINT_STORAGE_KEY,
-    JSON.stringify({ schemaVersion: SPRINT_SCHEMA_VERSION, sprints })
-  );
+  persistVersionedCollection({
+    storageKey: SPRINT_STORAGE_KEY,
+    collectionKey: "sprints",
+    schemaVersion: SPRINT_SCHEMA_VERSION,
+    records: sprints
+  });
 }
 
-function normaliseSprint(sprint) {
+export function normaliseSprint(sprint) {
   return {
     id: sprint.id || buildSprintId(),
     name: sprint.name || "",
