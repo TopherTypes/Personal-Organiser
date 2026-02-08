@@ -32,6 +32,8 @@ The app is hosted on **GitHub Pages**, with data stored in **my Google Drive**.
   - nutrition + exercise basics
 - **Export**
   - always provide a way to export/backup data
+- **Import/restore**
+  - restore from validated JSON payloads with merge or replace strategy
 
 ### Design intent
 - Keep the UI **simple** and fast.
@@ -61,6 +63,24 @@ The app is hosted on **GitHub Pages**, with data stored in **my Google Drive**.
 > The precise algorithm and guarantees are defined in `docs/SPECS.md`.
 
 ---
+
+
+## JSON export/import format (implemented)
+
+- Export supports three actions in Settings: **Work**, **Personal**, and **Combined** JSON downloads.
+- Export payload metadata includes: `schema`, `schemaVersion`, `appVersion`, `exportedAt`, and dataset blocks for `work` and/or `personal`.
+- Import accepts only validated payloads matching the app export schema + version.
+- Before import overwrite, the app writes a **timestamped backup snapshot** of all touched storage keys, then applies the import.
+- If import application fails, the app automatically restores from that backup snapshot (rollback safety).
+
+### Merge vs replace
+
+- **Merge (default):**
+  - objects merge recursively by key
+  - arrays containing object `id` fields merge by `id`, preferring the item with newer `updatedAt` / `lastUpdated` / `lastUpdatedAt` timestamp
+  - arrays without stable ids are replaced by imported arrays
+  - primitive values are replaced by imported values
+- **Replace:** imported values fully replace existing values for the keys present in the file.
 
 ## Browser support
 

@@ -596,3 +596,22 @@ body[data-density="compact"] .footer {
 .settings-hint {
   color: var(--muted);
 }
+
+.settings-data-management {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.settings-export-actions,
+.settings-import-actions,
+.settings-merge-rules {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-merge-rules {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+}

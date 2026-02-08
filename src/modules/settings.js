@@ -1,4 +1,12 @@
+import {
+  downloadDatasetExport,
+  getMergeRulesSummary,
+  parseAndValidateImportPayload,
+  restoreFromImportPayload
+} from "./storage-export.js";
+
 const SETTINGS_STORAGE_KEY = "second-brain.ui.settings.v1";
+
 
 /**
  * Default user preferences for app appearance and interaction behaviour.
@@ -42,7 +50,7 @@ export function saveSettings(nextSettings) {
 /**
  * Renders Settings UI for user customisation.
  */
-export function renderSettingsModule({ mode, settings, onSettingsChange }) {
+export function renderSettingsModule({ mode, settings, onSettingsChange, onDataRestore }) {
   const section = document.createElement("section");
   section.className = "mode-dashboard settings-module";
 
@@ -97,8 +105,111 @@ export function renderSettingsModule({ mode, settings, onSettingsChange }) {
     })
   );
 
-  section.append(title, intro, list);
+  const dataManagement = createDataManagementSection({ onDataRestore });
+
+  section.append(title, intro, list, dataManagement);
   return section;
+}
+
+/**
+ * Builds export/import controls with explicit confirmation and clear restore feedback.
+ */
+function createDataManagementSection({ onDataRestore }) {
+  const wrap = document.createElement("section");
+  wrap.className = "settings-data-management";
+
+  const title = document.createElement("h2");
+  title.textContent = "Data export & restore";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent =
+    "Export Work/Personal JSON backups or restore from a validated file. Every restore writes a timestamped rollback snapshot first.";
+
+  const buttonRow = document.createElement("div");
+  buttonRow.className = "settings-export-actions";
+
+  buttonRow.append(
+    createActionButton("Export Work JSON", () => downloadDatasetExport("work")),
+    createActionButton("Export Personal JSON", () => downloadDatasetExport("personal")),
+    createActionButton("Export Combined JSON", () => downloadDatasetExport("combined"))
+  );
+
+  const importForm = document.createElement("div");
+  importForm.className = "settings-import-actions";
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.className = "field-input";
+  fileInput.accept = "application/json,.json";
+
+  const strategySelect = document.createElement("select");
+  strategySelect.className = "field-input";
+  strategySelect.append(
+    buildOption("merge", "Merge import into existing data (default)"),
+    buildOption("replace", "Replace imported keys entirely")
+  );
+
+  const importButton = createActionButton("Import JSON", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      window.alert("Select a JSON file before importing.");
+      return;
+    }
+
+    const strategy = strategySelect.value === "replace" ? "replace" : "merge";
+    const confirmation = window.confirm(
+      `Import will ${strategy} data from \"${file.name}\". A rollback snapshot is created first. Continue?`
+    );
+
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const payload = parseAndValidateImportPayload(text);
+      const result = restoreFromImportPayload(payload, strategy);
+      window.alert(
+        `Import complete. Updated ${result.updatedKeys.length} storage key(s). Backup snapshot: ${result.backupKey}`
+      );
+      fileInput.value = "";
+      if (typeof onDataRestore === "function") {
+        onDataRestore();
+      }
+    } catch (error) {
+      window.alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+
+  importForm.append(fileInput, strategySelect, importButton);
+
+  const mergeRules = document.createElement("ul");
+  mergeRules.className = "settings-merge-rules";
+  getMergeRulesSummary().forEach((rule) => {
+    const item = document.createElement("li");
+    item.textContent = rule;
+    mergeRules.appendChild(item);
+  });
+
+  wrap.append(title, hint, buttonRow, importForm, mergeRules);
+  return wrap;
+}
+
+function createActionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "enter-mode-button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function buildOption(value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  return option;
 }
 
 function createSelectSetting({ label, hint, value, options, onChange }) {

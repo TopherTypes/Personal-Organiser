@@ -81,6 +81,7 @@ function renderApp() {
           meetingPrefill: state.meetingPrefillByMode[state.activeMode],
           onScheduleOneOnOne: handleScheduleOneOnOne,
           onSettingsChange: handleSettingsChange,
+          onDataRestore: handleDataRestore,
           settings: state.settings,
           setUnsavedChangesGuard: (value) => {
             state.hasUnsavedChanges = value;
@@ -179,6 +180,14 @@ function confirmNavigation() {
   return window.confirm("You have unsaved changes. Leave this screen anyway?");
 }
 
+
+/**
+ * Re-renders app after data restore so modules reflect imported state immediately.
+ */
+function handleDataRestore() {
+  state.hasUnsavedChanges = false;
+  renderApp();
+}
 
 /**
  * Applies user settings and triggers a re-render.
