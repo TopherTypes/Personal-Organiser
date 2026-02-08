@@ -1,4 +1,5 @@
 import { loadProjects } from "./projects-store.js";
+import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } from "./storage-core.js";
 
 const TASK_STORAGE_KEY_PREFIX = "second-brain.work.tasks";
 const TASK_SCHEMA_VERSION = 1;
@@ -597,6 +598,7 @@ function computePriorityScore(task) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Weight due dates more heavily so urgent/overdue work naturally rises to the top.
   let dueDateWeight = 50;
   if (task.dueDate) {
     const due = new Date(task.dueDate);
@@ -627,34 +629,35 @@ function stableTieBreaker(input) {
 }
 
 export function loadTasks(mode) {
+  if (mode !== "work") {
+    return [];
+  }
+
   const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return migrateLoadedTasks(mode, parsed.map(normaliseTask));
-    }
-
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tasks)) {
-      return migrateLoadedTasks(mode, parsed.tasks.map(normaliseTask));
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey,
+    collectionKey: "tasks",
+    schemaVersion: TASK_SCHEMA_VERSION,
+    normaliseItem: normaliseTask,
+    fallback: []
+  });
 }
 
 function persistTasks(mode, tasks) {
+  if (mode !== "work") {
+    return;
+  }
+
   const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
-  localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: TASK_SCHEMA_VERSION, tasks }));
+  persistVersionedCollection({
+    storageKey,
+    collectionKey: "tasks",
+    schemaVersion: TASK_SCHEMA_VERSION,
+    records: tasks
+  });
 }
 
-function normaliseTask(task) {
+export function normaliseTask(task) {
   return {
     id: task.id || buildTaskId(),
     title: task.title || "",
@@ -679,19 +682,7 @@ function normaliseTask(task) {
   };
 }
 
-/**
- * Persists migrated task records only when values changed during load-time migration.
- */
-function migrateLoadedTasks(mode, tasks) {
-  const migrated = tasks.map((task) => normaliseTask(task));
-  const wasMigrated = JSON.stringify(tasks) !== JSON.stringify(migrated);
-  if (wasMigrated) {
-    persistTasks(mode, migrated);
-  }
-  return migrated;
-}
-
-function normaliseTaskStatus(status) {
+export function normaliseTaskStatus(status) {
   const canonical = LEGACY_STATUS_MIGRATION_MAP[String(status || "").trim().toLowerCase()];
   return TASK_STATUSES.includes(canonical) ? canonical : "Backlog";
 }
@@ -737,14 +728,10 @@ function loadPeople(mode) {
     return [];
   }
 
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.map((person) => ({ id: person.id || "", name: person.name || "Unnamed" }))
-      : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeJsonParse(raw, []);
+  return Array.isArray(parsed)
+    ? parsed.map((person) => ({ id: person.id || "", name: person.name || "Unnamed" }))
+    : [];
 }
 
 function button(label, onClick, type = "button") {

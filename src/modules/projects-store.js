@@ -1,3 +1,5 @@
+import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
+
 export const PROJECT_STORAGE_KEY = "second-brain.work.projects.work";
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -20,25 +22,13 @@ export function loadProjects(mode = "work") {
     return [];
   }
 
-  const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.map(normaliseProject);
-    }
-
-    if (typeof parsed === "object" && parsed !== null && Array.isArray(parsed.projects)) {
-      return parsed.projects.map(normaliseProject);
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey: PROJECT_STORAGE_KEY,
+    collectionKey: "projects",
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    normaliseItem: normaliseProject,
+    fallback: []
+  });
 }
 
 /**
@@ -49,10 +39,12 @@ export function persistProjects(mode = "work", projects = []) {
     return;
   }
 
-  localStorage.setItem(
-    PROJECT_STORAGE_KEY,
-    JSON.stringify({ schemaVersion: PROJECT_SCHEMA_VERSION, projects })
-  );
+  persistVersionedCollection({
+    storageKey: PROJECT_STORAGE_KEY,
+    collectionKey: "projects",
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    records: projects
+  });
 }
 
 /**
@@ -137,6 +129,10 @@ export function upsertProjectPersonLink(mode = "work", projectId, personId, role
   const projects = loadProjects(mode);
   const now = new Date().toISOString();
 
+  /**
+   * Merge strategy: replace only the target person's link, preserve all other links,
+   * and remove the link entirely when no roles remain.
+   */
   const updated = projects.map((project) => {
     if (project.id !== projectId) {
       return project;
