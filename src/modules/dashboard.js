@@ -127,7 +127,8 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
     return renderSettingsModule({
       mode,
       settings: uiContext.settings || {},
-      onSettingsChange: uiContext.onSettingsChange
+      onSettingsChange: uiContext.onSettingsChange,
+      onDataRestore: uiContext.onDataRestore
     });
   }
 

@@ -359,14 +359,22 @@ The UI must show, at minimum:
 
 ### 15.1 Export
 - Export format: **JSON** (MVP).
-- Export defaults to **both** Work + Personal, with toggles to export either/both.
+- Export supports three actions in Settings: **Work**, **Personal**, or **Combined**.
+- Export payload includes metadata: `schema`, `schemaVersion`, `appVersion`, `exportedAt`, and dataset blocks keyed by `work` / `personal`.
 
 ### 15.2 Import
 - Import prompts the user to choose:
   - merge (default), or
   - replace
+- Import only accepts validated payloads that match the supported schema + schema version.
+- Before import writes are applied, the app must create a timestamped backup snapshot of touched storage keys.
+- If an import fails while applying writes, the app must rollback to the pre-import snapshot.
 
-Merge behaviour must be conflict-safe and consistent with field-level timestamps.
+Merge behaviour must be conflict-safe and consistent with field-level timestamps:
+- Object values merge recursively by key.
+- Arrays with stable object `id` fields merge by id, preferring the newest `updatedAt`/`lastUpdated`/`lastUpdatedAt` value.
+- Arrays without stable ids are replaced by imported arrays.
+- Primitive values are replaced by imported values.
 
 ---
 
