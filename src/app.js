@@ -3,10 +3,11 @@ import { renderTopBar } from "./modules/topbar.js";
 import { renderSidebar } from "./modules/sidebar.js";
 import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js";
 import { loadSettings, saveSettings } from "./modules/settings.js";
+import { createSyncSubsystem } from "./modules/sync.js";
 
 /**
- * In-memory app state for the baseline shell.
- * No persistence or sync is performed in this stage.
+ * In-memory app state for the shell.
+ * Sync state is hydrated from the sync subsystem and reflected in the top bar.
  */
 const initialSettings = loadSettings();
 
@@ -22,8 +23,24 @@ const state = {
     personal: null
   },
   hasUnsavedChanges: false,
-  settings: initialSettings
+  settings: initialSettings,
+  sync: {
+    syncStatus: navigator.onLine ? "idle" : "offline",
+    authStatus: "signed-out",
+    pendingChanges: 0,
+    conflictCount: 0,
+    lastSuccessfulSyncAt: "",
+    errorMessage: "",
+    retries: 0
+  }
 };
+
+const syncSubsystem = createSyncSubsystem({
+  onStateChange: (syncState) => {
+    state.sync = syncState;
+    renderApp();
+  }
+});
 
 const appRoot = document.querySelector("#app");
 
@@ -43,7 +60,9 @@ function renderApp() {
   const topBar = renderTopBar({
     activeMode: state.activeMode,
     isModeSwitchDisabled: !state.hasEnteredMode,
-    onModeChange: handleModeChange
+    onModeChange: handleModeChange,
+    syncState: state.sync,
+    onSyncAction: handleSyncAction
   });
 
   const content = document.createElement("div");
@@ -136,6 +155,20 @@ function handleScheduleOneOnOne(person) {
 }
 
 /**
+ * Handles sync-related topbar actions.
+ */
+function handleSyncAction(action) {
+  if (action === "sign-in") {
+    syncSubsystem.signIn();
+    return;
+  }
+
+  if (action === "sync") {
+    void syncSubsystem.syncNow({ reason: "manual" });
+  }
+}
+
+/**
  * Prompts before module/mode changes when form edits are unsaved.
  */
 function confirmNavigation() {
@@ -145,7 +178,6 @@ function confirmNavigation() {
 
   return window.confirm("You have unsaved changes. Leave this screen anyway?");
 }
-
 
 
 /**
@@ -183,4 +215,5 @@ function renderFooter() {
 }
 
 applyUserSettings(state.settings);
+syncSubsystem.start();
 renderApp();
