@@ -35,18 +35,22 @@ const state = {
   }
 };
 
+/**
+ * Resolve and validate the app root before wiring subsystems that can trigger
+ * immediate render callbacks during their own initialization.
+ */
+const appRoot = document.querySelector("#app");
+
+if (!appRoot) {
+  throw new Error("Expected #app root element to exist.");
+}
+
 const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
     renderApp();
   }
 });
-
-const appRoot = document.querySelector("#app");
-
-if (!appRoot) {
-  throw new Error("Expected #app root element to exist.");
-}
 
 /**
  * Main render loop for this small SPA shell.
