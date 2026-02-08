@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-015 — 2026-02-08 — Canonical task status migration and dependency-aware task model
+
+- **Decision:** I decided to align Work Tasks statuses to the canonical product spec set and add explicit dependency references (`blockedByTaskIds`, `blockingTaskIds`) to the persisted task model, with load-time migration for backward compatibility.
+- **Context:** Existing task statuses used legacy values (`backlog`, `on hold`, `completed`, etc.) that diverged from spec §7.2, and tasks lacked first-class dependency references required by spec §7.4.
+- **Options considered:** (1) Keep legacy statuses and defer migration, (2) hard-cut to new statuses and break old records, (3) migrate legacy values on load while preserving existing records.
+- **Why:** Option (3) maintains data safety and continuity for current users while establishing a canonical schema for future features and scoring consistency.
+- **Consequences / follow-ups:** Task load now normalizes status aliases and dependency arrays and persists migrated records automatically; task row rendering now includes dependency-state summaries; future dependency visualizations can build on existing IDs.
+
+---
+
 ## D-014 — 2026-02-07 — Compact pseudo-table layout for Work Tasks list
 
 - **Decision:** I decided to replace the Work Tasks card-list presentation with a compact pseudo-table row layout while keeping all existing task actions and persisted data unchanged.
