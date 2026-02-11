@@ -1,9 +1,20 @@
 import "./setup.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { __TESTING__ } from "../src/modules/sync.js";
+import { SYNCABLE_DOCUMENTS, __TESTING__ } from "../src/modules/sync.js";
 
 const { mergeDocument, countDocumentDifferences, shouldQueueManualConflict, withRetry } = __TESTING__;
+
+
+
+test("SYNCABLE_DOCUMENTS includes work updates storage", () => {
+  const updatesDescriptor = SYNCABLE_DOCUMENTS.find((descriptor) => descriptor.id === "work.updates");
+
+  assert.deepEqual(updatesDescriptor, {
+    id: "work.updates",
+    localKey: "second-brain.work.updates.work.v1"
+  });
+});
 
 test("mergeDocument resolves conflicts with latest field timestamp and only surfaces important conflicts", () => {
   const local = {
@@ -74,6 +85,39 @@ test("shouldQueueManualConflict only returns true for important fields in tight 
       remoteValue: "B",
       localTimestamp: "2026-02-10T10:00:00.000Z",
       remoteTimestamp: "2026-02-10T12:00:00.000Z"
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "ownerId",
+      localValue: "person-a",
+      remoteValue: "person-b",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T10:04:00.000Z"
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "meetingId",
+      localValue: "meeting-1",
+      remoteValue: "meeting-2",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T10:04:00.000Z"
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "meetingId",
+      localValue: "",
+      remoteValue: "meeting-2",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T10:04:00.000Z"
     }),
     false
   );
