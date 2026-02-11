@@ -4,16 +4,19 @@ import { renderSidebar } from "./modules/sidebar.js";
 import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js";
 import { loadSettings, saveSettings } from "./modules/settings.js";
 import { createSyncSubsystem } from "./modules/sync.js";
+import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
 
 /**
  * In-memory app state for the shell.
  * Sync state is hydrated from the sync subsystem and reflected in the top bar.
  */
 const initialSettings = loadSettings();
+const onboardingComplete = isOnboardingComplete();
 
 const state = {
   activeMode: initialSettings.startMode === "personal" ? "personal" : "work",
-  hasEnteredMode: initialSettings.startMode !== "ask",
+  hasEnteredMode: onboardingComplete && initialSettings.startMode !== "ask",
+  needsOnboarding: !onboardingComplete,
   activeModuleByMode: {
     work: "dashboard",
     personal: "dashboard"
@@ -72,7 +75,16 @@ function renderApp() {
   const content = document.createElement("div");
   content.className = "content";
 
-  if (state.hasEnteredMode) {
+  if (state.needsOnboarding) {
+    content.classList.add("content-onboarding");
+    content.append(
+      renderOnboardingModule({
+        initialSettings: state.settings,
+        onSettingsChange: handleSettingsChange,
+        onComplete: handleOnboardingComplete
+      })
+    );
+  } else if (state.hasEnteredMode) {
     content.append(
       renderSidebar({
         mode: state.activeMode,
@@ -109,8 +121,22 @@ function renderApp() {
  * Handles mode entry from the landing dashboard.
  */
 function handleEnterMode(mode) {
+  if (state.needsOnboarding) {
+    return;
+  }
+
   state.activeMode = mode;
   state.hasEnteredMode = true;
+  renderApp();
+}
+
+/**
+ * Unlocks the standard app shell once onboarding completion marker is persisted.
+ */
+function handleOnboardingComplete() {
+  state.needsOnboarding = false;
+  state.hasEnteredMode = state.settings.startMode !== "ask";
+  state.activeMode = state.settings.startMode === "personal" ? "personal" : "work";
   renderApp();
 }
 
