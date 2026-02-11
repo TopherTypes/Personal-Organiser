@@ -1054,6 +1054,49 @@ textarea:focus-visible,
   padding: var(--space-5);
 }
 
+.settings-action-modal {
+  width: min(640px, 100%);
+}
+
+.settings-danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 35%, var(--bg-elevated));
+}
+
+.settings-danger-details {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-danger-details > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.settings-danger-warning {
+  border: 1px dashed color-mix(in srgb, var(--danger) 60%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 65%, var(--bg-elevated));
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-weight: 700;
+}
+
+.settings-danger-button {
+  border-color: color-mix(in srgb, var(--danger) 70%, #000);
+  font-weight: 700;
+}
+
+.settings-danger-button-emphasis {
+  background: var(--danger);
+  color: #fff;
+}
+
+.settings-danger-button-emphasis:hover {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+}
+
 .meeting-notes-input {
   min-height: 22rem;
 }

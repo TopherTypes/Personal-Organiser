@@ -126,6 +126,33 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
   }
 
   /**
+   * Permanently removes the app-managed Drive folder and all known data files.
+   *
+   * We delete child files first, then the folder, so users can start from a
+   * guaranteed clean remote state and avoid accidental re-sync of stale content.
+   */
+  async function purgeSecondBrainData() {
+    const folder = await findSecondBrainFolder();
+    if (!folder?.id) {
+      state.discovered = false;
+      state.folderId = "";
+      state.fileIdsByName.clear();
+      return { deletedFolder: false, deletedFileCount: 0 };
+    }
+
+    const files = await listFilesInFolder(folder.id);
+    for (const file of files) {
+      await deleteDriveFile(file.id);
+    }
+
+    await deleteDriveFile(folder.id);
+    state.discovered = false;
+    state.folderId = "";
+    state.fileIdsByName.clear();
+    return { deletedFolder: true, deletedFileCount: files.length };
+  }
+
+  /**
    * Validates/creates the required Drive layout in an idempotent way.
    *
    * This method is safe to call repeatedly during interrupted onboarding because
@@ -150,18 +177,7 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
   }
 
   async function findOrCreateSecondBrainFolder() {
-    const q = encodeDriveQuery(
-      `name = '${escapeDriveLiteral(SECOND_BRAIN_FOLDER_NAME)}' and mimeType = '${FOLDER_MIME_TYPE}' and trashed = false`
-    );
-
-    const listing = await requestJson({
-      fetchImpl,
-      authClient,
-      operation: "discover-folder",
-      url: `${DRIVE_API_ROOT}/files?q=${q}&fields=files(id,name,mimeType)`
-    });
-
-    const existing = Array.isArray(listing?.files) ? listing.files[0] : null;
+    const existing = await findSecondBrainFolder();
     if (existing?.id) {
       return { ...existing, created: false };
     }
@@ -177,6 +193,43 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
     });
 
     return { ...created, created: true };
+  }
+
+  async function findSecondBrainFolder() {
+    const q = encodeDriveQuery(
+      `name = '${escapeDriveLiteral(SECOND_BRAIN_FOLDER_NAME)}' and mimeType = '${FOLDER_MIME_TYPE}' and trashed = false`
+    );
+
+    const listing = await requestJson({
+      fetchImpl,
+      authClient,
+      operation: "discover-folder",
+      url: `${DRIVE_API_ROOT}/files?q=${q}&fields=files(id,name,mimeType)`
+    });
+
+    return Array.isArray(listing?.files) ? listing.files[0] ?? null : null;
+  }
+
+  async function listFilesInFolder(folderId) {
+    const q = encodeDriveQuery(`'${escapeDriveLiteral(folderId)}' in parents and trashed = false`);
+    const listing = await requestJson({
+      fetchImpl,
+      authClient,
+      operation: "list-folder-files",
+      url: `${DRIVE_API_ROOT}/files?q=${q}&fields=files(id,name,mimeType)`
+    });
+
+    return Array.isArray(listing?.files) ? listing.files.filter((file) => Boolean(file?.id)) : [];
+  }
+
+  async function deleteDriveFile(fileId) {
+    await requestNoContent({
+      fetchImpl,
+      authClient,
+      operation: "delete",
+      method: "DELETE",
+      url: `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}`
+    });
   }
 
   async function findOrCreateFile(fileName, folderId) {
@@ -225,6 +278,7 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
 
   return {
     ensureBootstrap,
+    purgeSecondBrainData,
     pullDocument,
     pushDocument
   };
