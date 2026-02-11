@@ -248,11 +248,21 @@ export function createSyncSubsystem({
       });
     } catch (error) {
       const failure = classifySyncFailure(error);
+      const errorCode = typeof error?.code === "string" ? error.code : "unknown";
+
+      // Auth-related transport failures usually mean the runtime no longer has a
+      // usable token. Reset auth state so UI clearly guides the user to reconnect.
+      const authRecoveryState =
+        failure.reason === SYNC_ERROR_REASON.AUTH_EXPIRED
+          ? { authStatus: "signed-out", authSession: null }
+          : {};
+
       setPartialState({
+        ...authRecoveryState,
         syncStatus: "error",
         infoMessage: "",
         errorReason: failure.reason,
-        errorMessage: `${syncFailureMessage(failure.reason)} (${reason})`
+        errorMessage: `${syncFailureMessage(failure.reason)} (${reason}; code: ${errorCode})`
       });
     } finally {
       state.isSyncing = false;
