@@ -33,6 +33,7 @@ export function renderWorkMeetingsModule({
   mode = "work",
   people = [],
   initialPrefill = null,
+  initialMeetingId = "",
   setUnsavedChangesGuard = () => {}
 } = {}) {
   const state = createMeetingsUiState(mode, initialPrefill);
@@ -823,6 +824,15 @@ export function renderWorkMeetingsModule({
   }
 
   renderModule();
+
+  // Dashboard deep-links can request opening a specific meeting editor on mount.
+  if (!state.draft && initialMeetingId) {
+    const focusedMeeting = loadMeetings(mode).find((meeting) => meeting.id === initialMeetingId && !meeting.archived);
+    if (focusedMeeting) {
+      openEditor(focusedMeeting, { source: "dashboard" });
+    }
+  }
+
   if (state.draft) {
     renderMeetingModal();
   }

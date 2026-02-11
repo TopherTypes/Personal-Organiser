@@ -27,6 +27,10 @@ const state = {
     work: null,
     personal: null
   },
+  meetingFocusByMode: {
+    work: "",
+    personal: ""
+  },
   hasUnsavedChanges: false,
   settings: initialSettings,
   sync: {
@@ -130,7 +134,9 @@ function renderApp() {
         activeModule: state.activeModuleByMode[state.activeMode],
         uiContext: {
           meetingPrefill: state.meetingPrefillByMode[state.activeMode],
+          meetingFocusId: state.meetingFocusByMode[state.activeMode],
           onScheduleOneOnOne: handleScheduleOneOnOne,
+          onNavigate: handleDashboardNavigate,
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
           onBackupRestore: handleBackupRestore,
@@ -154,6 +160,7 @@ function renderApp() {
   appRoot.appendChild(shell);
 
   state.meetingPrefillByMode[state.activeMode] = null;
+  state.meetingFocusByMode[state.activeMode] = "";
 }
 
 /**
@@ -204,6 +211,29 @@ function handleModuleSelect(moduleKey) {
   }
 
   state.activeModuleByMode[state.activeMode] = moduleKey;
+  state.meetingFocusByMode[state.activeMode] = "";
+  renderApp();
+}
+
+/**
+ * Handles deep-link navigation requests emitted from dashboard cards.
+ *
+ * The dashboard can optionally request a specific entity focus (for example,
+ * open a meeting editor directly) while still delegating route ownership to
+ * the application shell.
+ */
+function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
+  if (!moduleKey || typeof moduleKey !== "string") {
+    return;
+  }
+
+  if (!confirmNavigation()) {
+    return;
+  }
+
+  state.activeModuleByMode[state.activeMode] = moduleKey;
+  state.meetingPrefillByMode[state.activeMode] = null;
+  state.meetingFocusByMode[state.activeMode] = focus.meetingId || "";
   renderApp();
 }
 
@@ -226,6 +256,7 @@ function handleScheduleOneOnOne(person) {
     : "";
 
   state.activeModuleByMode[state.activeMode] = "meetings";
+  state.meetingFocusByMode[state.activeMode] = "";
   state.meetingPrefillByMode[state.activeMode] = {
     name: `1:1 with ${person.name}`,
     type: "one-on-one",
@@ -304,6 +335,10 @@ async function handleFullDataReset() {
   state.meetingPrefillByMode = {
     work: null,
     personal: null
+  };
+  state.meetingFocusByMode = {
+    work: "",
+    personal: ""
   };
   state.hasUnsavedChanges = false;
   applyUserSettings(state.settings);
