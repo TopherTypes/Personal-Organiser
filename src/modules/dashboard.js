@@ -11,6 +11,7 @@ import { renderPersonalDailyLogModule } from "./personal-daily-log.js";
 import { renderPersonalExerciseLogModule } from "./personal-exercise-log.js";
 import { renderPersonalPeopleModule } from "./personal-people.js";
 import { renderPersonalCalendarModule } from "./personal-calendar.js";
+import { buildPersonalStorageKey } from "./personal-keys.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 /**
@@ -71,6 +72,12 @@ function createModeCard(name, description, mode, onEnterMode) {
  * Renders mode content based on selected sidebar module.
  */
 export function renderModeDashboard(mode, { activeModule = "dashboard", uiContext = {} } = {}) {
+  if (activeModule === "dashboard") {
+    return mode === "work"
+      ? renderWorkOverviewDashboard(uiContext)
+      : renderPersonalOverviewDashboard(uiContext);
+  }
+
   if (mode === "work" && activeModule === "people") {
     return renderWorkPeopleModule(uiContext);
   }
@@ -80,6 +87,7 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       mode,
       people: loadPeople("work"),
       initialPrefill: uiContext.meetingPrefill || null,
+      initialMeetingId: uiContext.meetingFocusId || "",
       setUnsavedChangesGuard: uiContext.setUnsavedChangesGuard
     });
   }
@@ -148,6 +156,305 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
   }
 
   return renderPlaceholderModule(mode, activeModule);
+}
+
+/**
+ * Builds a one-screen work dashboard with actionable, deep-linking summaries.
+ */
+function renderWorkOverviewDashboard(uiContext = {}) {
+  const section = document.createElement("section");
+  section.className = "mode-dashboard overview-dashboard";
+
+  const title = document.createElement("h1");
+  title.textContent = "Work Dashboard";
+
+  const intro = document.createElement("p");
+  intro.className = "module-intro";
+  intro.textContent = "A compact snapshot of execution risk, priorities, and upcoming commitments.";
+
+  const people = loadPeople("work");
+  const tasks = loadTasks("work").filter((task) => !task.archived);
+  const projects = loadProjects("work");
+  const meetings = loadMeetings("work").filter((meeting) => !meeting.archived);
+  const sprints = loadSprints("work").filter((sprint) => !sprint.archived);
+  const updates = loadUpdates("work");
+  const today = isoDateToday();
+
+  const meetingRows = meetings
+    .filter((meeting) => meeting.date === today)
+    .sort((first, second) => `${first.startTime || ""}${first.name}`.localeCompare(`${second.startTime || ""}${second.name}`))
+    .slice(0, 4);
+
+  const focusTasks = tasks
+    .filter((task) => !["Done", "Cancelled"].includes(task.status))
+    .sort((first, second) => {
+      const dueA = first.dueDate || "9999-12-31";
+      const dueB = second.dueDate || "9999-12-31";
+      if (dueA !== dueB) {
+        return dueA.localeCompare(dueB);
+      }
+      return (second.impact - second.effort) - (first.impact - first.effort);
+    })
+    .slice(0, 5);
+
+  const activeProjects = projects.filter((project) => !["completed", "cancelled", "archived"].includes(String(project.status).toLowerCase()));
+  const atRiskProjects = activeProjects.filter((project) => project.targetDate && project.targetDate < today).slice(0, 4);
+  const pendingUpdates = updates.reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
+  const activeSprintCount = sprints.filter((sprint) => sprint.status === "active").length;
+
+  const metrics = document.createElement("div");
+  metrics.className = "overview-metrics";
+  metrics.append(
+    createMetricCard("Open tasks", String(tasks.length), "tasks", uiContext),
+    createMetricCard("Meetings today", String(meetingRows.length), "meetings", uiContext),
+    createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
+    createMetricCard("Pending updates", String(pendingUpdates), "updates", uiContext),
+    createMetricCard("Active sprints", String(activeSprintCount), "sprints", uiContext)
+  );
+
+  const grid = document.createElement("div");
+  grid.className = "overview-grid";
+
+  grid.append(
+    createOverviewListCard({
+      title: "Today's meetings",
+      description: "Open directly in Meetings to edit agenda or attendees.",
+      emptyText: "No meetings scheduled for today.",
+      items: meetingRows,
+      getLabel: (meeting) => `${meeting.startTime || "Any time"} · ${meeting.name || "Untitled meeting"}`,
+      onItemClick: (meeting) =>
+        navigateFromDashboard(uiContext, {
+          moduleKey: "meetings",
+          focus: { meetingId: meeting.id }
+        }),
+      footerAction: createFooterAction("View all meetings", () => navigateFromDashboard(uiContext, { moduleKey: "meetings" }))
+    }),
+    createOverviewListCard({
+      title: "Priority tasks",
+      description: "Sorted by nearest due date and impact.",
+      emptyText: "No active tasks to triage.",
+      items: focusTasks,
+      getLabel: (task) => `${task.title || "Untitled task"} · ${task.dueDate || "No due date"} · ${task.status}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
+      footerAction: createFooterAction("Open task board", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
+    }),
+    createOverviewListCard({
+      title: "Projects needing attention",
+      description: "Overdue targets or status drift.",
+      emptyText: "No overdue active projects.",
+      items: atRiskProjects,
+      getLabel: (project) => `${project.title || "Untitled project"} · target ${project.targetDate || "n/a"}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "projects" }),
+      footerAction: createFooterAction("Open projects", () => navigateFromDashboard(uiContext, { moduleKey: "projects" }))
+    }),
+    createOverviewListCard({
+      title: "People requiring update",
+      description: "Stakeholders with pending work updates.",
+      emptyText: "No pending update recipients right now.",
+      items: people
+        .filter((person) => selectUpdatesForPerson(updates, person.id).some(({ item }) => item.status === "pending"))
+        .slice(0, 4),
+      getLabel: (person) => `${person.name || "Unnamed person"} · ${selectUpdatesForPerson(updates, person.id).filter(({ item }) => item.status === "pending").length} pending`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "updates" }),
+      footerAction: createFooterAction("Open updates", () => navigateFromDashboard(uiContext, { moduleKey: "updates" }))
+    })
+  );
+
+  section.append(title, intro, metrics, grid);
+  return section;
+}
+
+/**
+ * Builds a personal-mode dashboard that keeps key routines visible in one view.
+ */
+function renderPersonalOverviewDashboard(uiContext = {}) {
+  const section = document.createElement("section");
+  section.className = "mode-dashboard overview-dashboard";
+
+  const title = document.createElement("h1");
+  title.textContent = "Personal Dashboard";
+
+  const intro = document.createElement("p");
+  intro.className = "module-intro";
+  intro.textContent = "A single-screen overview of your day, plans, and wellbeing trends.";
+
+  const today = isoDateToday();
+  const tasks = loadPersonalCollection("tasks");
+  const projects = loadPersonalCollection("projects");
+  const events = loadPersonalCollection("calendar");
+  const dailyLogs = loadPersonalCollection("daily-log");
+  const exerciseEntries = loadPersonalCollection("exercise-log");
+
+  const todayTasks = tasks.filter((task) => task.dueDate === today && !["Done", "Cancelled"].includes(task.status)).slice(0, 5);
+  const upcomingEvents = events.filter((entry) => entry.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  const activeProjects = projects.filter((project) => !project.targetDate || project.targetDate >= today).slice(0, 4);
+  const thisWeekExercise = exerciseEntries.filter((entry) => entry.date && daysBetween(entry.date, today) <= 7 && daysBetween(entry.date, today) >= 0);
+  const latestMood = dailyLogs.find((entry) => entry.date)?.mood || "-";
+
+  const metrics = document.createElement("div");
+  metrics.className = "overview-metrics";
+  metrics.append(
+    createMetricCard("Tasks due today", String(todayTasks.length), "tasks", uiContext),
+    createMetricCard("Upcoming events", String(upcomingEvents.length), "calendar", uiContext),
+    createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
+    createMetricCard("Exercise entries (7d)", String(thisWeekExercise.length), "exercise-log", uiContext),
+    createMetricCard("Latest mood", String(latestMood), "daily-log", uiContext)
+  );
+
+  const grid = document.createElement("div");
+  grid.className = "overview-grid";
+  grid.append(
+    createOverviewListCard({
+      title: "Due today",
+      description: "Personal tasks requiring attention today.",
+      emptyText: "No personal tasks due today.",
+      items: todayTasks,
+      getLabel: (task) => `${task.title || "Untitled task"} · ${task.status}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
+      footerAction: createFooterAction("Open tasks", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
+    }),
+    createOverviewListCard({
+      title: "Upcoming calendar",
+      description: "Next personal events.",
+      emptyText: "No upcoming calendar entries.",
+      items: upcomingEvents,
+      getLabel: (event) => `${event.date} · ${event.title || "Untitled event"}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }),
+      footerAction: createFooterAction("Open calendar", () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }))
+    }),
+    createOverviewListCard({
+      title: "Projects in motion",
+      description: "Current personal projects/timeboxes.",
+      emptyText: "No active personal projects.",
+      items: activeProjects,
+      getLabel: (project) => `${project.name || "Untitled project"} · target ${project.targetDate || "not set"}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "projects" }),
+      footerAction: createFooterAction("Open projects", () => navigateFromDashboard(uiContext, { moduleKey: "projects" }))
+    }),
+    createOverviewListCard({
+      title: "Health check",
+      description: "Recent daily logs and exercise momentum.",
+      emptyText: "No daily logs available yet.",
+      items: dailyLogs.slice(0, 4),
+      getLabel: (entry) => `${entry.date || "No date"} · Mood ${entry.mood || "-"}`,
+      onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "daily-log" }),
+      footerAction: createFooterAction("Open daily log", () => navigateFromDashboard(uiContext, { moduleKey: "daily-log" }))
+    })
+  );
+
+  section.append(title, intro, metrics, grid);
+  return section;
+}
+
+
+/**
+ * Dispatches dashboard navigation requests to the app shell.
+ */
+function navigateFromDashboard(uiContext, payload) {
+  if (typeof uiContext.onNavigate === "function") {
+    uiContext.onNavigate(payload);
+  }
+}
+
+/**
+ * Creates a compact metric tile that links to a module when clicked.
+ */
+function createMetricCard(label, value, moduleKey, uiContext) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "overview-metric-card";
+  button.addEventListener("click", () => navigateFromDashboard(uiContext, { moduleKey }));
+
+  const heading = document.createElement("span");
+  heading.className = "overview-metric-label";
+  heading.textContent = label;
+
+  const metricValue = document.createElement("strong");
+  metricValue.className = "overview-metric-value";
+  metricValue.textContent = value;
+
+  button.append(heading, metricValue);
+  return button;
+}
+
+/**
+ * Builds a reusable list card pattern for overview dashboards.
+ */
+function createOverviewListCard({ title, description, emptyText, items, getLabel, onItemClick, footerAction }) {
+  const card = document.createElement("article");
+  card.className = "overview-card";
+
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+
+  const copy = document.createElement("p");
+  copy.className = "overview-card-description";
+  copy.textContent = description;
+
+  const list = document.createElement("div");
+  list.className = "overview-list";
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = emptyText;
+    list.appendChild(empty);
+  }
+
+  for (const item of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "overview-list-item";
+    row.textContent = getLabel(item);
+    row.addEventListener("click", () => onItemClick(item));
+    list.appendChild(row);
+  }
+
+  card.append(heading, copy, list);
+  if (footerAction) {
+    card.appendChild(footerAction);
+  }
+
+  return card;
+}
+
+/**
+ * Creates the card footer action so users can jump to full module views.
+ */
+function createFooterAction(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "overview-footer-action";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+/**
+ * Reads personal collection records with defensive JSON parsing.
+ */
+function loadPersonalCollection(moduleName, version = 1) {
+  const key = buildPersonalStorageKey(moduleName, version);
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Calculates calendar-day distance where positive means the second date is later.
+ */
+function daysBetween(fromDate, toDate) {
+  const from = new Date(`${fromDate}T00:00:00`);
+  const to = new Date(`${toDate}T00:00:00`);
+  return Math.round((to - from) / 86400000);
 }
 
 /**

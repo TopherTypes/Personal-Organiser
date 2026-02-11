@@ -964,6 +964,106 @@ textarea:focus-visible,
   padding: 0.35rem 0.55rem;
 }
 
+
+
+/*
+ * Overview dashboards use a constrained, scroll-safe card grid so the
+ * highest-value information remains visible in a single screen.
+ */
+.overview-dashboard {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-height: 0;
+}
+
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.overview-metric-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  display: grid;
+  text-align: left;
+  gap: 0.15rem;
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+.overview-metric-card:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent-soft) 35%, var(--bg-elevated));
+}
+
+.overview-metric-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.overview-metric-value {
+  font-size: 1.35rem;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.overview-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-height: 0;
+}
+
+.overview-card-description {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.overview-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.overview-list-item,
+.overview-footer-action {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  color: var(--text);
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.overview-list-item:hover,
+.overview-footer-action:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--bg-muted));
+}
+
+.overview-list-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-footer-action {
+  justify-self: start;
+  background: var(--bg-elevated);
+}
+
 .calendar-grid,
 .project-people-role-grid,
 .settings-export-actions,
@@ -1223,7 +1323,9 @@ body[data-density="compact"] .footer {
   .landing-cards,
   .quick-update,
   .week-grid,
-  .month-grid {
+  .month-grid,
+  .overview-grid,
+  .overview-metrics {
     grid-template-columns: 1fr;
   }
 
