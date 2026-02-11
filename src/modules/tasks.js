@@ -148,7 +148,14 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
       .filter((task) => (state.assigneeFilter === "all" ? true : task.assigneeId === state.assigneeFilter))
       .filter((task) => (state.projectFilter === "all" ? true : task.projectId === state.projectFilter))
       .map((task) => ({ ...task, priorityScore: computePriorityScore(task) }))
+      // Task lists default to due-date ordering so upcoming deadlines surface first.
       .sort((first, second) => {
+        const firstDue = first.dueDate || "9999-12-31";
+        const secondDue = second.dueDate || "9999-12-31";
+        if (firstDue !== secondDue) {
+          return firstDue.localeCompare(secondDue);
+        }
+
         if (second.priorityScore !== first.priorityScore) {
           return second.priorityScore - first.priorityScore;
         }

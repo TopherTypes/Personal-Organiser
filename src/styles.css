@@ -535,6 +535,22 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
+/**
+ * Shared scrolling container for entity collections so long datasets remain
+ * navigable without expanding the whole page layout.
+ */
+.entity-scroll-list,
+.people-list,
+.tasks-list,
+.meetings-list,
+.sprints-list,
+.projects-card-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
+}
+
 .people-module,
 .meetings-module,
 .tasks-module,
@@ -1131,6 +1147,43 @@ textarea:focus-visible,
   text-align: left;
   padding: 0.25rem 0.4rem;
   cursor: pointer;
+}
+
+
+.initial-sync-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.initial-sync-modal {
+  width: min(520px, 92vw);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.initial-sync-progress-wrap {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.initial-sync-progress {
+  width: 100%;
+}
+
+.initial-sync-progress-label {
+  justify-self: end;
+  font-size: 0.88rem;
+  color: var(--text-muted);
 }
 
 .meeting-modal-overlay {

@@ -569,7 +569,7 @@ function renderWorkPeopleModule(uiContext = {}) {
   clearFilters.addEventListener("click", () => {
     state.search = "";
     state.filter = "active";
-    state.sort = "updated-desc";
+    state.sort = "name-asc";
     renderPeopleModule();
   });
 
@@ -629,7 +629,7 @@ function renderWorkPeopleModule(uiContext = {}) {
     filter.value = state.filter;
     sort.value = state.sort;
 
-    const hasActiveFilters = state.search.trim() || state.filter !== "active" || state.sort !== "updated-desc";
+    const hasActiveFilters = state.search.trim() || state.filter !== "active" || state.sort !== "name-asc";
     clearFilters.hidden = !hasActiveFilters;
 
     if (!state.selectedPersonId && result.length > 0) {
@@ -647,7 +647,7 @@ function renderWorkPeopleModule(uiContext = {}) {
         onClear: () => {
           state.search = "";
           state.filter = "active";
-          state.sort = "updated-desc";
+          state.sort = "name-asc";
           renderPeopleModule();
         },
         onAdd: () => {
@@ -831,7 +831,8 @@ function createPeopleUiState(mode) {
     mode,
     search: "",
     filter: "active",
-    sort: "updated-desc",
+    // Directory-style modules default to alphabetical order for fast scanning.
+    sort: "name-asc",
     isFormOpen: false,
     editingId: null,
     selectedPersonId: null,

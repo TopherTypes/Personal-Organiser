@@ -86,7 +86,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     const sortInfo = document.createElement("p");
     sortInfo.className = "archive-note";
     sortInfo.textContent =
-      "Cards are sorted by last update across the project and linked meetings to surface active work.";
+      "Cards are sorted alphabetically by project name for faster scanning.";
 
     controls.append(search, filter, document.createElement("div"));
 
@@ -461,10 +461,7 @@ function queryProjects(projects, meetings, state) {
       const haystack = `${project.title} ${project.description} ${project.status}`.toLowerCase();
       return haystack.includes(state.search.toLowerCase());
     })
-    .sort(
-      (a, b) =>
-        deriveProjectUpdatedAt(b, meetings).localeCompare(deriveProjectUpdatedAt(a, meetings))
-    );
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 function deriveProjectUpdatedAt(project, meetings) {
