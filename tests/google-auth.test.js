@@ -33,3 +33,38 @@ test("getAccessToken does not attempt silent GIS refresh by default", async () =
   );
   assert.equal(initTokenClientCalls, 0);
 });
+
+test("getAccessToken silently rehydrates token when a valid session exists", async () => {
+  localStorage.clear();
+
+  const tokenRequestPrompts = [];
+  const googleRef = {
+    accounts: {
+      oauth2: {
+        initTokenClient({ callback }) {
+          return {
+            requestAccessToken({ prompt }) {
+              tokenRequestPrompts.push(prompt);
+              callback({ access_token: "restored-token", expires_in: 3600 });
+            }
+          };
+        }
+      }
+    }
+  };
+
+  const authClient = createGoogleAuthClient({
+    clientId: "client-id",
+    googleRef,
+    now: () => 1_000
+  });
+
+  localStorage.setItem(
+    "second-brain.sync.auth-session.v1",
+    JSON.stringify({ email: "user@example.com", expiresAt: 120_000, lastAuthCheckAt: 500 })
+  );
+
+  const token = await authClient.getAccessToken({ interactive: false });
+  assert.equal(token, "restored-token");
+  assert.deepEqual(tokenRequestPrompts, ["none"]);
+});
