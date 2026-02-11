@@ -61,6 +61,44 @@ test("mergeDocument resolves conflicts with latest field timestamp and only surf
   assert.equal(result.document.items[0].notes, "Local notes");
 });
 
+
+
+test("mergeDocument preserves local entity collections when remote payload shape is incompatible", () => {
+  const local = {
+    schemaVersion: 1,
+    people: [
+      {
+        id: "person-1",
+        name: "Local person",
+        updatedAt: "2026-02-11T09:00:00.000Z",
+        lastUpdatedByField: { name: "2026-02-11T09:00:00.000Z" }
+      },
+      {
+        id: "person-2",
+        name: "New local person",
+        updatedAt: "2026-02-11T09:05:00.000Z",
+        lastUpdatedByField: { name: "2026-02-11T09:05:00.000Z" }
+      }
+    ]
+  };
+
+  const remote = {
+    schemaVersion: 1,
+    records: [
+      {
+        id: "person-1",
+        name: "Remote person"
+      }
+    ]
+  };
+
+  const result = mergeDocument(local, remote, "work.people");
+
+  // Keep local truth when remote no longer matches the expected entity-array field.
+  assert.deepEqual(result.document, local);
+  assert.equal(result.conflictCount, 0);
+});
+
 test("shouldQueueManualConflict only returns true for important fields in tight edit windows", () => {
   assert.equal(
     shouldQueueManualConflict({

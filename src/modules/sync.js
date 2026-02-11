@@ -527,6 +527,17 @@ function mergeDocument(localDoc, remoteDoc, documentId = "") {
   const localEntityArrayInfo = getEntityArrayInfo(localDoc);
   const remoteEntityArrayInfo = getEntityArrayInfo(remoteDoc);
 
+  // Guardrail for schema drift/corruption:
+  // when exactly one side has a mergeable entity-array shape, keep that side instead of
+  // collapsing to generic object tie-break logic which could overwrite valid local edits.
+  if (localEntityArrayInfo && !remoteEntityArrayInfo) {
+    return { document: localDoc, conflictCount: 0, conflicts: [] };
+  }
+
+  if (!localEntityArrayInfo && remoteEntityArrayInfo) {
+    return { document: remoteDoc, conflictCount: 0, conflicts: [] };
+  }
+
   if (!localEntityArrayInfo || !remoteEntityArrayInfo || localEntityArrayInfo.fieldName !== remoteEntityArrayInfo.fieldName) {
     // Fallback for non-entity documents: newest updatedAt wins with deterministic tie-break.
     return {
