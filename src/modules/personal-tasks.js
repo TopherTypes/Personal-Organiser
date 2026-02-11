@@ -18,6 +18,7 @@ export function renderPersonalTasksModule() {
     "Track personal tasks with clear status and optional due dates without mixing Work data.";
 
   const list = document.createElement("div");
+  list.className = "entity-scroll-list tasks-list";
   const form = document.createElement("form");
   form.className = "meeting-form";
 
@@ -46,7 +47,11 @@ export function renderPersonalTasksModule() {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const tasks = loadPersonalTasks();
+    const tasks = loadPersonalTasks().sort((first, second) => {
+      const firstDue = first.dueDate || "9999-12-31";
+      const secondDue = second.dueDate || "9999-12-31";
+      return firstDue.localeCompare(secondDue);
+    });
     tasks.push({
       id: `ptask_${Math.random().toString(36).slice(2, 10)}`,
       title: taskInput.input.value.trim(),
@@ -61,7 +66,11 @@ export function renderPersonalTasksModule() {
 
   function renderList() {
     list.innerHTML = "";
-    const tasks = loadPersonalTasks();
+    const tasks = loadPersonalTasks().sort((first, second) => {
+      const firstDue = first.dueDate || "9999-12-31";
+      const secondDue = second.dueDate || "9999-12-31";
+      return firstDue.localeCompare(secondDue);
+    });
     if (!tasks.length) {
       const empty = document.createElement("p");
       empty.className = "empty-state";

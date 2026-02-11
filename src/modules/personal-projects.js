@@ -39,6 +39,7 @@ export function renderPersonalProjectsModule() {
   form.append(name.wrap, target.wrap, notesWrap, submit);
 
   const list = document.createElement("div");
+  list.className = "entity-scroll-list projects-card-list";
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -57,7 +58,7 @@ export function renderPersonalProjectsModule() {
 
   function renderList() {
     list.innerHTML = "";
-    const projects = loadPersonalProjects().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const projects = loadPersonalProjects().sort((a, b) => a.name.localeCompare(b.name));
     if (!projects.length) {
       const empty = document.createElement("p");
       empty.className = "empty-state";

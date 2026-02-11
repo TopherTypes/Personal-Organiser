@@ -42,7 +42,12 @@ const state = {
     infoMessage: "",
     errorMessage: "",
     retries: 0
-  }
+  },
+  // Tracks whether we are still in the very first app-level sync experience.
+  isInitialSyncPending: true,
+  // Keeps the progress bar monotonic during the initial sync so repeated
+  // pull/merge passes never appear to jump backwards in the UI.
+  initialSyncProgressPeak: 0
 };
 
 /**
@@ -58,11 +63,16 @@ if (!appRoot) {
 const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
+    syncInitialSyncExperienceState();
+    syncInitialSyncProgressTracker();
 
     // Sync updates change only top-bar information. Patching the header in place
     // avoids remounting module content, which would otherwise close transient UI
     // like open slide-over editors while a user is typing.
-    if (!renderTopBarInPlace()) {
+    const patchedTopBar = renderTopBarInPlace();
+    const patchedInitialSyncModal = renderInitialSyncModalInPlace();
+
+    if (!patchedTopBar && !patchedInitialSyncModal) {
       renderApp();
     }
   }
@@ -155,12 +165,162 @@ function renderApp() {
   }
 
   const footer = renderFooter();
+  const initialSyncModal = renderInitialSyncModal();
 
-  shell.append(topBar, content, footer);
+  shell.append(topBar, content, footer, initialSyncModal);
   appRoot.appendChild(shell);
 
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = "";
+}
+
+/**
+ * Marks first-sync UX as complete after the first successful sync cycle.
+ */
+function syncInitialSyncExperienceState() {
+  if (!state.isInitialSyncPending) {
+    return;
+  }
+
+  if (state.sync.lastSuccessfulSyncAt) {
+    state.isInitialSyncPending = false;
+  }
+}
+
+
+/**
+ * Maintains a non-decreasing progress baseline while the initial sync is active.
+ *
+ * Why this exists:
+ * - Sync can run more than one pull/merge/push pass during startup (for example
+ *   a startup trigger followed by an auth-boot trigger).
+ * - Without a peak tracker the progress UI can move backwards (e.g. 90% -> 45%),
+ *   which looks like a regression to users even though sync is still healthy.
+ */
+function syncInitialSyncProgressTracker() {
+  if (!state.isInitialSyncPending || !state.sync.isSyncing) {
+    state.initialSyncProgressPeak = 0;
+    return;
+  }
+
+  const stageProgress = baseInitialSyncProgressValue(state.sync.syncStatus, state.sync.isSyncing);
+  state.initialSyncProgressPeak = Math.max(state.initialSyncProgressPeak, stageProgress);
+}
+
+/**
+ * Builds a blocking modal for the first automatic sync so users avoid editing
+ * data while initial reconciliation is in progress.
+ */
+function renderInitialSyncModal() {
+  const modal = document.createElement("div");
+  modal.className = "initial-sync-modal-overlay";
+  modal.dataset.initialSyncModal = "true";
+
+  if (!shouldShowInitialSyncModal()) {
+    modal.classList.add("hidden");
+    return modal;
+  }
+
+  const dialog = document.createElement("section");
+  dialog.className = "initial-sync-modal";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-live", "polite");
+
+  const title = document.createElement("h2");
+  title.textContent = "Finishing first sync";
+
+  const detail = document.createElement("p");
+  detail.className = "sync-status-detail";
+  detail.textContent = describeInitialSyncStage(state.sync.syncStatus);
+
+  const progressWrap = document.createElement("div");
+  progressWrap.className = "initial-sync-progress-wrap";
+
+  const progress = document.createElement("progress");
+  progress.className = "initial-sync-progress";
+  progress.max = 100;
+  progress.value = initialSyncProgressValue(state.sync.syncStatus, state.sync.isSyncing);
+
+  const percent = document.createElement("span");
+  percent.className = "initial-sync-progress-label";
+  percent.textContent = `${progress.value}%`;
+
+  progressWrap.append(progress, percent);
+  dialog.append(title, detail, progressWrap);
+  modal.appendChild(dialog);
+  return modal;
+}
+
+/**
+ * Re-renders only the first-sync modal after sync-state changes.
+ */
+function renderInitialSyncModalInPlace() {
+  const shell = appRoot.querySelector(".app-shell");
+  const existingModal = shell?.querySelector("[data-initial-sync-modal='true']");
+  if (!shell || !existingModal) {
+    return false;
+  }
+
+  existingModal.replaceWith(renderInitialSyncModal());
+  return true;
+}
+
+function shouldShowInitialSyncModal() {
+  return state.isInitialSyncPending && state.sync.isSyncing;
+}
+
+/**
+ * Maps sync-engine stages into coarse progress percentages for the first-sync UX.
+ */
+function initialSyncProgressValue(syncStatus, isSyncing) {
+  if (!isSyncing) {
+    return 100;
+  }
+
+  const baseProgress = baseInitialSyncProgressValue(syncStatus, isSyncing);
+  return Math.max(baseProgress, state.initialSyncProgressPeak);
+}
+
+/**
+ * Returns stage-level baseline progress percentages for first-sync UX.
+ */
+function baseInitialSyncProgressValue(syncStatus, isSyncing) {
+  if (!isSyncing) {
+    return 100;
+  }
+
+  switch (syncStatus) {
+    case "auth-check":
+      return 15;
+    case "pulling":
+      // If we've already reached push, a later pull represents verification,
+      // not a restart, so keep progress near completion.
+      return state.initialSyncProgressPeak >= 90 ? 95 : 45;
+    case "merging":
+      return 70;
+    case "pushing":
+      return 90;
+    default:
+      return 25;
+  }
+}
+
+function describeInitialSyncStage(syncStatus) {
+  switch (syncStatus) {
+    case "auth-check":
+      return "Checking account access…";
+    case "pulling":
+      return state.initialSyncProgressPeak >= 90
+        ? "Verifying cloud state after upload…"
+        : "Pulling cloud data…";
+    case "merging":
+      return "Reconciling records…";
+    case "pushing":
+      return "Saving merged updates…";
+    default:
+      return "Sync in progress…";
+  }
 }
 
 /**

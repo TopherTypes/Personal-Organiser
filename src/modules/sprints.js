@@ -664,7 +664,14 @@ function querySprints(sprints, state) {
       }
       return sprint.status === state.statusFilter;
     })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort((a, b) => {
+      const firstStart = a.startDate || "9999-12-31";
+      const secondStart = b.startDate || "9999-12-31";
+      if (firstStart !== secondStart) {
+        return firstStart.localeCompare(secondStart);
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
 }
 
 /**

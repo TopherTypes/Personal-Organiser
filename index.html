@@ -28,6 +28,10 @@
     -->
     <div id="app"></div>
 
-    <script type="module" src="./src/app.js"></script>
+    <!--
+      Cache-bust app shell module loads so clients do not keep serving stale
+      JavaScript after deploys (for example old bundles containing merge markers).
+    -->
+    <script type="module" src="./src/app.js?v=2026-02-11-2"></script>
   </body>
 </html>

@@ -535,6 +535,24 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
+/**
+ * Shared scrolling container for entity collections so long datasets remain
+ * navigable without expanding the whole page layout.
+ */
+.entity-scroll-list,
+.people-list,
+.tasks-list,
+.meetings-list,
+.sprints-list,
+.projects-card-list {
+  max-height: 60vh;
+  /* Prevent CSS grid children from overflowing when nested in constrained panels. */
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
+}
+
 .people-module,
 .meetings-module,
 .tasks-module,
@@ -658,9 +676,22 @@ textarea:focus-visible,
   min-height: 100%;
 }
 
+/**
+ * The people list panel uses a vertical flex layout so the list can stretch to
+ * the full available card height and keep its own scrollbar at the bottom edge.
+ */
+.people-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .people-list {
   display: grid;
   gap: var(--space-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .people-selection-list {
@@ -1131,6 +1162,43 @@ textarea:focus-visible,
   text-align: left;
   padding: 0.25rem 0.4rem;
   cursor: pointer;
+}
+
+
+.initial-sync-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.initial-sync-modal {
+  width: min(520px, 92vw);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.initial-sync-progress-wrap {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.initial-sync-progress {
+  width: 100%;
+}
+
+.initial-sync-progress-label {
+  justify-self: end;
+  font-size: 0.88rem;
+  color: var(--text-muted);
 }
 
 .meeting-modal-overlay {
