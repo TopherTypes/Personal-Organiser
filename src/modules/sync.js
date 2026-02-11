@@ -538,7 +538,12 @@ function mergeDocument(localDoc, remoteDoc, documentId = "") {
     return { document: remoteDoc, conflictCount: 0, conflicts: [] };
   }
 
-  if (!localEntityArrayInfo || !remoteEntityArrayInfo || localEntityArrayInfo.fieldName !== remoteEntityArrayInfo.fieldName) {
+  if (
+    !localEntityArrayInfo
+    || !remoteEntityArrayInfo
+    || localEntityArrayInfo.fieldName !== remoteEntityArrayInfo.fieldName
+    || localEntityArrayInfo.isTopLevelArray !== remoteEntityArrayInfo.isTopLevelArray
+  ) {
     // Fallback for non-entity documents: newest updatedAt wins with deterministic tie-break.
     return {
       document: pickLatestValue(localDoc, remoteDoc, extractObjectTimestamp(localDoc), extractObjectTimestamp(remoteDoc)).value,
@@ -576,6 +581,12 @@ function mergeDocument(localDoc, remoteDoc, documentId = "") {
   }
 
   const mergedCollection = Array.from(mergedById.values());
+  // Some persisted modules store entity arrays directly at the top-level (for example work.people).
+  // Preserve that shape during merges so consumers that read an array from localStorage keep working.
+  if (localEntityArrayInfo.isTopLevelArray && remoteEntityArrayInfo.isTopLevelArray) {
+    return { document: mergedCollection, conflictCount, conflicts };
+  }
+
   const mergedDocument = {
     ...localDoc,
     ...remoteDoc,
@@ -679,14 +690,20 @@ function isEffectivelyEmpty(value) {
 }
 
 function getEntityArrayInfo(document) {
-  if (!isObject(document)) {
-    return null;
-  }
-
   if (Array.isArray(document)) {
     const hasObjectItems = document.every((item) => isObject(item));
     const hasStableIds = hasObjectItems && document.every((item) => typeof item.id === "string" && item.id.length > 0);
-    return hasStableIds ? { fieldName: "items", entities: document } : null;
+    return hasStableIds
+      ? {
+        fieldName: null,
+        entities: document,
+        isTopLevelArray: true
+      }
+      : null;
+  }
+
+  if (!isObject(document)) {
+    return null;
   }
 
   for (const [fieldName, value] of Object.entries(document)) {
@@ -704,7 +721,11 @@ function getEntityArrayInfo(document) {
       continue;
     }
 
-    return { fieldName, entities: value };
+    return {
+      fieldName,
+      entities: value,
+      isTopLevelArray: false
+    };
   }
 
   return null;
@@ -723,7 +744,12 @@ function countDocumentDifferences(left, right) {
 
   const leftEntityArray = getEntityArrayInfo(left);
   const rightEntityArray = getEntityArrayInfo(right);
-  if (!leftEntityArray || !rightEntityArray || leftEntityArray.fieldName !== rightEntityArray.fieldName) {
+  if (
+    !leftEntityArray
+    || !rightEntityArray
+    || leftEntityArray.fieldName !== rightEntityArray.fieldName
+    || leftEntityArray.isTopLevelArray !== rightEntityArray.isTopLevelArray
+  ) {
     return 1;
   }
 
