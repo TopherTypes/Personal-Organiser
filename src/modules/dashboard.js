@@ -14,6 +14,7 @@ import { renderPersonalCalendarModule } from "./personal-calendar.js";
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { safeJsonParse, safeJsonWrite } from "./storage-core.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
+const DATASET_BACKUP_PREFIX = "backups/";
 
 /**
  * Renders cross-life landing dashboard shown before a mode is entered.
@@ -1595,10 +1596,50 @@ function loadPeopleForMutation(mode) {
 
 /**
  * Persists people in a single write to reduce partial-update risk.
+ *
+ * Recovery behavior:
+ * - If the first write fails (commonly quota pressure), we opportunistically
+ *   prune the oldest sync backup snapshots and retry once.
+ * - This keeps user-entered contact data prioritized over stale rollback copies.
  */
 function persistPeople(mode, people) {
   const storageKey = `${STORAGE_KEY_PREFIX}.${mode}.v1`;
+  if (safeJsonWrite(storageKey, people)) {
+    return true;
+  }
+
+  // Best-effort quota recovery: free older backup snapshots before a single retry.
+  reclaimStorageFromOldBackups();
   return safeJsonWrite(storageKey, people);
+}
+
+/**
+ * Removes oldest backup snapshots first to reclaim localStorage quota pressure.
+ */
+function reclaimStorageFromOldBackups() {
+  const backupEntries = [];
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (typeof key !== "string" || !key.startsWith(DATASET_BACKUP_PREFIX)) {
+      continue;
+    }
+
+    const timestamp = key.slice(key.lastIndexOf("/") + 1);
+    backupEntries.push({
+      key,
+      createdAtMs: Date.parse(timestamp)
+    });
+  }
+
+  backupEntries
+    .sort((first, second) => {
+      const firstTs = Number.isNaN(first.createdAtMs) ? Number.NEGATIVE_INFINITY : first.createdAtMs;
+      const secondTs = Number.isNaN(second.createdAtMs) ? Number.NEGATIVE_INFINITY : second.createdAtMs;
+      return firstTs - secondTs;
+    })
+    .slice(0, 5)
+    .forEach((entry) => localStorage.removeItem(entry.key));
 }
 
 /**
