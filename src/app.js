@@ -53,9 +53,41 @@ if (!appRoot) {
 const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
-    renderApp();
+
+    // Sync updates change only top-bar information. Patching the header in place
+    // avoids remounting module content, which would otherwise close transient UI
+    // like open slide-over editors while a user is typing.
+    if (!renderTopBarInPlace()) {
+      renderApp();
+    }
   }
 });
+
+
+/**
+ * Replaces only the top bar in the current shell.
+ *
+ * Returns true when an in-place patch was applied, false when the shell has not
+ * been mounted yet (for example during first boot), in which case full render is required.
+ */
+function renderTopBarInPlace() {
+  const shell = appRoot.querySelector(".app-shell");
+  const existingTopBar = shell?.querySelector(".top-bar");
+  if (!shell || !existingTopBar) {
+    return false;
+  }
+
+  const nextTopBar = renderTopBar({
+    activeMode: state.activeMode,
+    isModeSwitchDisabled: !state.hasEnteredMode,
+    onModeChange: handleModeChange,
+    syncState: state.sync,
+    onSyncAction: handleSyncAction
+  });
+
+  existingTopBar.replaceWith(nextTopBar);
+  return true;
+}
 
 /**
  * Main render loop for this small SPA shell.
@@ -101,6 +133,8 @@ function renderApp() {
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
           onBackupRestore: handleBackupRestore,
+          onResolveSyncConflicts: handleResolveSyncConflicts,
+          syncState: state.sync,
           settings: state.settings,
           setUnsavedChangesGuard: (value) => {
             state.hasUnsavedChanges = value;
@@ -199,7 +233,26 @@ function handleSyncAction(action) {
 
   if (action === "sync") {
     void syncSubsystem.syncNow({ reason: "manual" });
+    return;
   }
+
+  if (action === "resolve-conflicts") {
+    state.activeModuleByMode[state.activeMode] = "settings";
+    renderApp();
+  }
+}
+
+/**
+ * Applies conflict resolution choices selected in Settings and refreshes UI state.
+ */
+async function handleResolveSyncConflicts(resolutions) {
+  const result = await syncSubsystem.applyConflictResolutions(resolutions);
+  state.sync = {
+    ...state.sync,
+    infoMessage: result.appliedCount > 0 ? `Applied ${result.appliedCount} conflict resolution(s).` : "No conflicts to resolve.",
+    errorMessage: ""
+  };
+  renderApp();
 }
 
 /**
