@@ -19,6 +19,15 @@ function flushTasks() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function createDriveClientStub() {
+  return {
+    async pullDocument() {
+      return null;
+    },
+    async pushDocument() {}
+  };
+}
+
 test("startup transitions signed-out to signed-in when silent auth succeeds", async () => {
   localStorage.clear();
 
@@ -38,7 +47,8 @@ test("startup transitions signed-out to signed-in when silent auth succeeds", as
   const sync = createSyncSubsystem({
     authClientFactory: () => fakeAuthClient,
     windowRef: createWindowStub(),
-    navigatorRef: { onLine: true }
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
   });
 
   sync.start();
@@ -61,7 +71,8 @@ test("startup keeps signed-out when silent auth fails", async () => {
   const sync = createSyncSubsystem({
     authClientFactory: () => fakeAuthClient,
     windowRef: createWindowStub(),
-    navigatorRef: { onLine: true }
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
   });
 
   sync.start();
@@ -99,7 +110,8 @@ test("expired token path falls back to signed-out before sync", async () => {
   const sync = createSyncSubsystem({
     authClientFactory: () => fakeAuthClient,
     windowRef: createWindowStub(),
-    navigatorRef: { onLine: true }
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
   });
 
   sync.start();

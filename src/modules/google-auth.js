@@ -10,13 +10,14 @@ const EXPIRY_SAFETY_WINDOW_MS = 30_000;
  */
 export function createGoogleAuthClient({
   clientId,
-  scope = "https://www.googleapis.com/auth/drive.appdata",
+  scope = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
   storageKey = GOOGLE_AUTH_STORAGE_KEY,
   localStorageRef = localStorage,
   now = () => Date.now(),
   googleRef = globalThis.google
 } = {}) {
   const hasConfig = typeof clientId === "string" && clientId.trim().length > 0;
+  let currentAccessToken = "";
 
   function loadSession() {
     const raw = localStorageRef.getItem(storageKey);
@@ -52,6 +53,7 @@ export function createGoogleAuthClient({
   }
 
   function clearSession() {
+    currentAccessToken = "";
     localStorageRef.removeItem(storageKey);
   }
 
@@ -111,6 +113,7 @@ export function createGoogleAuthClient({
   async function persistFromTokenResponse(tokenResponse) {
     const expiresInSeconds = Number(tokenResponse?.expires_in || 0);
     const expiresAt = now() + Math.max(0, expiresInSeconds) * 1000;
+    currentAccessToken = typeof tokenResponse?.access_token === "string" ? tokenResponse.access_token : "";
     const email = tokenResponse?.email || (await resolveAccountEmail(tokenResponse?.access_token || ""));
 
     const session = {
@@ -166,6 +169,12 @@ export function createGoogleAuthClient({
     }
   }
 
+  async function getAccessToken({ interactive = false } = {}) {
+    const tokenResponse = await acquireToken({ interactive });
+    await persistFromTokenResponse(tokenResponse);
+    return currentAccessToken;
+  }
+
   function signOut() {
     clearSession();
     return { status: "signed-out", session: null };
@@ -176,6 +185,7 @@ export function createGoogleAuthClient({
     loadSession,
     hasValidSession,
     ensureValidSession,
+    getAccessToken,
     signInInteractive,
     signOut
   };
