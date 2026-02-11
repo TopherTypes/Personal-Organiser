@@ -63,9 +63,7 @@ function renderSyncStatus(syncState, onSyncAction) {
   const failureDetail = syncState?.syncStatus === "error" ? errorReasonLabel(syncState?.errorReason) : "";
   detailLine.textContent = `Pending ${pending} · Last ${lastSyncLabel}${failureDetail ? ` · ${failureDetail}` : ""}`;
 
-  const accountLabel = document.createElement("p");
-  accountLabel.className = "sync-account-label";
-  accountLabel.textContent =
+  const accountSummary =
     syncState?.authStatus === "signed-in"
       ? syncState?.authSession?.email || "Connected to Drive"
       : "Drive not connected";
@@ -88,6 +86,13 @@ function renderSyncStatus(syncState, onSyncAction) {
     conflict.className = "sync-conflict-count";
     conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
     tags.appendChild(conflict);
+
+    const resolveButton = document.createElement("button");
+    resolveButton.type = "button";
+    resolveButton.className = "button button-secondary sync-conflict-action";
+    resolveButton.textContent = "Resolve";
+    resolveButton.addEventListener("click", () => onSyncAction("resolve-conflicts"));
+    tags.appendChild(resolveButton);
   }
 
   const action = document.createElement("button");
@@ -107,7 +112,11 @@ function renderSyncStatus(syncState, onSyncAction) {
   }
 
   footer.append(tags, action);
-  wrap.append(statusLine, detailLine, accountLabel, footer);
+
+  // Keep the sync card to two rows in the common path (status + details/actions)
+  // so top-bar height remains compact and doesn't consume vertical working space.
+  detailLine.textContent = `${detailLine.textContent} · ${accountSummary}`;
+  wrap.append(statusLine, detailLine, footer);
 
   if (syncState?.infoMessage) {
     const info = document.createElement("small");

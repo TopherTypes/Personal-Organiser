@@ -101,6 +101,8 @@ function renderApp() {
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
           onBackupRestore: handleBackupRestore,
+          onResolveSyncConflicts: handleResolveSyncConflicts,
+          syncState: state.sync,
           settings: state.settings,
           setUnsavedChangesGuard: (value) => {
             state.hasUnsavedChanges = value;
@@ -199,7 +201,26 @@ function handleSyncAction(action) {
 
   if (action === "sync") {
     void syncSubsystem.syncNow({ reason: "manual" });
+    return;
   }
+
+  if (action === "resolve-conflicts") {
+    state.activeModuleByMode[state.activeMode] = "settings";
+    renderApp();
+  }
+}
+
+/**
+ * Applies conflict resolution choices selected in Settings and refreshes UI state.
+ */
+async function handleResolveSyncConflicts(resolutions) {
+  const result = await syncSubsystem.applyConflictResolutions(resolutions);
+  state.sync = {
+    ...state.sync,
+    infoMessage: result.appliedCount > 0 ? `Applied ${result.appliedCount} conflict resolution(s).` : "No conflicts to resolve.",
+    errorMessage: ""
+  };
+  renderApp();
 }
 
 /**
