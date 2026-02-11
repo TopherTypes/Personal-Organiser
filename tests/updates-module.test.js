@@ -8,7 +8,8 @@ import {
   normaliseUpdate,
   saveUpdate,
   selectCompletedPeopleCount,
-  selectPendingPeopleCount
+  selectPendingPeopleCount,
+  selectUpdatesForPerson
 } from "../src/modules/updates.js";
 
 const WORK_UPDATES_STORAGE_KEY = "second-brain.work.updates.work.v1";
@@ -89,4 +90,35 @@ test("loadUpdates migrates persisted legacy id arrays via normalisation", () => 
 
   const [loaded] = loadUpdates("work");
   assert.deepEqual(loaded.toUpdate, [{ personId: "person-a", required: true, status: "pending", updatedAt: "" }]);
+});
+
+
+test("selectUpdatesForPerson defaults to pending-only and can include completed rows", () => {
+  const updates = [
+    normaliseUpdate({
+      id: "upd-1",
+      text: "Pending item",
+      toUpdate: [{ personId: "person-a", status: "pending" }]
+    }),
+    normaliseUpdate({
+      id: "upd-2",
+      text: "Completed item",
+      toUpdate: [{ personId: "person-a", status: "updated", updatedAt: "2025-02-01T10:00:00.000Z" }]
+    }),
+    normaliseUpdate({
+      id: "upd-3",
+      text: "Archived pending",
+      archived: true,
+      toUpdate: [{ personId: "person-a", status: "pending" }]
+    })
+  ];
+
+  const pendingOnly = selectUpdatesForPerson(updates, "person-a");
+  assert.deepEqual(pendingOnly.map(({ update }) => update.id), ["upd-1"]);
+
+  const withCompleted = selectUpdatesForPerson(updates, "person-a", { includeCompleted: true });
+  assert.deepEqual(withCompleted.map(({ update }) => update.id), ["upd-1", "upd-2"]);
+
+  const includeArchived = selectUpdatesForPerson(updates, "person-a", { includeArchived: true });
+  assert.deepEqual(includeArchived.map(({ update }) => update.id), ["upd-1", "upd-3"]);
 });

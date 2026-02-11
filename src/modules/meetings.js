@@ -728,7 +728,7 @@ function buildDefaultMeeting(date, prefill = null) {
     attendeeIds: prefill?.attendeeIds || [],
     chairId: "",
     projectId: "",
-    notes: "",
+    notes: prefill?.notes || "",
     allowPostStatusEdits: false,
     archived: false
   };
