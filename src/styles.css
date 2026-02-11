@@ -348,7 +348,7 @@ textarea:focus-visible,
 .people-form,
 .meetings-calendar-pane,
 .meetings-list-pane,
-.meeting-slideover,
+.meeting-modal,
 .meeting-row,
 .tasks-table,
 .sprint-detail-view,
@@ -902,16 +902,49 @@ textarea:focus-visible,
   font-size: 0.9rem;
 }
 
-.meeting-slideover {
+.calendar-meeting-entries {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calendar-meeting-entries.compact {
+  gap: 0.25rem;
+}
+
+.calendar-meeting-entry {
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.8rem;
+  text-align: left;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}
+
+.meeting-modal-overlay {
   position: fixed;
-  right: var(--space-4);
-  top: var(--space-3);
-  width: min(500px, calc(100vw - 2rem));
-  max-height: calc(100vh - 5.25rem);
-  overflow: auto;
-  box-shadow: var(--elevation-2);
+  inset: 0;
+  z-index: 48;
+  background: color-mix(in srgb, var(--bg) 55%, #000);
+  display: grid;
+  place-items: center;
   padding: var(--space-4);
-  z-index: 45;
+}
+
+.meeting-modal {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-2);
+  padding: var(--space-5);
+}
+
+.meeting-notes-input {
+  min-height: 18rem;
 }
 
 .notes-preview {
@@ -1081,10 +1114,14 @@ body[data-density="compact"] .footer {
     min-width: 720px;
   }
 
-  .meeting-slideover {
-    position: static;
-    width: auto;
-    max-height: none;
+  .meeting-modal-overlay {
+    padding: var(--space-2);
+  }
+
+  .meeting-modal {
+    width: 100%;
+    max-height: calc(100vh - 2rem);
+    padding: var(--space-4);
   }
 }
 
