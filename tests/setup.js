@@ -11,6 +11,14 @@ class LocalStorageMock {
     return this.store.has(key) ? this.store.get(key) : null;
   }
 
+  key(index) {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+
+  get length() {
+    return this.store.size;
+  }
+
   removeItem(key) {
     this.store.delete(key);
   }

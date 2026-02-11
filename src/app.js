@@ -5,6 +5,7 @@ import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard
 import { loadSettings, saveSettings } from "./modules/settings.js";
 import { createSyncSubsystem } from "./modules/sync.js";
 import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
+import { restoreDatasetBackup } from "./modules/dataset-backups.js";
 
 /**
  * In-memory app state for the shell.
@@ -33,6 +34,7 @@ const state = {
     pendingChanges: 0,
     conflictCount: 0,
     lastSuccessfulSyncAt: "",
+    infoMessage: "",
     errorMessage: "",
     retries: 0
   }
@@ -98,6 +100,7 @@ function renderApp() {
           onScheduleOneOnOne: handleScheduleOneOnOne,
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
+          onBackupRestore: handleBackupRestore,
           settings: state.settings,
           setUnsavedChangesGuard: (value) => {
             state.hasUnsavedChanges = value;
@@ -217,6 +220,41 @@ function confirmNavigation() {
 function handleDataRestore() {
   state.hasUnsavedChanges = false;
   renderApp();
+}
+
+/**
+ * Handles restore requests from Settings backup controls.
+ *
+ * This path validates backup schema/version before mutation, then forces UI refresh via
+ * handleDataRestore() so all modules rehydrate from restored localStorage values.
+ */
+function handleBackupRestore({ documentId, backupKey, localKey }) {
+  try {
+    const restored = restoreDatasetBackup({
+      documentId,
+      backupKey,
+      expectedLocalStorageKey: localKey
+    });
+
+    state.sync = {
+      ...state.sync,
+      infoMessage: `Restored ${documentId} from ${restored.backupCreatedAt}.`,
+      errorMessage: ""
+    };
+
+    handleDataRestore();
+    return { ok: true, message: `Restore complete for ${documentId}.` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    state.sync = {
+      ...state.sync,
+      errorMessage: `Restore failed: ${message}`,
+      infoMessage: ""
+    };
+
+    renderApp();
+    return { ok: false, message };
+  }
 }
 
 /**

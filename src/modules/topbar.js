@@ -65,6 +65,13 @@ function renderSyncStatus(syncState, onSyncAction) {
     wrap.appendChild(conflict);
   }
 
+  if (syncState?.infoMessage) {
+    const info = document.createElement("small");
+    info.className = "sync-status-info";
+    info.textContent = syncState.infoMessage;
+    wrap.appendChild(info);
+  }
+
   if (syncState?.syncStatus === "error" && syncState.errorMessage) {
     const error = document.createElement("small");
     error.className = "sync-status-error";
