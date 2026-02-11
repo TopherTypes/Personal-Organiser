@@ -54,7 +54,8 @@ function renderSyncStatus(syncState, onSyncAction) {
     ? formatRelativeSyncTime(syncState.lastSuccessfulSyncAt)
     : "never";
 
-  detailLine.textContent = `Pending ${pending} · Last ${lastSyncLabel}${retries > 0 ? ` · Retrying (${retries})` : ""}`;
+  const failureDetail = syncState?.syncStatus === "error" ? errorReasonLabel(syncState?.errorReason) : "";
+  detailLine.textContent = `Pending ${pending} · Last ${lastSyncLabel}${retries > 0 ? ` · Retrying (${retries})` : ""}${failureDetail ? ` · ${failureDetail}` : ""}`;
 
   wrap.append(statusLine, detailLine);
 
@@ -92,7 +93,7 @@ function renderSyncStatus(syncState, onSyncAction) {
     wrap.appendChild(accountLabel);
 
     action.textContent = "Sync now";
-    action.disabled = syncState?.syncStatus === "syncing";
+    action.disabled = isBusySyncState(syncState?.syncStatus);
     action.addEventListener("click", () => onSyncAction("sync"));
   } else if (syncState?.authStatus === "checking") {
     action.textContent = "Checking Drive session…";
@@ -127,8 +128,14 @@ function createModeButton(label, mode, activeMode, isDisabled, onModeChange) {
 
 function stateLabel(state) {
   switch (state) {
-    case "syncing":
-      return "Syncing";
+    case "auth-check":
+      return "Checking auth";
+    case "pulling":
+      return "Pulling";
+    case "merging":
+      return "Merging";
+    case "pushing":
+      return "Pushing";
     case "offline":
       return "Offline";
     case "error":
@@ -136,6 +143,25 @@ function stateLabel(state) {
     default:
       return "Idle";
   }
+}
+
+function errorReasonLabel(reason) {
+  switch (reason) {
+    case "auth-expired":
+      return "Session expired";
+    case "quota":
+      return "Quota/rate limit";
+    case "network-timeout":
+      return "Network timeout";
+    case "schema-mismatch":
+      return "Schema mismatch";
+    default:
+      return "";
+  }
+}
+
+function isBusySyncState(state) {
+  return ["auth-check", "pulling", "merging", "pushing"].includes(state);
 }
 
 function formatRelativeSyncTime(timestamp) {

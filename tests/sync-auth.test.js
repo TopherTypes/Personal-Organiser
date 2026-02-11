@@ -124,6 +124,42 @@ test("expired token path falls back to signed-out before sync", async () => {
   assert.equal(state.authSession, null);
 });
 
+
+test("syncNow short-circuits when auth is required", async () => {
+  localStorage.clear();
+
+  let ensureCalls = 0;
+  let pullCalls = 0;
+
+  const fakeAuthClient = {
+    ensureValidSession: async () => {
+      ensureCalls += 1;
+      return { status: "signed-out", session: null };
+    },
+    signInInteractive: async () => ({ status: "signed-in", session: null }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => ({
+      async pullDocument() {
+        pullCalls += 1;
+        return null;
+      },
+      async pushDocument() {}
+    })
+  });
+
+  await sync.syncNow({ reason: "manual" });
+
+  const state = sync.getState();
+  assert.equal(state.syncStatus, "idle");
+  assert.equal(ensureCalls, 0);
+  assert.equal(pullCalls, 0);
+});
 test("sync writes timestamped rollback backup before overwriting local dataset", async () => {
   localStorage.clear();
   localStorage.setItem(

@@ -79,7 +79,10 @@ body {
   font-weight: 600;
 }
 
-.sync-status-line.state-syncing {
+.sync-status-line.state-auth-check,
+.sync-status-line.state-pulling,
+.sync-status-line.state-merging,
+.sync-status-line.state-pushing {
   color: var(--accent);
 }
 

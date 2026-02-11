@@ -31,6 +31,14 @@ const DEFAULT_RETRY_POLICY = {
   jitterRatio: 0.2
 };
 
+const SYNC_ERROR_REASON = Object.freeze({
+  AUTH_EXPIRED: "auth-expired",
+  QUOTA: "quota",
+  NETWORK_TIMEOUT: "network-timeout",
+  SCHEMA_MISMATCH: "schema-mismatch",
+  UNKNOWN: "unknown"
+});
+
 /**
  * Creates an in-browser sync subsystem.
  */
@@ -55,6 +63,7 @@ export function createSyncSubsystem({
     lastSuccessfulSyncAt: "",
     infoMessage: "",
     errorMessage: "",
+    errorReason: "",
     retries: 0,
     isSyncing: false
   };
@@ -112,12 +121,12 @@ export function createSyncSubsystem({
   }
 
   function handleOnline() {
-    setPartialState({ syncStatus: state.isSyncing ? "syncing" : "idle", errorMessage: "" });
+    setPartialState({ syncStatus: state.isSyncing ? "pulling" : "idle", errorMessage: "", errorReason: "" });
     void syncNow({ reason: "online" });
   }
 
   function handleOffline() {
-    setPartialState({ syncStatus: "offline", errorMessage: "" });
+    setPartialState({ syncStatus: "offline", errorMessage: "", errorReason: "" });
   }
 
   async function runBootAuthCheck() {
@@ -127,6 +136,7 @@ export function createSyncSubsystem({
     setPartialState({
       authStatus: result.status,
       authSession: result.session,
+      errorReason: "",
       syncStatus: navigatorRef.onLine ? "idle" : "offline"
     });
 
@@ -136,13 +146,14 @@ export function createSyncSubsystem({
   }
 
   async function signIn() {
-    setPartialState({ authStatus: "checking", errorMessage: "" });
+    setPartialState({ authStatus: "checking", errorMessage: "", errorReason: "" });
 
     try {
       const result = await authClient.signInInteractive();
       setPartialState({
         authStatus: result.status,
         authSession: result.session,
+        errorReason: "",
         syncStatus: navigatorRef.onLine ? "idle" : "offline"
       });
       void syncNow({ reason: "auth-interactive" });
@@ -150,6 +161,7 @@ export function createSyncSubsystem({
       setPartialState({
         authStatus: "signed-out",
         authSession: null,
+        errorReason: SYNC_ERROR_REASON.AUTH_EXPIRED,
         errorMessage: `Sign-in failed: ${error instanceof Error ? error.message : String(error)}`
       });
     }
@@ -177,21 +189,28 @@ export function createSyncSubsystem({
     recalculatePendingChanges();
 
     if (state.authStatus !== "signed-in") {
-      setPartialState({ syncStatus: navigatorRef.onLine ? "idle" : "offline", errorMessage: "" });
+      setPartialState({ syncStatus: navigatorRef.onLine ? "idle" : "offline", errorMessage: "", errorReason: "" });
       return;
     }
 
     // Token expiry is checked before sync so stale persisted metadata does not imply auth validity.
+    setPartialState({ syncStatus: "auth-check", errorMessage: "", errorReason: "" });
     const authResult = await authClient.ensureValidSession();
     if (authResult.status !== "signed-in") {
-      setPartialState({ authStatus: "signed-out", authSession: null, syncStatus: navigatorRef.onLine ? "idle" : "offline" });
+      setPartialState({
+        authStatus: "signed-out",
+        authSession: null,
+        syncStatus: "error",
+        errorReason: SYNC_ERROR_REASON.AUTH_EXPIRED,
+        errorMessage: syncFailureMessage(SYNC_ERROR_REASON.AUTH_EXPIRED)
+      });
       return;
     }
 
     setPartialState({ authSession: authResult.session });
 
     if (!navigatorRef.onLine) {
-      setPartialState({ syncStatus: "offline", errorMessage: "" });
+      setPartialState({ syncStatus: "offline", errorMessage: "", errorReason: "" });
       return;
     }
 
@@ -200,11 +219,14 @@ export function createSyncSubsystem({
     }
 
     state.isSyncing = true;
-    setPartialState({ syncStatus: "syncing", errorMessage: "" });
+    setPartialState({ syncStatus: "pulling", errorMessage: "", errorReason: "" });
 
     try {
       const result = await withRetry(
-        () => performSyncCycle(driveClient),
+        () =>
+          performSyncCycle(driveClient, {
+            onStageChange: (stage) => setPartialState({ syncStatus: stage })
+          }),
         DEFAULT_RETRY_POLICY,
         (attempt) => setPartialState({ retries: attempt })
       );
@@ -214,6 +236,7 @@ export function createSyncSubsystem({
         retries: 0,
         conflictCount: result.conflictCount,
         lastSuccessfulSyncAt: new Date().toISOString(),
+        errorReason: "",
         infoMessage:
           result.backupCount > 0
             ? `Sync complete. Created ${result.backupCount} rollback backup${result.backupCount === 1 ? "" : "s"}.`
@@ -221,10 +244,12 @@ export function createSyncSubsystem({
         errorMessage: ""
       });
     } catch (error) {
+      const failure = classifySyncFailure(error);
       setPartialState({
         syncStatus: "error",
         infoMessage: "",
-        errorMessage: `Sync failed (${reason}): ${error instanceof Error ? error.message : String(error)}`
+        errorReason: failure.reason,
+        errorMessage: `${syncFailureMessage(failure.reason)} (${reason})`
       });
     } finally {
       state.isSyncing = false;
@@ -246,15 +271,17 @@ export function createSyncSubsystem({
 /**
  * Executes one full pull/merge/push pass and updates local + shadow snapshots.
  */
-async function performSyncCycle(driveClient) {
+async function performSyncCycle(driveClient, { onStageChange } = {}) {
   const shadowDocs = loadJson(SYNC_SHADOW_STORAGE_KEY, {});
   let conflictCount = 0;
   let backupCount = 0;
 
   for (const descriptor of SYNCABLE_DOCUMENTS) {
     const localDoc = loadJson(descriptor.localKey, null);
+    onStageChange?.("pulling");
     const remoteDoc = await driveClient.pullDocument(descriptor.id);
 
+    onStageChange?.("merging");
     const merged = mergeDocument(localDoc, remoteDoc);
     conflictCount += merged.conflictCount;
 
@@ -277,7 +304,10 @@ async function performSyncCycle(driveClient) {
       }
 
       localStorage.setItem(descriptor.localKey, nextRaw);
+      onStageChange?.("pushing");
       await driveClient.pushDocument(descriptor.id, merged.document);
+
+      // Invariant: shadow snapshot mirrors remote truth, so it only advances after a successful push.
       shadowDocs[descriptor.id] = merged.document;
     }
   }
@@ -544,7 +574,7 @@ function isObject(value) {
 /**
  * Generic retry helper with exponential backoff + jitter for transient failures.
  */
-async function withRetry(task, policy, onAttempt) {
+async function withRetry(task, policy, onAttempt, { waitFor = wait, random = Math.random } = {}) {
   let attempt = 0;
 
   while (attempt < policy.maxAttempts) {
@@ -559,8 +589,8 @@ async function withRetry(task, policy, onAttempt) {
       }
 
       const baseDelay = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** (attempt - 1));
-      const jitter = baseDelay * policy.jitterRatio * Math.random();
-      await wait(baseDelay + jitter);
+      const jitter = baseDelay * policy.jitterRatio * random();
+      await waitFor(baseDelay + jitter);
     }
   }
 
@@ -576,5 +606,53 @@ function isTransientError(error) {
 }
 
 function wait(delayMs) {
-  return new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
 }
+
+
+function classifySyncFailure(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+
+  if (/401|403|token|auth/.test(message) || /401|403|token|auth/.test(code)) {
+    return { reason: SYNC_ERROR_REASON.AUTH_EXPIRED };
+  }
+
+  if (/quota|429|rate.?limit/.test(message) || /quota|429/.test(code)) {
+    return { reason: SYNC_ERROR_REASON.QUOTA };
+  }
+
+  if (/timeout|network|408|503|504/.test(message) || /timeout|network|408|503|504/.test(code)) {
+    return { reason: SYNC_ERROR_REASON.NETWORK_TIMEOUT };
+  }
+
+  if (/invalid\s*json|schema|shape|migration/.test(message) || /invalid-json|schema/.test(code)) {
+    return { reason: SYNC_ERROR_REASON.SCHEMA_MISMATCH };
+  }
+
+  return { reason: SYNC_ERROR_REASON.UNKNOWN };
+}
+
+function syncFailureMessage(reason) {
+  switch (reason) {
+    case SYNC_ERROR_REASON.AUTH_EXPIRED:
+      return "Drive session expired. Reconnect to sync.";
+    case SYNC_ERROR_REASON.QUOTA:
+      return "Drive quota or rate limit reached.";
+    case SYNC_ERROR_REASON.NETWORK_TIMEOUT:
+      return "Network timeout during sync.";
+    case SYNC_ERROR_REASON.SCHEMA_MISMATCH:
+      return "Sync data format mismatch detected.";
+    default:
+      return "Sync failed.";
+  }
+}
+
+export const __TESTING__ = {
+  mergeDocument,
+  countDocumentDifferences,
+  withRetry,
+  performSyncCycle,
+  classifySyncFailure,
+  SYNC_ERROR_REASON
+};
