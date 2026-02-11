@@ -1,7 +1,7 @@
 import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
-import { renderWorkTasksModule } from "./tasks.js";
-import { renderWorkSprintsModule } from "./sprints.js";
+import { loadTasks, renderWorkTasksModule } from "./tasks.js";
+import { loadSprints, renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
 import { loadUpdates, markPersonPending, markPersonUpdated, renderWorkUpdatesModule, selectUpdatesForPerson } from "./updates.js";
 import { renderSettingsModule } from "./settings.js";
