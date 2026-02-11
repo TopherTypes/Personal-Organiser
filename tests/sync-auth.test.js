@@ -84,6 +84,34 @@ test("startup keeps signed-out when silent auth fails", async () => {
   assert.equal(state.authSession, null);
 });
 
+
+
+test("startup auth check disables silent GIS refresh in background flow", async () => {
+  localStorage.clear();
+
+  const ensureCalls = [];
+  const fakeAuthClient = {
+    ensureValidSession: async (options = {}) => {
+      ensureCalls.push(options);
+      return { status: "signed-out", session: null };
+    },
+    signInInteractive: async () => ({ status: "signed-in", session: null }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
+  });
+
+  sync.start();
+  await flushTasks();
+
+  assert.deepEqual(ensureCalls[0], { allowSilentRefresh: false });
+});
+
 test("expired token path falls back to signed-out before sync", async () => {
   localStorage.clear();
 
@@ -198,4 +226,40 @@ test("sync writes timestamped rollback backup before overwriting local dataset",
   assert.equal(backups.length, 1);
   assert.match(backups[0].backupKey, /^backups\/work\.tasks\//);
   assert.match(sync.getState().infoMessage, /Sync complete/);
+});
+
+
+test("token-unavailable sync failure signs out and surfaces diagnostic error code", async () => {
+  localStorage.clear();
+
+  const fakeAuthClient = {
+    ensureValidSession: async () => ({ status: "signed-in", session: { email: "dev@example.com" } }),
+    signInInteractive: async () => ({ status: "signed-in", session: { email: "dev@example.com" } }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const driveClient = {
+    async pullDocument() {
+      const error = new Error("Unable to acquire Drive access token for pullDocument.");
+      error.code = "token-unavailable";
+      throw error;
+    },
+    async pushDocument() {}
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => driveClient
+  });
+
+  sync.start();
+  await flushTasks();
+
+  const state = sync.getState();
+  assert.equal(state.authStatus, "signed-out");
+  assert.equal(state.authSession, null);
+  assert.equal(state.syncStatus, "error");
+  assert.match(state.errorMessage, /code: token-unavailable/);
 });
