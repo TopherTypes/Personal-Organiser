@@ -8,6 +8,16 @@ This log records significant decisions for **The Second Brain** so future change
 
 ---
 
+## D-016 — 2026-02-11 — Stage-level sync visibility and reason-coded failure messaging
+
+- **Decision:** I decided to expose finer-grained sync lifecycle stages (`auth-check`, `pulling`, `merging`, `pushing`) and to classify sync failures with explicit reason codes (`auth-expired`, `quota`, `network-timeout`, `schema-mismatch`) surfaced in concise topbar messages.
+- **Context:** The prior single `syncing` state and raw error output made it hard for users to understand sync progress and whether failures were actionable (reconnect, retry later, or investigate data shape mismatch).
+- **Options considered:** (1) keep a single generic syncing/error state, (2) add verbose technical logs in the UI, (3) add stage-level states plus normalized reason codes with short labels.
+- **Why:** Option (3) gives high-signal feedback without overwhelming users, keeps retry behaviour deterministic, and enables tests to assert exact sync/auth short-circuit and backoff boundaries.
+- **Consequences / follow-ups:** Topbar labels and button-disable logic now follow lifecycle stages, sync state now carries `errorReason`, and implementation invariants explicitly document that shadow snapshots only advance after successful pushes.
+
+---
+
 ## D-015 — 2026-02-08 — Canonical task status migration and dependency-aware task model
 
 - **Decision:** I decided to align Work Tasks statuses to the canonical product spec set and add explicit dependency references (`blockedByTaskIds`, `blockingTaskIds`) to the persisted task model, with load-time migration for backward compatibility.
