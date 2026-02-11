@@ -1,5 +1,6 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
+import { saveUpdate } from "./updates.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
 
@@ -313,12 +314,51 @@ export function renderWorkMeetingsModule({
       ? `Auto-saved at ${state.lastAutoSaveAt}`
       : "Auto-save runs while typing notes.";
 
+    // Embedded update composer is opt-in so meeting-only edits remain quick.
+    const updateComposerWrap = document.createElement("section");
+    updateComposerWrap.className = "meeting-update-composer";
+
+    const updateToggleButton = document.createElement("button");
+    updateToggleButton.type = "button";
+    updateToggleButton.className = "module-button-secondary";
+    updateToggleButton.textContent = "Create update from this meeting";
+
+    const updateFields = document.createElement("div");
+    updateFields.className = "meeting-update-fields hidden";
+
+    const updateTextWrap = document.createElement("label");
+    updateTextWrap.className = "field-label";
+    updateTextWrap.textContent = "Update text";
+    const updateTextInput = document.createElement("textarea");
+    updateTextInput.className = "field-input field-textarea";
+    updateTextInput.placeholder = "Summarise the meeting update";
+    updateTextWrap.appendChild(updateTextInput);
+
+    const updateToAudienceWrap = buildLabeledInput(
+      "Who needs this update?",
+      "text",
+      "",
+      false
+    );
+    updateToAudienceWrap.input.placeholder = "Example: leadership team";
+
+    const updateOwnerWrap = buildLabeledInput("Update owner (person id)", "text", state.draft.chairId || "");
+
+    const updateHint = document.createElement("small");
+    updateHint.className = "module-intro";
+    updateHint.textContent =
+      "Meeting will be saved first so the update can be linked to a durable meeting id.";
+
+    updateFields.append(updateTextWrap, updateToAudienceWrap.wrapper, updateOwnerWrap.wrapper, updateHint);
+    updateComposerWrap.append(updateToggleButton, updateFields);
+
     fields.append(
       nameInput.wrapper,
       scheduleRow,
       metadataRow,
       participantsRow,
-      notesWrap
+      notesWrap,
+      updateComposerWrap
     );
 
     const actions = document.createElement("div");
@@ -391,12 +431,47 @@ export function renderWorkMeetingsModule({
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       syncDraft();
+
+      const shouldCreateUpdate = !updateFields.classList.contains("hidden");
+      const updateText = updateTextInput.value.trim();
+      const toAudienceNote = updateToAudienceWrap.input.value.trim();
+      const ownerId = updateOwnerWrap.input.value.trim();
+
+      if (shouldCreateUpdate && !updateText) {
+        alert("Update text is required when creating a linked update.");
+        return;
+      }
+      if (shouldCreateUpdate && !toAudienceNote) {
+        alert("Describe who needs this update to create a linked update.");
+        return;
+      }
+
       const result = saveMeeting(mode, state.draft, state.draftSource);
       if (!result.ok) {
         alert(result.error);
         return;
       }
-      state.feedback = result.message;
+
+      let message = result.message;
+      if (shouldCreateUpdate) {
+        // Ordering constraint: a linked update must reference a persisted meeting id.
+        // New meetings have no stable id until after `saveMeeting` completes.
+        const updateResult = saveUpdate(mode, {
+          text: updateText,
+          ownerId,
+          toUpdate: [{ personId: "", note: toAudienceNote, status: "pending" }],
+          meetingId: result.meetingId
+        });
+
+        if (!updateResult.ok) {
+          alert(updateResult.error || "Failed to create linked update.");
+          return;
+        }
+
+        message = `${message} Linked update created.`;
+      }
+
+      state.feedback = message;
       state.draft = null;
       state.dirtyDraft = false;
       clearDraft(mode);
@@ -416,6 +491,20 @@ export function renderWorkMeetingsModule({
       const shouldLock = ["completed", "cancelled"].includes(statusSelect.value);
       notesInput.disabled = shouldLock && !toggle.checked;
       syncDraft();
+    });
+
+    updateToggleButton.addEventListener("click", () => {
+      const isCurrentlyHidden = updateFields.classList.contains("hidden");
+      updateFields.classList.toggle("hidden", !isCurrentlyHidden);
+      updateToggleButton.textContent = isCurrentlyHidden
+        ? "Hide update composer"
+        : "Create update from this meeting";
+
+      if (isCurrentlyHidden) {
+        // Prefill update text from notes snippet to reduce duplicate typing.
+        const notesSnippet = (notesInput.value || state.draft.notes || "").trim().slice(0, 240);
+        updateTextInput.value = notesSnippet;
+      }
     });
   }
 
@@ -719,12 +808,13 @@ function saveMeeting(mode, draft, source) {
     };
 
     persistMeetings(mode, meetings);
-    return { ok: true, message: "Meeting updated." };
+    return { ok: true, message: "Meeting updated.", meetingId: draft.id };
   }
 
+  const meetingId = buildId();
   meetings.push({
     ...normaliseMeeting(draft),
-    id: buildId(),
+    id: meetingId,
     createdAt: now,
     updatedAt: now,
     statusHistory: [{ status: draft.status || "scheduled", at: now }],
@@ -746,7 +836,7 @@ function saveMeeting(mode, draft, source) {
   });
 
   persistMeetings(mode, meetings);
-  return { ok: true, message: "Meeting created." };
+  return { ok: true, message: "Meeting created.", meetingId };
 }
 
 function archiveMeeting(mode, meetingId, shouldArchive) {
