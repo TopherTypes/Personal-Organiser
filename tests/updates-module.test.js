@@ -66,6 +66,42 @@ test("markPersonUpdated and markPersonPending mutate per-person status and selec
   assert.equal(afterUpdate.toUpdate.find((entry) => entry.personId === "person-a")?.updatedAt, "");
 });
 
+test("saveUpdate persists selected person ids as structured recipients", () => {
+  localStorage.clear();
+
+  const result = saveUpdate("work", {
+    text: "Share roadmap update",
+    ownerId: "owner-1",
+    toUpdate: ["person-a", "person-b"].map((id) => ({
+      personId: id,
+      status: "pending",
+      required: true,
+      updatedAt: ""
+    }))
+  });
+
+  assert.equal(result.ok, true);
+
+  const [saved] = loadUpdates("work");
+  assert.deepEqual(saved.toUpdate, [
+    { personId: "person-a", required: true, status: "pending", updatedAt: "", note: "" },
+    { personId: "person-b", required: true, status: "pending", updatedAt: "", note: "" }
+  ]);
+});
+
+test("saveUpdate rejects drafts when no recipients are selected", () => {
+  localStorage.clear();
+
+  const result = saveUpdate("work", {
+    text: "Ship reminder",
+    ownerId: "owner-1",
+    toUpdate: []
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "At least one person to update is required.");
+});
+
 
 
 test("saveUpdate enforces owner referential integrity when people set is provided", () => {
@@ -154,4 +190,19 @@ test("selectUpdatesForPerson defaults to pending-only and can include completed 
 
   const includeArchived = selectUpdatesForPerson(updates, "person-a", { includeArchived: true });
   assert.deepEqual(includeArchived.map(({ update }) => update.id), ["upd-1", "upd-3"]);
+});
+
+test("pending/completed selectors remain stable for legacy note rows and structured recipients", () => {
+  const update = normaliseUpdate({
+    text: "Migration-safe recipient counting",
+    toUpdate: [
+      { personId: "person-a", status: "pending", required: true, updatedAt: "" },
+      { personId: "person-b", status: "updated", required: true, updatedAt: "2025-04-01T09:00:00.000Z" },
+      // Legacy free-text payloads may still exist in persisted notes.
+      { personId: "", note: "Leadership team", status: "pending" }
+    ]
+  });
+
+  assert.equal(selectPendingPeopleCount(update), 2);
+  assert.equal(selectCompletedPeopleCount(update), 1);
 });

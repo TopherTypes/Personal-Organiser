@@ -1,4 +1,5 @@
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
+import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
 
 const UPDATES_SCHEMA_VERSION = 1;
 const UPDATES_COLLECTION_KEY = "updates";
@@ -37,11 +38,13 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   textInput.placeholder = "What update do you need to send?";
   textInput.required = true;
 
-  const toUpdateInput = document.createElement("input");
-  toUpdateInput.type = "text";
-  toUpdateInput.className = "field-input";
-  toUpdateInput.placeholder = "Who needs this update?";
-  toUpdateInput.required = true;
+  const toUpdateField = buildEntityTokenMultiSelectField({
+    label: "People to update",
+    options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
+    values: [],
+    emptyMessage: "Add people first to select update recipients.",
+    inputPlaceholder: "Search people to update"
+  });
 
   const ownerLabel = document.createElement("label");
   ownerLabel.className = "field-label";
@@ -61,17 +64,18 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   createButton.className = "enter-mode-button";
   createButton.textContent = "Add update";
 
-  form.append(textInput, toUpdateInput, ownerLabel, createButton);
+  form.append(textInput, toUpdateField.wrapper, ownerLabel, createButton);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
 
+    const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
     const result = saveUpdate(
       mode,
       {
         text: textInput.value,
         ownerId: ownerSelect.value,
-        toUpdate: [{ personId: "", note: toUpdateInput.value, status: "pending" }]
+        toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
       },
       "",
       activePeople
@@ -367,8 +371,13 @@ function normaliseToUpdateList(toUpdate) {
   }
 
   // Schema migration note:
-  // legacy records stored `toUpdate` as an array of person ids (`["person-1", "person-2"]`).
-  // These are normalised into pending recipient entries so sync/merge code sees a stable shape.
+  // - Oldest payloads stored `toUpdate` as plain id arrays (`["person-1", "person-2"]`).
+  // - Transitional payloads from free-text forms stored note-only rows
+  //   (`[{ personId: "", note: "Team Alpha" }]`) without canonical ids.
+  //
+  // We normalise both legacy shapes into the same structured recipient list so selectors,
+  // counters, and persistence always operate on one stable schema. Note-only rows are
+  // intentionally retained (when non-empty) to remain migration-safe for existing notes.
   return toUpdate
     .map((entry) => {
       if (typeof entry === "string") {
