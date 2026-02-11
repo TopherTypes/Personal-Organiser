@@ -1,5 +1,6 @@
 import { createGoogleAuthClient } from "./google-auth.js";
 import { createGoogleDriveClient } from "./google-drive-client.js";
+import { writeDatasetBackup } from "./dataset-backups.js";
 
 /**
  * Sync subsystem coordinating local queue detection, remote pull/push, and deterministic conflict resolution.
@@ -52,6 +53,7 @@ export function createSyncSubsystem({
     pendingChanges: 0,
     conflictCount: 0,
     lastSuccessfulSyncAt: "",
+    infoMessage: "",
     errorMessage: "",
     retries: 0,
     isSyncing: false
@@ -212,11 +214,16 @@ export function createSyncSubsystem({
         retries: 0,
         conflictCount: result.conflictCount,
         lastSuccessfulSyncAt: new Date().toISOString(),
+        infoMessage:
+          result.backupCount > 0
+            ? `Sync complete. Created ${result.backupCount} rollback backup${result.backupCount === 1 ? "" : "s"}.`
+            : "Sync complete.",
         errorMessage: ""
       });
     } catch (error) {
       setPartialState({
         syncStatus: "error",
+        infoMessage: "",
         errorMessage: `Sync failed (${reason}): ${error instanceof Error ? error.message : String(error)}`
       });
     } finally {
@@ -242,6 +249,7 @@ export function createSyncSubsystem({
 async function performSyncCycle(driveClient) {
   const shadowDocs = loadJson(SYNC_SHADOW_STORAGE_KEY, {});
   let conflictCount = 0;
+  let backupCount = 0;
 
   for (const descriptor of SYNCABLE_DOCUMENTS) {
     const localDoc = loadJson(descriptor.localKey, null);
@@ -251,14 +259,31 @@ async function performSyncCycle(driveClient) {
     conflictCount += merged.conflictCount;
 
     if (merged.document !== null) {
-      localStorage.setItem(descriptor.localKey, JSON.stringify(merged.document));
+      const nextRaw = JSON.stringify(merged.document);
+      const previousRaw = localStorage.getItem(descriptor.localKey);
+
+      // Backup convention: before replacing a primary dataset record, snapshot the prior value
+      // under backups/<document-id>/<ISO timestamp> so rollback always targets the exact dataset.
+      const backupRecord = writeDatasetBackup({
+        documentId: descriptor.id,
+        localStorageKey: descriptor.localKey,
+        previousRaw,
+        nextRaw,
+        reason: "sync-overwrite"
+      });
+
+      if (backupRecord) {
+        backupCount += 1;
+      }
+
+      localStorage.setItem(descriptor.localKey, nextRaw);
       await driveClient.pushDocument(descriptor.id, merged.document);
       shadowDocs[descriptor.id] = merged.document;
     }
   }
 
   localStorage.setItem(SYNC_SHADOW_STORAGE_KEY, JSON.stringify(shadowDocs));
-  return { conflictCount };
+  return { conflictCount, backupCount };
 }
 
 /**

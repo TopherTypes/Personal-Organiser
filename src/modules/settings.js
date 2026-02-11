@@ -4,6 +4,8 @@ import {
   parseAndValidateImportPayload,
   restoreFromImportPayload
 } from "./storage-export.js";
+import { listDatasetBackups } from "./dataset-backups.js";
+import { SYNCABLE_DOCUMENTS } from "./sync.js";
 
 export const SETTINGS_STORAGE_KEY = "second-brain.ui.settings.v1";
 export const ONBOARDING_COMPLETED_STORAGE_KEY = "second-brain.ui.onboarding.completed.v1";
@@ -51,7 +53,7 @@ export function saveSettings(nextSettings) {
 /**
  * Renders Settings UI for user customisation.
  */
-export function renderSettingsModule({ mode, settings, onSettingsChange, onDataRestore }) {
+export function renderSettingsModule({ mode, settings, onSettingsChange, onDataRestore, onBackupRestore }) {
   const section = document.createElement("section");
   section.className = "mode-dashboard settings-module";
 
@@ -107,8 +109,9 @@ export function renderSettingsModule({ mode, settings, onSettingsChange, onDataR
   );
 
   const dataManagement = createDataManagementSection({ onDataRestore });
+  const backupsSection = createBackupsSection({ onBackupRestore, onDataRestore });
 
-  section.append(title, intro, list, dataManagement);
+  section.append(title, intro, list, dataManagement, backupsSection);
   return section;
 }
 
@@ -195,6 +198,104 @@ function createDataManagementSection({ onDataRestore }) {
 
   wrap.append(title, hint, buttonRow, importForm, mergeRules);
   return wrap;
+}
+
+/**
+ * Backup management UI to inspect rollback points and trigger explicit restore confirmations.
+ */
+function createBackupsSection({ onBackupRestore, onDataRestore }) {
+  const wrap = document.createElement("section");
+  wrap.className = "settings-data-management";
+
+  const title = document.createElement("h2");
+  title.textContent = "Dataset backups";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent =
+    "Backups are timestamped snapshots created before sync/import overwrites. Select a version and confirm to restore safely.";
+
+  const list = document.createElement("div");
+  list.className = "settings-list";
+
+  for (const descriptor of SYNCABLE_DOCUMENTS) {
+    const versions = listDatasetBackups(descriptor.id);
+    const row = document.createElement("div");
+    row.className = "settings-item";
+
+    const heading = document.createElement("span");
+    heading.className = "settings-label";
+    heading.textContent = `${descriptor.id} (${versions.length} version${versions.length === 1 ? "" : "s"})`;
+
+    const select = document.createElement("select");
+    select.className = "field-input";
+    select.appendChild(buildOption("", versions.length ? "Select backup version" : "No backups yet"));
+    for (const version of versions) {
+      const relative = formatBackupTime(version.createdAt);
+      select.appendChild(buildOption(version.backupKey, `${version.createdAt} (${relative}) · ${version.reason}`));
+    }
+
+    const button = createActionButton("Restore selected backup", () => {
+      const backupKey = select.value;
+      if (!backupKey) {
+        window.alert("Select a backup version first.");
+        return;
+      }
+
+      const confirmation = window.confirm(
+        `Restore ${descriptor.id} from backup ${backupKey}? This will replace the current dataset payload.`
+      );
+
+      if (!confirmation) {
+        return;
+      }
+
+      if (typeof onBackupRestore !== "function") {
+        window.alert("Backup restore handler is unavailable.");
+        return;
+      }
+
+      const result = onBackupRestore({ documentId: descriptor.id, backupKey, localKey: descriptor.localKey });
+      if (!result?.ok) {
+        window.alert(`Restore failed: ${result?.message || "unknown error"}`);
+        return;
+      }
+
+      window.alert(result.message || "Restore completed.");
+      onDataRestore?.();
+    });
+
+    button.disabled = versions.length === 0;
+
+    row.append(heading, select, button);
+    list.appendChild(row);
+  }
+
+  wrap.append(title, hint, list);
+  return wrap;
+}
+
+function formatBackupTime(timestamp) {
+  const millis = Date.parse(timestamp || "");
+  if (Number.isNaN(millis)) {
+    return "unknown time";
+  }
+
+  const elapsedMinutes = Math.floor((Date.now() - millis) / 60000);
+  if (elapsedMinutes <= 0) {
+    return "just now";
+  }
+
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h ago`;
+  }
+
+  return `${Math.floor(elapsedHours / 24)}d ago`;
 }
 
 function createActionButton(label, onClick) {

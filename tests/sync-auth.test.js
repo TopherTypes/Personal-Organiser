@@ -2,6 +2,7 @@ import "./setup.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSyncSubsystem } from "../src/modules/sync.js";
+import { listDatasetBackups } from "../src/modules/dataset-backups.js";
 
 function createWindowStub() {
   return {
@@ -121,4 +122,44 @@ test("expired token path falls back to signed-out before sync", async () => {
   const state = sync.getState();
   assert.equal(state.authStatus, "signed-out");
   assert.equal(state.authSession, null);
+});
+
+test("sync writes timestamped rollback backup before overwriting local dataset", async () => {
+  localStorage.clear();
+  localStorage.setItem(
+    "second-brain.work.tasks.work.v1",
+    JSON.stringify({ items: [{ id: "task-1", title: "Old", updatedAt: "2026-01-01T00:00:00.000Z" }] })
+  );
+
+  const fakeAuthClient = {
+    ensureValidSession: async () => ({ status: "signed-in", session: { email: "dev@example.com" } }),
+    signInInteractive: async () => ({ status: "signed-in", session: null }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const driveClient = {
+    async pullDocument(documentId) {
+      if (documentId === "work.tasks") {
+        return { items: [{ id: "task-1", title: "Remote", updatedAt: "2026-01-01T00:01:00.000Z" }] };
+      }
+      return null;
+    },
+    async pushDocument() {}
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => driveClient
+  });
+
+  sync.start();
+  await flushTasks();
+  await sync.syncNow({ reason: "manual" });
+
+  const backups = listDatasetBackups("work.tasks");
+  assert.equal(backups.length, 1);
+  assert.match(backups[0].backupKey, /^backups\/work\.tasks\//);
+  assert.match(sync.getState().infoMessage, /Sync complete/);
 });
