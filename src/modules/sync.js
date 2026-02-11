@@ -10,6 +10,7 @@ import { writeDatasetBackup } from "./dataset-backups.js";
  */
 
 const SYNC_SHADOW_STORAGE_KEY = "second-brain.sync.shadow.v1";
+const SYNC_CONFLICT_QUEUE_KEY = "second-brain.sync.conflicts.v1";
 export const SYNCABLE_DOCUMENTS = [
   { id: "work.tasks", localKey: "second-brain.work.tasks.work.v1" },
   { id: "work.projects", localKey: "second-brain.work.projects.work" },
@@ -65,7 +66,8 @@ export function createSyncSubsystem({
     errorMessage: "",
     errorReason: "",
     retries: 0,
-    isSyncing: false
+    isSyncing: false,
+    conflicts: loadJson(SYNC_CONFLICT_QUEUE_KEY, [])
   };
 
   const authClient = authClientFactory({ clientId: windowRef.__APP_CONFIG__?.googleClientId || "" });
@@ -188,8 +190,21 @@ export function createSyncSubsystem({
     setPartialState({ pendingChanges: pendingTotal });
   }
 
+  /**
+   * Persists and emits conflict queue updates so the UI can offer explicit resolution controls.
+   */
+  function setConflicts(conflicts) {
+    localStorage.setItem(SYNC_CONFLICT_QUEUE_KEY, JSON.stringify(conflicts));
+    setPartialState({ conflicts, conflictCount: conflicts.length });
+  }
+
   async function syncNow({ reason } = { reason: "manual" }) {
     recalculatePendingChanges();
+
+    const shouldSkipScheduledSync = reason === "scheduled" && state.pendingChanges <= 0;
+    if (shouldSkipScheduledSync) {
+      return;
+    }
 
     if (state.authStatus !== "signed-in") {
       setPartialState({ syncStatus: navigatorRef.onLine ? "idle" : "offline", errorMessage: "", errorReason: "" });
@@ -246,6 +261,8 @@ export function createSyncSubsystem({
             : "Sync complete.",
         errorMessage: ""
       });
+
+      setConflicts(result.conflicts);
     } catch (error) {
       const failure = classifySyncFailure(error);
       const errorCode = typeof error?.code === "string" ? error.code : "unknown";
@@ -277,8 +294,66 @@ export function createSyncSubsystem({
     syncNow,
     signIn,
     signOut,
+    applyConflictResolutions,
     getState: () => ({ ...state })
   };
+
+  /**
+   * Applies user-selected values for unresolved field conflicts, then requeues a sync.
+   */
+  async function applyConflictResolutions(resolutions = {}) {
+    const currentConflicts = loadJson(SYNC_CONFLICT_QUEUE_KEY, []);
+    if (!Array.isArray(currentConflicts) || currentConflicts.length === 0) {
+      return { appliedCount: 0, pendingCount: 0 };
+    }
+
+    const documentsById = new Map();
+    for (const descriptor of SYNCABLE_DOCUMENTS) {
+      documentsById.set(descriptor.id, {
+        descriptor,
+        value: loadJson(descriptor.localKey, null)
+      });
+    }
+
+    let appliedCount = 0;
+
+    for (const conflict of currentConflicts) {
+      const choice = resolutions[conflict.conflictId] || "suggested";
+      const documentRef = documentsById.get(conflict.documentId);
+      const entities = documentRef?.value?.[conflict.collectionField];
+      if (!Array.isArray(entities)) {
+        continue;
+      }
+
+      const entity = entities.find((candidate) => candidate.id === conflict.entityId);
+      if (!entity) {
+        continue;
+      }
+
+      const pickedValue =
+        choice === "local" ? conflict.localValue : choice === "remote" ? conflict.remoteValue : conflict.suggestedValue;
+      entity[conflict.field] = pickedValue;
+
+      if (!entity.lastUpdatedByField || typeof entity.lastUpdatedByField !== "object") {
+        entity.lastUpdatedByField = {};
+      }
+
+      entity.lastUpdatedByField[conflict.field] = new Date().toISOString();
+      entity.updatedAt = new Date().toISOString();
+      appliedCount += 1;
+    }
+
+    for (const documentRef of documentsById.values()) {
+      if (documentRef.value !== null) {
+        localStorage.setItem(documentRef.descriptor.localKey, JSON.stringify(documentRef.value));
+      }
+    }
+
+    setConflicts([]);
+    recalculatePendingChanges();
+    await syncNow({ reason: "manual" });
+    return { appliedCount, pendingCount: 0 };
+  }
 }
 
 /**
@@ -288,6 +363,7 @@ async function performSyncCycle(driveClient, { onStageChange } = {}) {
   const shadowDocs = loadJson(SYNC_SHADOW_STORAGE_KEY, {});
   let conflictCount = 0;
   let backupCount = 0;
+  const conflicts = [];
 
   for (const descriptor of SYNCABLE_DOCUMENTS) {
     const localDoc = loadJson(descriptor.localKey, null);
@@ -295,8 +371,9 @@ async function performSyncCycle(driveClient, { onStageChange } = {}) {
     const remoteDoc = await driveClient.pullDocument(descriptor.id);
 
     onStageChange?.("merging");
-    const merged = mergeDocument(localDoc, remoteDoc);
+    const merged = mergeDocument(localDoc, remoteDoc, descriptor.id);
     conflictCount += merged.conflictCount;
+    conflicts.push(...merged.conflicts);
 
     if (merged.document !== null) {
       const nextRaw = JSON.stringify(merged.document);
@@ -326,23 +403,23 @@ async function performSyncCycle(driveClient, { onStageChange } = {}) {
   }
 
   localStorage.setItem(SYNC_SHADOW_STORAGE_KEY, JSON.stringify(shadowDocs));
-  return { conflictCount, backupCount };
+  return { conflictCount, backupCount, conflicts };
 }
 
 /**
  * Merges two documents with deterministic field-level conflict resolution for entity arrays.
  */
-function mergeDocument(localDoc, remoteDoc) {
+function mergeDocument(localDoc, remoteDoc, documentId = "") {
   if (!localDoc && !remoteDoc) {
-    return { document: null, conflictCount: 0 };
+    return { document: null, conflictCount: 0, conflicts: [] };
   }
 
   if (!localDoc) {
-    return { document: remoteDoc, conflictCount: 0 };
+    return { document: remoteDoc, conflictCount: 0, conflicts: [] };
   }
 
   if (!remoteDoc) {
-    return { document: localDoc, conflictCount: 0 };
+    return { document: localDoc, conflictCount: 0, conflicts: [] };
   }
 
   const localEntityArrayInfo = getEntityArrayInfo(localDoc);
@@ -352,7 +429,8 @@ function mergeDocument(localDoc, remoteDoc) {
     // Fallback for non-entity documents: newest updatedAt wins with deterministic tie-break.
     return {
       document: pickLatestValue(localDoc, remoteDoc, extractObjectTimestamp(localDoc), extractObjectTimestamp(remoteDoc)).value,
-      conflictCount: 0
+      conflictCount: 0,
+      conflicts: []
     };
   }
 
@@ -361,6 +439,7 @@ function mergeDocument(localDoc, remoteDoc) {
   const remoteEntities = remoteEntityArrayInfo.entities;
   const mergedById = new Map();
   let conflictCount = 0;
+  const conflicts = [];
 
   for (const entity of localEntities) {
     mergedById.set(entity.id, entity);
@@ -373,8 +452,13 @@ function mergeDocument(localDoc, remoteDoc) {
       continue;
     }
 
-    const mergedEntity = mergeEntityFields(localEntity, remoteEntity);
+    const mergedEntity = mergeEntityFields(localEntity, remoteEntity, {
+      documentId,
+      collectionField: fieldName,
+      entityId: remoteEntity.id
+    });
     conflictCount += mergedEntity.conflictCount;
+    conflicts.push(...mergedEntity.conflicts);
     mergedById.set(remoteEntity.id, mergedEntity.entity);
   }
 
@@ -385,13 +469,13 @@ function mergeDocument(localDoc, remoteDoc) {
     [fieldName]: mergedCollection
   };
 
-  return { document: mergedDocument, conflictCount };
+  return { document: mergedDocument, conflictCount, conflicts };
 }
 
 /**
  * Merge for one entity based on per-field lastUpdatedByField timestamps.
  */
-function mergeEntityFields(localEntity, remoteEntity) {
+function mergeEntityFields(localEntity, remoteEntity, context = {}) {
   const localFieldUpdates = isObject(localEntity.lastUpdatedByField) ? localEntity.lastUpdatedByField : {};
   const remoteFieldUpdates = isObject(remoteEntity.lastUpdatedByField) ? remoteEntity.lastUpdatedByField : {};
 
@@ -411,6 +495,7 @@ function mergeEntityFields(localEntity, remoteEntity) {
   };
 
   let conflictCount = 0;
+  const conflicts = [];
 
   for (const field of fields) {
     const localValue = localEntity[field];
@@ -422,6 +507,19 @@ function mergeEntityFields(localEntity, remoteEntity) {
 
     if (!isEqualValue(localValue, remoteValue) && localTimestamp && remoteTimestamp) {
       conflictCount += 1;
+
+      conflicts.push({
+        conflictId: `${context.documentId || "doc"}:${context.entityId || "entity"}:${field}`,
+        documentId: context.documentId,
+        collectionField: context.collectionField,
+        entityId: context.entityId,
+        field,
+        localValue,
+        remoteValue,
+        localTimestamp,
+        remoteTimestamp,
+        suggestedValue: picked.value
+      });
     }
 
     merged[field] = picked.value;
@@ -430,7 +528,7 @@ function mergeEntityFields(localEntity, remoteEntity) {
 
   merged.updatedAt = pickLatestTimestamp(localEntity.updatedAt, remoteEntity.updatedAt) || new Date().toISOString();
 
-  return { entity: merged, conflictCount };
+  return { entity: merged, conflictCount, conflicts };
 }
 
 function getEntityArrayInfo(document) {

@@ -88,6 +88,13 @@ function renderSyncStatus(syncState, onSyncAction) {
     conflict.className = "sync-conflict-count";
     conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
     tags.appendChild(conflict);
+
+    const resolveButton = document.createElement("button");
+    resolveButton.type = "button";
+    resolveButton.className = "button button-secondary sync-conflict-action";
+    resolveButton.textContent = "Resolve";
+    resolveButton.addEventListener("click", () => onSyncAction("resolve-conflicts"));
+    tags.appendChild(resolveButton);
   }
 
   const action = document.createElement("button");
