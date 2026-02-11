@@ -36,6 +36,13 @@ export function renderSidebar({ mode, activeModule = "dashboard", onModuleSelect
 
   header.append(heading, toggle);
 
+  toggle.addEventListener("click", () => {
+    const isCollapsed = aside.classList.toggle("collapsed");
+    toggle.setAttribute("aria-expanded", String(!isCollapsed));
+  });
+
+  header.append(heading, toggle);
+
   for (const moduleItem of MODULES_BY_MODE[mode]) {
     const row = document.createElement("li");
     row.className = "module-item";
