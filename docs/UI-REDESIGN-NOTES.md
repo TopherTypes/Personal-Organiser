@@ -13,7 +13,6 @@ This redesign modernizes the shared shell and Work People experience without cha
 ### 2) App shell
 - Refined top bar structure in `src/modules/topbar.js`.
 - Grouped mode switch and sync/account controls into an intentional account-and-sync cluster.
-- Added a compact sync footer row so badges + action stay legible without inflating top-bar height.
 - Improved sync readability with concise primary state text, pending/last sync detail, retry indicator, and clearer action button states.
 
 ### 3) Navigation
@@ -30,10 +29,6 @@ This redesign modernizes the shared shell and Work People experience without cha
 - Added empty states for zero contacts and no-filter matches.
 - Redesigned engagement logging into a grouped “Log interaction” component and styled timeline.
 - Added non-blocking snackbar feedback for add/edit/log actions.
-
-### 5) Cross-module visual consistency
-- Introduced shared module primitives so Meetings, Tasks, Projects, Sprints, Personal modules, and Settings follow the same hierarchy and card/form language as Work People.
-- Added reusable styling for existing module classes (`.meeting-form`, `.project-card`, `.meetings-header`, `.meeting-actions`, list containers) to reduce visual drift across the app.
 
 ## How to extend to other modules
 1. Prefer token variables in `:root` instead of hard-coded colors/spacings.

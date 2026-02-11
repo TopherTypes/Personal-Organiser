@@ -70,26 +70,6 @@ function renderSyncStatus(syncState, onSyncAction) {
       ? syncState?.authSession?.email || "Connected to Drive"
       : "Drive not connected";
 
-  const footer = document.createElement("div");
-  footer.className = "sync-status-footer";
-
-  const tags = document.createElement("div");
-  tags.className = "sync-status-tags";
-
-  if (retries > 0) {
-    const retry = document.createElement("span");
-    retry.className = "sync-retry-indicator";
-    retry.textContent = `Retrying (${retries})`;
-    tags.appendChild(retry);
-  }
-
-  if (conflicts > 0) {
-    const conflict = document.createElement("span");
-    conflict.className = "sync-conflict-count";
-    conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
-    tags.appendChild(conflict);
-  }
-
   const action = document.createElement("button");
   action.type = "button";
   action.className = "button button-secondary sync-action-button";
@@ -106,23 +86,23 @@ function renderSyncStatus(syncState, onSyncAction) {
     action.addEventListener("click", () => onSyncAction("sign-in"));
   }
 
-  footer.append(tags, action);
-  wrap.append(statusLine, detailLine, accountLabel, footer);
+  wrap.append(statusLine, detailLine, accountLabel);
 
-  if (syncState?.infoMessage) {
-    const info = document.createElement("small");
-    info.className = "sync-status-info";
-    info.textContent = syncState.infoMessage;
-    wrap.appendChild(info);
+  if (retries > 0) {
+    const retry = document.createElement("span");
+    retry.className = "sync-retry-indicator";
+    retry.textContent = `Retrying (${retries})`;
+    wrap.appendChild(retry);
   }
 
-  if (syncState?.syncStatus === "error" && syncState.errorMessage) {
-    const error = document.createElement("small");
-    error.className = "sync-status-error";
-    error.textContent = syncState.errorMessage;
-    wrap.appendChild(error);
+  if (conflicts > 0) {
+    const conflict = document.createElement("span");
+    conflict.className = "sync-conflict-count";
+    conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
+    tags.appendChild(conflict);
   }
 
+  wrap.appendChild(action);
   return wrap;
 }
 
