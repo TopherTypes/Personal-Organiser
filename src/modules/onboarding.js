@@ -99,7 +99,18 @@ export function createOnboardingController({
         const sessionResult = await authClient.ensureValidSession({ allowSilentRefresh: false });
         if (sessionResult.status !== "signed-in") {
           await authClient.signInInteractive();
+        } else if (typeof authClient.getAccessToken === "function") {
+          try {
+            // Reuse an already-present token when available; this avoids extra prompts
+            // in the same runtime while still guaranteeing the next step can call Drive.
+            await authClient.getAccessToken({ interactive: false });
+          } catch {
+            // Session metadata can be valid while runtime token memory is empty (for
+            // example after page reload). Interactive sign-in rehydrates token state.
+            await authClient.signInInteractive();
+          }
         }
+
         setStepStatus(stepId, "complete", "Google account connected.");
         return;
       }

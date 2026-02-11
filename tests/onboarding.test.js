@@ -102,3 +102,41 @@ test("resume behavior retries failed Drive bootstrap and keeps setup idempotent"
   assert.equal(signInCalls, 1);
   assert.equal(saveCalls.at(-1)?.startMode, "work");
 });
+
+
+test("resume setup rehydrates token when session exists but runtime token is missing", async () => {
+  localStorage.clear();
+
+  let signInCalls = 0;
+  let tokenCalls = 0;
+
+  const authClient = {
+    ensureValidSession: async () => ({
+      status: "signed-in",
+      session: { email: "dev@example.com", expiresAt: Date.now() + 60_000, lastAuthCheckAt: Date.now() }
+    }),
+    getAccessToken: async () => {
+      tokenCalls += 1;
+      throw new Error("Google access token is unavailable without interactive sign-in.");
+    },
+    signInInteractive: async () => {
+      signInCalls += 1;
+      return { status: "signed-in", session: { email: "dev@example.com" } };
+    }
+  };
+
+  const controller = createOnboardingController({
+    authClient,
+    driveClient: createDriveBootstrapStub(),
+    loadSettingsRef: () => ({ theme: "light", layoutDensity: "comfortable", startMode: "ask", confirmUnsavedChanges: true }),
+    saveSettingsRef: (settings) => settings
+  });
+
+  const result = await controller.runPending({ preferences: { startMode: "work" } });
+  const steps = controller.getSnapshot();
+
+  assert.equal(result.complete, true);
+  assert.equal(steps.every((step) => step.status === "complete"), true);
+  assert.equal(tokenCalls, 1);
+  assert.equal(signInCalls, 1);
+});
