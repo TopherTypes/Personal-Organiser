@@ -1,6 +1,6 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
-import { saveUpdate } from "./updates.js";
+import { buildUpdateOwnerOptions, saveUpdate, selectActivePeople } from "./updates.js";
 import {
   buildEntityTokenMultiSelectField,
   buildMultiSelectField,
@@ -367,12 +367,13 @@ export function renderWorkMeetingsModule({
     updateHint.textContent =
       "You can add multiple linked updates. Meeting is always saved first so each update links to a durable meeting id.";
 
-    const activePeople = people.filter((person) => !person.archived);
-    const updateOwnerOptions = [
-      { value: "", label: "No owner" },
-      ...activePeople.map((person) => ({ value: person.id, label: person.name || person.id }))
-    ];
+    const activePeople = selectActivePeople(people);
+    const updateOwnerOptions = buildUpdateOwnerOptions(activePeople);
+    const activeOwnerIds = new Set(activePeople.map((person) => person.id));
     const updateRecipientOptions = activePeople.map((person) => ({ value: person.id, label: person.name || person.id }));
+
+    const linkedUpdateValidationMessage = document.createElement("p");
+    linkedUpdateValidationMessage.className = "module-intro";
 
     const renderLinkedUpdateRows = () => {
       updateRows.innerHTML = "";
@@ -406,8 +407,17 @@ export function renderWorkMeetingsModule({
           value: linkedUpdate.ownerId,
           emptyMessage: "Add people first to select an owner."
         });
+        if (linkedUpdate.ownerId && !activeOwnerIds.has(linkedUpdate.ownerId)) {
+          const invalidOwnerHint = document.createElement("small");
+          invalidOwnerHint.className = "module-intro";
+          // This explicit inline guidance makes stale IDs visible instead of silently
+          // propagating them into save payloads where referential checks would fail later.
+          invalidOwnerHint.textContent = "Previous owner is no longer active. Choose an active person or No owner.";
+          updateOwnerField.wrapper.appendChild(invalidOwnerHint);
+        }
         updateOwnerField.select.addEventListener("change", () => {
           state.draft.draftLinkedUpdates[index].ownerId = updateOwnerField.select.value;
+          linkedUpdateValidationMessage.textContent = "";
           state.dirtyDraft = true;
         });
 
@@ -453,7 +463,7 @@ export function renderWorkMeetingsModule({
       renderLinkedUpdateRows();
     });
 
-    updateFields.append(updateRows, updateActions, updateHint);
+    updateFields.append(updateRows, linkedUpdateValidationMessage, updateActions, updateHint);
     updateComposerWrap.append(updateToggleButton, updateFields);
 
     fields.append(
@@ -573,14 +583,20 @@ export function renderWorkMeetingsModule({
         if (!row.recipientIds.length) {
           validationErrors.push(`Linked update ${index + 1}: select at least one recipient.`);
         }
+        if (row.ownerId && !activeOwnerIds.has(row.ownerId)) {
+          validationErrors.push(`Linked update ${index + 1}: choose an owner from active people or No owner.`);
+        }
 
         rowsToPersist.push({ rowIndex: index, row });
       });
 
       if (validationErrors.length) {
+        linkedUpdateValidationMessage.textContent = validationErrors.join(" ");
         alert(validationErrors.join("\n"));
         return;
       }
+
+      linkedUpdateValidationMessage.textContent = "";
 
       // Data integrity ordering:
       // 1) Persist the meeting first so newly created meetings receive a stable id.
