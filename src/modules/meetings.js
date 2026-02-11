@@ -456,12 +456,17 @@ export function renderWorkMeetingsModule({
       if (shouldCreateUpdate) {
         // Ordering constraint: a linked update must reference a persisted meeting id.
         // New meetings have no stable id until after `saveMeeting` completes.
-        const updateResult = saveUpdate(mode, {
-          text: updateText,
-          ownerId,
-          toUpdate: [{ personId: "", note: toAudienceNote, status: "pending" }],
-          meetingId: result.meetingId
-        });
+        const updateResult = saveUpdate(
+          mode,
+          {
+            text: updateText,
+            ownerId,
+            toUpdate: [{ personId: "", note: toAudienceNote, status: "pending" }],
+            meetingId: result.meetingId
+          },
+          "",
+          people.filter((person) => !person.archived)
+        );
 
         if (!updateResult.ok) {
           alert(updateResult.error || "Failed to create linked update.");
