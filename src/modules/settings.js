@@ -363,7 +363,7 @@ function createDestructiveResetSection({ onFullDataReset }) {
       window.alert(`Reset failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
-  resetButton.classList.add("button-danger-subtle", "settings-danger-button");
+  resetButton.classList.add("settings-danger-button", "settings-danger-button-emphasis");
 
   details.append(summary, warning, resetButton);
   wrap.appendChild(details);
@@ -371,7 +371,7 @@ function createDestructiveResetSection({ onFullDataReset }) {
 }
 
 /**
- * Backup management UI to inspect rollback points and trigger explicit restore confirmations.
+ * Backup management entry point that keeps version selectors tucked into a modal.
  */
 function createBackupsSection({ onBackupRestore, onDataRestore }) {
   const wrap = document.createElement("section");
@@ -383,14 +383,42 @@ function createBackupsSection({ onBackupRestore, onDataRestore }) {
   const hint = document.createElement("p");
   hint.className = "module-intro";
   hint.textContent =
-    "Backups are timestamped snapshots created before sync/import overwrites. Select a version and confirm to restore safely.";
+    "Backups are timestamped snapshots created before sync/import overwrites. Open the backup manager to inspect versions and restore safely.";
+
+  const openButton = createActionButton("Open backup manager", () => {
+    document.body.appendChild(createBackupRestoreModal({ onBackupRestore, onDataRestore }));
+  });
+
+  wrap.append(title, hint, openButton);
+  return wrap;
+}
+
+/**
+ * Builds the backup restore modal so destructive restore controls are not always visible.
+ */
+function createBackupRestoreModal({ onBackupRestore, onDataRestore }) {
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay settings-action-modal-overlay";
+
+  const modal = document.createElement("section");
+  modal.className = "meeting-modal settings-action-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Backup manager");
+
+  const title = document.createElement("h3");
+  title.textContent = "Backup manager";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent = "Pick a dataset, select a backup version, and restore only after confirming the replacement.";
 
   const list = document.createElement("div");
   list.className = "settings-list";
 
   for (const descriptor of SYNCABLE_DOCUMENTS) {
     const versions = listDatasetBackups(descriptor.id);
-    const row = document.createElement("div");
+    const row = document.createElement("article");
     row.className = "settings-item";
 
     const heading = document.createElement("span");
@@ -400,12 +428,13 @@ function createBackupsSection({ onBackupRestore, onDataRestore }) {
     const select = document.createElement("select");
     select.className = "field-input";
     select.appendChild(buildOption("", versions.length ? "Select backup version" : "No backups yet"));
+
     for (const version of versions) {
       const relative = formatBackupTime(version.createdAt);
       select.appendChild(buildOption(version.backupKey, `${version.createdAt} (${relative}) · ${version.reason}`));
     }
 
-    const button = createActionButton("Restore selected backup", () => {
+    const restoreButton = createActionButton("Restore selected backup", () => {
       const backupKey = select.value;
       if (!backupKey) {
         window.alert("Select a backup version first.");
@@ -435,14 +464,23 @@ function createBackupsSection({ onBackupRestore, onDataRestore }) {
       onDataRestore?.();
     });
 
-    button.disabled = versions.length === 0;
-
-    row.append(heading, select, button);
+    restoreButton.disabled = versions.length === 0;
+    row.append(heading, select, restoreButton);
     list.appendChild(row);
   }
 
-  wrap.append(title, hint, list);
-  return wrap;
+  const closeButton = createActionButton("Close", () => overlay.remove());
+
+  // Clicking the shaded backdrop closes the modal while clicks inside content keep focus in place.
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  modal.append(title, hint, list, closeButton);
+  overlay.appendChild(modal);
+  return overlay;
 }
 
 function formatBackupTime(timestamp) {
