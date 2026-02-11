@@ -32,6 +32,29 @@ const DEFAULT_RETRY_POLICY = {
   jitterRatio: 0.2
 };
 
+/**
+ * Only conflicts in this set are surfaced for manual intervention.
+ *
+ * Rationale:
+ * - Most fields can be safely auto-resolved via timestamp precedence.
+ * - These fields influence planning/state transitions and are expensive to get wrong.
+ */
+const MANUAL_CONFLICT_FIELDS = new Set([
+  "title",
+  "name",
+  "status",
+  "dueDate",
+  "date",
+  "startTime",
+  "endTime",
+  "assigneeId",
+  "projectId",
+  "archived"
+]);
+
+// Only require user input when important fields were edited near-simultaneously.
+const MANUAL_CONFLICT_TIME_WINDOW_MS = 10 * 60 * 1000;
+
 const SYNC_ERROR_REASON = Object.freeze({
   AUTH_EXPIRED: "auth-expired",
   QUOTA: "quota",
@@ -506,20 +529,29 @@ function mergeEntityFields(localEntity, remoteEntity, context = {}) {
     const picked = pickLatestValue(localValue, remoteValue, localTimestamp, remoteTimestamp);
 
     if (!isEqualValue(localValue, remoteValue) && localTimestamp && remoteTimestamp) {
-      conflictCount += 1;
-
-      conflicts.push({
-        conflictId: `${context.documentId || "doc"}:${context.entityId || "entity"}:${field}`,
-        documentId: context.documentId,
-        collectionField: context.collectionField,
-        entityId: context.entityId,
+      const shouldRequireManualResolution = shouldQueueManualConflict({
         field,
         localValue,
         remoteValue,
         localTimestamp,
-        remoteTimestamp,
-        suggestedValue: picked.value
+        remoteTimestamp
       });
+
+      if (shouldRequireManualResolution) {
+        conflictCount += 1;
+        conflicts.push({
+          conflictId: `${context.documentId || "doc"}:${context.entityId || "entity"}:${field}`,
+          documentId: context.documentId,
+          collectionField: context.collectionField,
+          entityId: context.entityId,
+          field,
+          localValue,
+          remoteValue,
+          localTimestamp,
+          remoteTimestamp,
+          suggestedValue: picked.value
+        });
+      }
     }
 
     merged[field] = picked.value;
@@ -529,6 +561,31 @@ function mergeEntityFields(localEntity, remoteEntity, context = {}) {
   merged.updatedAt = pickLatestTimestamp(localEntity.updatedAt, remoteEntity.updatedAt) || new Date().toISOString();
 
   return { entity: merged, conflictCount, conflicts };
+}
+
+/**
+ * Returns true only for high-impact, near-concurrent edits that are risky to auto-resolve silently.
+ */
+function shouldQueueManualConflict({ field, localValue, remoteValue, localTimestamp, remoteTimestamp }) {
+  if (!MANUAL_CONFLICT_FIELDS.has(field)) {
+    return false;
+  }
+
+  if (isEffectivelyEmpty(localValue) || isEffectivelyEmpty(remoteValue)) {
+    return false;
+  }
+
+  const localMs = Date.parse(localTimestamp || "");
+  const remoteMs = Date.parse(remoteTimestamp || "");
+  if (Number.isNaN(localMs) || Number.isNaN(remoteMs)) {
+    return false;
+  }
+
+  return Math.abs(localMs - remoteMs) <= MANUAL_CONFLICT_TIME_WINDOW_MS;
+}
+
+function isEffectivelyEmpty(value) {
+  return value === null || value === undefined || value === "";
 }
 
 function getEntityArrayInfo(document) {
@@ -762,6 +819,7 @@ function syncFailureMessage(reason) {
 export const __TESTING__ = {
   mergeDocument,
   countDocumentDifferences,
+  shouldQueueManualConflict,
   withRetry,
   performSyncCycle,
   classifySyncFailure,

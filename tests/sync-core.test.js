@@ -3,9 +3,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { __TESTING__ } from "../src/modules/sync.js";
 
-const { mergeDocument, countDocumentDifferences, withRetry } = __TESTING__;
+const { mergeDocument, countDocumentDifferences, shouldQueueManualConflict, withRetry } = __TESTING__;
 
-test("mergeDocument resolves conflicts with latest field timestamp and counts conflicts", () => {
+test("mergeDocument resolves conflicts with latest field timestamp and only surfaces important conflicts", () => {
   const local = {
     items: [
       {
@@ -27,9 +27,9 @@ test("mergeDocument resolves conflicts with latest field timestamp and counts co
         id: "task-1",
         title: "Remote title",
         notes: "Remote notes",
-        updatedAt: "2026-02-10T11:00:00.000Z",
+        updatedAt: "2026-02-10T10:05:00.000Z",
         lastUpdatedByField: {
-          title: "2026-02-10T11:00:00.000Z",
+          title: "2026-02-10T10:05:00.000Z",
           notes: "2026-02-10T08:00:00.000Z"
         }
       }
@@ -38,10 +38,45 @@ test("mergeDocument resolves conflicts with latest field timestamp and counts co
 
   const result = mergeDocument(local, remote);
 
-  // title + notes + updatedAt each present a deterministic conflict count increment.
-  assert.equal(result.conflictCount, 3);
+  // Only critical, near-simultaneous fields are escalated for manual resolution.
+  assert.equal(result.conflictCount, 1);
   assert.equal(result.document.items[0].title, "Remote title");
   assert.equal(result.document.items[0].notes, "Local notes");
+});
+
+test("shouldQueueManualConflict only returns true for important fields in tight edit windows", () => {
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "title",
+      localValue: "A",
+      remoteValue: "B",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T10:05:00.000Z"
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "notes",
+      localValue: "A",
+      remoteValue: "B",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T10:05:00.000Z"
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldQueueManualConflict({
+      field: "title",
+      localValue: "A",
+      remoteValue: "B",
+      localTimestamp: "2026-02-10T10:00:00.000Z",
+      remoteTimestamp: "2026-02-10T12:00:00.000Z"
+    }),
+    false
+  );
 });
 
 test("countDocumentDifferences reports changed, added, and removed entities", () => {
@@ -89,4 +124,3 @@ test("withRetry retries up to maxAttempts and caps backoff delay", async () => {
   assert.equal(attempts, 4);
   assert.deepEqual(waits, [120, 240, 300]);
 });
-
