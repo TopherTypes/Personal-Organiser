@@ -854,6 +854,50 @@ textarea:focus-visible,
   overflow-x: auto;
 }
 
+.updates-form,
+.updates-editor-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.updates-table-wrap {
+  overflow-x: auto;
+}
+
+.updates-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.updates-table th,
+.updates-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.updates-table th {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  background: var(--bg-muted);
+}
+
+.updates-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.updates-slideover {
+  position: fixed;
+  right: var(--space-4);
+  top: var(--space-4);
+  bottom: var(--space-4);
+  width: min(420px, calc(100vw - var(--space-6)));
+  overflow-y: auto;
+  z-index: 20;
+}
+
 .tasks-table-row {
   min-width: 780px;
   display: grid;
