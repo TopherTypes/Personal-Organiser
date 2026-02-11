@@ -35,10 +35,11 @@ export function renderPersonalPeopleModule() {
   form.append(name.wrap, relationship.wrap, cadenceTarget.wrap, birthday.wrap, notes.wrap, submit);
 
   const list = document.createElement("div");
+  list.className = "entity-scroll-list people-list";
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const contacts = loadContacts();
+    const contacts = loadContacts().sort((first, second) => first.name.localeCompare(second.name));
     contacts.unshift({
       id: `ppl_${Math.random().toString(36).slice(2, 10)}`,
       name: name.input.value.trim(),
@@ -55,7 +56,7 @@ export function renderPersonalPeopleModule() {
 
   function renderList() {
     list.innerHTML = "";
-    const contacts = loadContacts();
+    const contacts = loadContacts().sort((first, second) => first.name.localeCompare(second.name));
 
     if (!contacts.length) {
       const empty = document.createElement("p");
