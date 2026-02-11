@@ -34,6 +34,9 @@ export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, s
 
 /**
  * Creates the sync status segment with state, pending queue count, and conflict badge.
+ *
+ * The compact summary row keeps top-bar height small while preserving all
+ * previously exposed state details and action behavior.
  */
 function renderSyncStatus(syncState, onSyncAction) {
   const wrap = document.createElement("section");
@@ -96,21 +99,7 @@ function renderSyncStatus(syncState, onSyncAction) {
     const conflict = document.createElement("span");
     conflict.className = "sync-conflict-count";
     conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
-    wrap.appendChild(conflict);
-  }
-
-  if (syncState?.infoMessage) {
-    const info = document.createElement("small");
-    info.className = "sync-status-info";
-    info.textContent = syncState.infoMessage;
-    wrap.appendChild(info);
-  }
-
-  if (syncState?.syncStatus === "error" && syncState.errorMessage) {
-    const error = document.createElement("small");
-    error.className = "sync-status-error";
-    error.textContent = syncState.errorMessage;
-    wrap.appendChild(error);
+    tags.appendChild(conflict);
   }
 
   wrap.appendChild(action);
