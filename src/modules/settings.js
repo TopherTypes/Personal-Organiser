@@ -5,7 +5,8 @@ import {
   restoreFromImportPayload
 } from "./storage-export.js";
 
-const SETTINGS_STORAGE_KEY = "second-brain.ui.settings.v1";
+export const SETTINGS_STORAGE_KEY = "second-brain.ui.settings.v1";
+export const ONBOARDING_COMPLETED_STORAGE_KEY = "second-brain.ui.onboarding.completed.v1";
 
 
 /**

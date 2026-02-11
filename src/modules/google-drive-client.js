@@ -125,6 +125,30 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
     state.discovered = true;
   }
 
+  /**
+   * Validates/creates the required Drive layout in an idempotent way.
+   *
+   * This method is safe to call repeatedly during interrupted onboarding because
+   * every resource is discovered before any create call is attempted.
+   */
+  async function ensureBootstrap({ includeFiles = true } = {}) {
+    const folder = await findOrCreateSecondBrainFolder();
+    state.folderId = folder.id;
+
+    const files = [];
+    if (includeFiles) {
+      for (const fileName of Object.values(FILE_NAMES)) {
+        const file = await findOrCreateFile(fileName, state.folderId);
+        state.fileIdsByName.set(fileName, file.id);
+        files.push(file);
+      }
+
+      state.discovered = true;
+    }
+
+    return { folder, files };
+  }
+
   async function findOrCreateSecondBrainFolder() {
     const q = encodeDriveQuery(
       `name = '${escapeDriveLiteral(SECOND_BRAIN_FOLDER_NAME)}' and mimeType = '${FOLDER_MIME_TYPE}' and trashed = false`
@@ -139,10 +163,10 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
 
     const existing = Array.isArray(listing?.files) ? listing.files[0] : null;
     if (existing?.id) {
-      return existing;
+      return { ...existing, created: false };
     }
 
-    return requestJson({
+    const created = await requestJson({
       fetchImpl,
       authClient,
       operation: "create-folder",
@@ -151,6 +175,8 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
       headers: { "Content-Type": JSON_MIME_TYPE },
       body: JSON.stringify({ name: SECOND_BRAIN_FOLDER_NAME, mimeType: FOLDER_MIME_TYPE })
     });
+
+    return { ...created, created: true };
   }
 
   async function findOrCreateFile(fileName, folderId) {
@@ -167,7 +193,7 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
 
     const existing = Array.isArray(listing?.files) ? listing.files[0] : null;
     if (existing?.id) {
-      return existing;
+      return { ...existing, created: false };
     }
 
     const created = await requestJson({
@@ -194,10 +220,11 @@ export function createGoogleDriveClient({ authClient, fetchImpl = fetch } = {}) 
       body: stableStringify({ documents: {} })
     });
 
-    return created;
+    return { ...created, created: true };
   }
 
   return {
+    ensureBootstrap,
     pullDocument,
     pushDocument
   };
@@ -355,4 +382,4 @@ function escapeDriveLiteral(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-export { DriveTransportError, mapDriveApiError, stableStringify, normalizeContainer };
+export { DriveTransportError, mapDriveApiError, stableStringify, normalizeContainer, FILE_NAMES, SECOND_BRAIN_FOLDER_NAME };
