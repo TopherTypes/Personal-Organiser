@@ -53,9 +53,41 @@ if (!appRoot) {
 const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
-    renderApp();
+
+    // Sync updates change only top-bar information. Patching the header in place
+    // avoids remounting module content, which would otherwise close transient UI
+    // like open slide-over editors while a user is typing.
+    if (!renderTopBarInPlace()) {
+      renderApp();
+    }
   }
 });
+
+
+/**
+ * Replaces only the top bar in the current shell.
+ *
+ * Returns true when an in-place patch was applied, false when the shell has not
+ * been mounted yet (for example during first boot), in which case full render is required.
+ */
+function renderTopBarInPlace() {
+  const shell = appRoot.querySelector(".app-shell");
+  const existingTopBar = shell?.querySelector(".top-bar");
+  if (!shell || !existingTopBar) {
+    return false;
+  }
+
+  const nextTopBar = renderTopBar({
+    activeMode: state.activeMode,
+    isModeSwitchDisabled: !state.hasEnteredMode,
+    onModeChange: handleModeChange,
+    syncState: state.sync,
+    onSyncAction: handleSyncAction
+  });
+
+  existingTopBar.replaceWith(nextTopBar);
+  return true;
+}
 
 /**
  * Main render loop for this small SPA shell.
