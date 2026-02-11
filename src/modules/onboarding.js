@@ -94,7 +94,9 @@ export function createOnboardingController({
 
     try {
       if (stepId === STEP_IDS.AUTH) {
-        const sessionResult = await authClient.ensureValidSession();
+        // Onboarding runs from an explicit user action, so we avoid automatic
+        // silent refresh attempts and only prompt interactively when needed.
+        const sessionResult = await authClient.ensureValidSession({ allowSilentRefresh: false });
         if (sessionResult.status !== "signed-in") {
           await authClient.signInInteractive();
         }

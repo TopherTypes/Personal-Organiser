@@ -132,7 +132,10 @@ export function createSyncSubsystem({
   async function runBootAuthCheck() {
     setPartialState({ authStatus: "checking" });
 
-    const result = await authClient.ensureValidSession();
+    // Startup and background checks should not invoke GIS silent popup flows.
+    // We only trust locally persisted session metadata here and require explicit
+    // user interaction to recover expired sessions.
+    const result = await authClient.ensureValidSession({ allowSilentRefresh: false });
     setPartialState({
       authStatus: result.status,
       authSession: result.session,
@@ -195,7 +198,7 @@ export function createSyncSubsystem({
 
     // Token expiry is checked before sync so stale persisted metadata does not imply auth validity.
     setPartialState({ syncStatus: "auth-check", errorMessage: "", errorReason: "" });
-    const authResult = await authClient.ensureValidSession();
+    const authResult = await authClient.ensureValidSession({ allowSilentRefresh: false });
     if (authResult.status !== "signed-in") {
       setPartialState({
         authStatus: "signed-out",
@@ -245,11 +248,21 @@ export function createSyncSubsystem({
       });
     } catch (error) {
       const failure = classifySyncFailure(error);
+      const errorCode = typeof error?.code === "string" ? error.code : "unknown";
+
+      // Auth-related transport failures usually mean the runtime no longer has a
+      // usable token. Reset auth state so UI clearly guides the user to reconnect.
+      const authRecoveryState =
+        failure.reason === SYNC_ERROR_REASON.AUTH_EXPIRED
+          ? { authStatus: "signed-out", authSession: null }
+          : {};
+
       setPartialState({
+        ...authRecoveryState,
         syncStatus: "error",
         infoMessage: "",
         errorReason: failure.reason,
-        errorMessage: `${syncFailureMessage(failure.reason)} (${reason})`
+        errorMessage: `${syncFailureMessage(failure.reason)} (${reason}; code: ${errorCode})`
       });
     } finally {
       state.isSyncing = false;
