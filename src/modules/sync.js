@@ -11,6 +11,7 @@ import { writeDatasetBackup } from "./dataset-backups.js";
 
 const SYNC_SHADOW_STORAGE_KEY = "second-brain.sync.shadow.v1";
 const SYNC_CONFLICT_QUEUE_KEY = "second-brain.sync.conflicts.v1";
+const APP_STORAGE_PREFIX = "second-brain.";
 export const SYNCABLE_DOCUMENTS = [
   { id: "work.tasks", localKey: "second-brain.work.tasks.work.v1" },
   { id: "work.projects", localKey: "second-brain.work.projects.work" },
@@ -227,6 +228,41 @@ export function createSyncSubsystem({
     setPartialState({ authStatus: result.status, authSession: result.session });
   }
 
+  /**
+   * Destroys all app data locally and remotely so users can fully reset the product.
+   *
+   * Remote deletion is mandatory for this workflow because leaving Drive files in
+   * place would allow old data to be pulled back down during a future reconnect.
+   */
+  async function eraseAllDataAndReset() {
+    if (!navigatorRef.onLine) {
+      throw new Error("Connect to the internet before erasing data from Google Drive.");
+    }
+
+    const authResult = await authClient.ensureValidSession({ allowSilentRefresh: false });
+    if (authResult.status !== "signed-in") {
+      throw new Error("Sign in to Google Drive before running a full reset.");
+    }
+
+    await driveClient.purgeSecondBrainData();
+    removeAllAppLocalStorageEntries();
+    const signOutResult = authClient.signOut();
+
+    setPartialState({
+      syncStatus: navigatorRef.onLine ? "idle" : "offline",
+      authStatus: signOutResult.status,
+      authSession: signOutResult.session,
+      pendingChanges: 0,
+      conflictCount: 0,
+      conflicts: [],
+      lastSuccessfulSyncAt: "",
+      infoMessage: "All local and Google Drive data has been erased.",
+      errorMessage: "",
+      errorReason: "",
+      retries: 0
+    });
+  }
+
   function recalculatePendingChanges() {
     const shadowDocs = loadJson(SYNC_SHADOW_STORAGE_KEY, {});
     let pendingTotal = 0;
@@ -344,6 +380,7 @@ export function createSyncSubsystem({
     syncNow,
     signIn,
     signOut,
+    eraseAllDataAndReset,
     applyConflictResolutions,
     getState: () => ({ ...state })
   };
@@ -404,6 +441,21 @@ export function createSyncSubsystem({
     await syncNow({ reason: "manual" });
     return { appliedCount, pendingCount: 0 };
   }
+}
+
+/**
+ * Removes every localStorage entry written by this app namespace.
+ */
+function removeAllAppLocalStorageEntries() {
+  const removableKeys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (typeof key === "string" && key.startsWith(APP_STORAGE_PREFIX)) {
+      removableKeys.push(key);
+    }
+  }
+
+  removableKeys.forEach((key) => localStorage.removeItem(key));
 }
 
 /**
@@ -850,5 +902,6 @@ export const __TESTING__ = {
   withRetry,
   performSyncCycle,
   classifySyncFailure,
-  SYNC_ERROR_REASON
+  SYNC_ERROR_REASON,
+  removeAllAppLocalStorageEntries
 };

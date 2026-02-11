@@ -59,6 +59,7 @@ export function renderSettingsModule({
   onSettingsChange,
   onDataRestore,
   onBackupRestore,
+  onFullDataReset,
   syncState,
   onResolveSyncConflicts
 }) {
@@ -119,8 +120,9 @@ export function renderSettingsModule({
   const dataManagement = createDataManagementSection({ onDataRestore });
   const syncConflictSection = createSyncConflictSection({ syncState, onResolveSyncConflicts });
   const backupsSection = createBackupsSection({ onBackupRestore, onDataRestore });
+  const destructiveSection = createDestructiveResetSection({ onFullDataReset });
 
-  section.append(title, intro, list, dataManagement, syncConflictSection, backupsSection);
+  section.append(title, intro, list, dataManagement, syncConflictSection, backupsSection, destructiveSection);
   return section;
 }
 
@@ -210,14 +212,9 @@ function createDataManagementSection({ onDataRestore }) {
   hint.textContent =
     "Export Work/Personal JSON backups or restore from a validated file. Every restore writes a timestamped rollback snapshot first.";
 
-  const buttonRow = document.createElement("div");
-  buttonRow.className = "settings-export-actions";
-
-  buttonRow.append(
-    createActionButton("Export Work JSON", () => downloadDatasetExport("work")),
-    createActionButton("Export Personal JSON", () => downloadDatasetExport("personal")),
-    createActionButton("Export Combined JSON", () => downloadDatasetExport("combined"))
-  );
+  const exportButton = createActionButton("Export data", () => {
+    document.body.appendChild(createExportModal());
+  });
 
   const importForm = document.createElement("div");
   importForm.className = "settings-import-actions";
@@ -276,7 +273,100 @@ function createDataManagementSection({ onDataRestore }) {
     mergeRules.appendChild(item);
   });
 
-  wrap.append(title, hint, buttonRow, importForm, mergeRules);
+  wrap.append(title, hint, exportButton, importForm, mergeRules);
+  return wrap;
+}
+
+/**
+ * Modal wrapper for export options so settings stay uncluttered by one-off controls.
+ */
+function createExportModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay settings-action-modal-overlay";
+
+  const modal = document.createElement("section");
+  modal.className = "meeting-modal settings-action-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Export data");
+
+  const title = document.createElement("h3");
+  title.textContent = "Export data";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent = "Choose the scope you want to export as JSON.";
+
+  const buttonRow = document.createElement("div");
+  buttonRow.className = "settings-export-actions";
+  buttonRow.append(
+    createActionButton("Export Work JSON", () => downloadDatasetExport("work")),
+    createActionButton("Export Personal JSON", () => downloadDatasetExport("personal")),
+    createActionButton("Export Combined JSON", () => downloadDatasetExport("combined"))
+  );
+
+  const closeButton = createActionButton("Close", () => overlay.remove());
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  modal.append(title, hint, buttonRow, closeButton);
+  overlay.appendChild(modal);
+  return overlay;
+}
+
+/**
+ * Buried destructive reset path with repeated confirmations to avoid accidental loss.
+ */
+function createDestructiveResetSection({ onFullDataReset }) {
+  const wrap = document.createElement("section");
+  wrap.className = "settings-data-management settings-danger-zone";
+
+  const details = document.createElement("details");
+  details.className = "settings-danger-details";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Advanced reset options (danger zone)";
+
+  const warning = document.createElement("p");
+  warning.className = "settings-danger-warning";
+  warning.textContent =
+    "WARNING: This permanently erases all local data, backups, settings, and deletes the SecondBrain folder/files from Google Drive. This cannot be undone.";
+
+  const resetButton = createActionButton("Erase everything and start from scratch", async () => {
+    if (typeof onFullDataReset !== "function") {
+      window.alert("Reset handler is unavailable.");
+      return;
+    }
+
+    const firstConfirmation = window.confirm(
+      "This will permanently delete all local app data AND remove synced data from Google Drive. Continue?"
+    );
+    if (!firstConfirmation) {
+      return;
+    }
+
+    const secondConfirmation = window.confirm(
+      "Final confirmation: erase all data from this device and Google Drive now?"
+    );
+    if (!secondConfirmation) {
+      return;
+    }
+
+    try {
+      await onFullDataReset();
+      window.alert("Reset complete. All data has been erased locally and from Google Drive.");
+    } catch (error) {
+      window.alert(`Reset failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  resetButton.classList.add("button-danger-subtle", "settings-danger-button");
+
+  details.append(summary, warning, resetButton);
+  wrap.appendChild(details);
   return wrap;
 }
 

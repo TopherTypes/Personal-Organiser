@@ -134,6 +134,7 @@ function renderApp() {
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
           onBackupRestore: handleBackupRestore,
+          onFullDataReset: handleFullDataReset,
           onResolveSyncConflicts: handleResolveSyncConflicts,
           syncState: state.sync,
           settings: state.settings,
@@ -284,6 +285,28 @@ function confirmNavigation() {
  */
 function handleDataRestore() {
   state.hasUnsavedChanges = false;
+  renderApp();
+}
+
+/**
+ * Runs a destructive reset that clears both local and Google Drive data.
+ */
+async function handleFullDataReset() {
+  await syncSubsystem.eraseAllDataAndReset();
+  state.settings = loadSettings();
+  state.needsOnboarding = !isOnboardingComplete();
+  state.hasEnteredMode = false;
+  state.activeMode = "work";
+  state.activeModuleByMode = {
+    work: "dashboard",
+    personal: "dashboard"
+  };
+  state.meetingPrefillByMode = {
+    work: null,
+    personal: null
+  };
+  state.hasUnsavedChanges = false;
+  applyUserSettings(state.settings);
   renderApp();
 }
 
