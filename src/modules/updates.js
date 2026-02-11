@@ -26,7 +26,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
   const updates = loadUpdates(mode);
   const activeUpdates = updates.filter((update) => !update.archived);
-  const activePeople = people.filter((person) => !person.archived);
+  const activePeople = selectActivePeople(people);
 
   const form = document.createElement("form");
   form.className = "updates-form";
@@ -49,9 +49,10 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
   const ownerSelect = document.createElement("select");
   ownerSelect.className = "field-input";
-  addOption(ownerSelect, "", "No owner");
-  for (const person of activePeople) {
-    addOption(ownerSelect, person.id, person.name || person.id);
+  // Use the same canonical option builder as meetings so every update-entry point
+  // enforces active-people ownership constraints identically.
+  for (const option of buildUpdateOwnerOptions(activePeople)) {
+    addOption(ownerSelect, option.value, option.label);
   }
   ownerLabel.appendChild(ownerSelect);
 
@@ -200,6 +201,36 @@ export function saveUpdate(mode, draft, editingId = "", people = null) {
 
   persistUpdates(mode, updates);
   return { ok: true, message: "Update created." };
+}
+
+/**
+ * Returns active people with stable, string-backed IDs.
+ *
+ * Keeping this helper centralised avoids per-screen filtering drift that could let
+ * stale/deleted IDs slip into ownership references.
+ */
+export function selectActivePeople(people = []) {
+  if (!Array.isArray(people)) {
+    return [];
+  }
+
+  return people.filter(
+    (person) => person && !person.archived && typeof person.id === "string" && person.id.trim()
+  );
+}
+
+/**
+ * Builds update-owner select options with an explicit optional default.
+ *
+ * Reusing this across modules keeps referential integrity behaviour consistent
+ * and prevents free-typed IDs from being accepted in one workflow but rejected in another.
+ */
+export function buildUpdateOwnerOptions(people = []) {
+  const activePeople = selectActivePeople(people);
+  return [
+    { value: "", label: "No owner" },
+    ...activePeople.map((person) => ({ value: person.id, label: person.name || person.id }))
+  ];
 }
 
 function resolveOwnerDisplayName(update, people) {
