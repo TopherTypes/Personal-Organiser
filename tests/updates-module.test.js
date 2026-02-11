@@ -66,6 +66,39 @@ test("markPersonUpdated and markPersonPending mutate per-person status and selec
   assert.equal(afterUpdate.toUpdate.find((entry) => entry.personId === "person-a")?.updatedAt, "");
 });
 
+
+
+test("saveUpdate enforces owner referential integrity when people set is provided", () => {
+  localStorage.clear();
+
+  const invalid = saveUpdate(
+    "work",
+    {
+      text: "Missing owner",
+      ownerId: "person-missing",
+      toUpdate: ["person-a"]
+    },
+    "",
+    [{ id: "person-a", name: "Alex", archived: false }]
+  );
+
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error, "Selected owner no longer exists in active people.");
+
+  const valid = saveUpdate(
+    "work",
+    {
+      text: "Valid owner",
+      ownerId: "person-a",
+      toUpdate: ["person-a"]
+    },
+    "",
+    [{ id: "person-a", name: "Alex", archived: false }]
+  );
+
+  assert.equal(valid.ok, true);
+});
+
 test("loadUpdates migrates persisted legacy id arrays via normalisation", () => {
   localStorage.clear();
 

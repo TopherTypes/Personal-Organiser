@@ -26,6 +26,64 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
   const updates = loadUpdates(mode);
   const activeUpdates = updates.filter((update) => !update.archived);
+  const activePeople = people.filter((person) => !person.archived);
+
+  const form = document.createElement("form");
+  form.className = "updates-form";
+
+  const textInput = document.createElement("input");
+  textInput.type = "text";
+  textInput.className = "field-input";
+  textInput.placeholder = "What update do you need to send?";
+  textInput.required = true;
+
+  const toUpdateInput = document.createElement("input");
+  toUpdateInput.type = "text";
+  toUpdateInput.className = "field-input";
+  toUpdateInput.placeholder = "Who needs this update?";
+  toUpdateInput.required = true;
+
+  const ownerLabel = document.createElement("label");
+  ownerLabel.className = "field-label";
+  ownerLabel.textContent = "Owner (optional)";
+
+  const ownerSelect = document.createElement("select");
+  ownerSelect.className = "field-input";
+  addOption(ownerSelect, "", "No owner");
+  for (const person of activePeople) {
+    addOption(ownerSelect, person.id, person.name || person.id);
+  }
+  ownerLabel.appendChild(ownerSelect);
+
+  const createButton = document.createElement("button");
+  createButton.type = "submit";
+  createButton.className = "enter-mode-button";
+  createButton.textContent = "Add update";
+
+  form.append(textInput, toUpdateInput, ownerLabel, createButton);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    const result = saveUpdate(
+      mode,
+      {
+        text: textInput.value,
+        ownerId: ownerSelect.value,
+        toUpdate: [{ personId: "", note: toUpdateInput.value, status: "pending" }]
+      },
+      "",
+      activePeople
+    );
+
+    if (!result.ok) {
+      alert(result.error || "Unable to save update.");
+      return;
+    }
+
+    const next = renderWorkUpdatesModule({ mode, people, meetings });
+    section.replaceWith(next);
+  });
 
   const summary = document.createElement("p");
   summary.className = "module-intro";
@@ -42,7 +100,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = "No active updates yet. Add one from the updates workflow.";
-    section.append(title, intro, summary, empty);
+    section.append(title, intro, summary, form, empty);
     return section;
   }
 
@@ -50,7 +108,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     const item = document.createElement("li");
     item.className = "updates-list-item";
 
-    const ownerName = people.find((person) => person.id === update.ownerId)?.name || "No owner";
+    const ownerName = resolveOwnerDisplayName(update, people);
     const meetingName = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
 
     const pendingCount = selectPendingPeopleCount(update);
@@ -60,7 +118,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     list.appendChild(item);
   }
 
-  section.append(title, intro, summary, list);
+  section.append(title, intro, summary, form, list);
   return section;
 }
 
@@ -84,7 +142,7 @@ export function loadUpdates(mode) {
 /**
  * Creates or updates an update record and appends an audit event.
  */
-export function saveUpdate(mode, draft, editingId = "") {
+export function saveUpdate(mode, draft, editingId = "", people = null) {
   if (mode !== "work") {
     return { ok: false, error: "Updates are currently supported only in work mode." };
   }
@@ -95,6 +153,18 @@ export function saveUpdate(mode, draft, editingId = "") {
   }
   if (!normalisedDraft.toUpdate.length) {
     return { ok: false, error: "At least one person to update is required." };
+  }
+  // Referential integrity: `ownerId` is a soft foreign key to People.
+  // We allow empty owner values, but non-empty ids must resolve in current active People.
+  if (Array.isArray(people)) {
+    const validOwnerIds = new Set(
+      people
+        .filter((person) => person && !person.archived && typeof person.id === "string")
+        .map((person) => person.id)
+    );
+    if (normalisedDraft.ownerId && !validOwnerIds.has(normalisedDraft.ownerId)) {
+      return { ok: false, error: "Selected owner no longer exists in active people." };
+    }
   }
 
   const now = new Date().toISOString();
@@ -130,6 +200,26 @@ export function saveUpdate(mode, draft, editingId = "") {
 
   persistUpdates(mode, updates);
   return { ok: true, message: "Update created." };
+}
+
+function resolveOwnerDisplayName(update, people) {
+  if (!update.ownerId) {
+    return "No owner";
+  }
+
+  const owner = people.find((person) => person.id === update.ownerId);
+  if (!owner) {
+    return "Unknown (archived/deleted)";
+  }
+
+  return owner.name || update.ownerId;
+}
+
+function addOption(select, value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  select.appendChild(option);
 }
 
 /**
