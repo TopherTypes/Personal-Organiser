@@ -183,7 +183,10 @@ export function renderWorkMeetingsModule({
   }
 
   function openEditor(meeting, { source }) {
-    state.draft = { ...meeting };
+    state.draft = {
+      ...meeting,
+      draftLinkedUpdates: normaliseDraftLinkedUpdates(meeting.draftLinkedUpdates, meeting.chairId)
+    };
     state.dirtyDraft = false;
     state.draftSource = source;
     state.lastAutoSaveAt = "";
@@ -341,30 +344,111 @@ export function renderWorkMeetingsModule({
     const updateFields = document.createElement("div");
     updateFields.className = "meeting-update-fields hidden";
 
-    const updateTextWrap = document.createElement("label");
-    updateTextWrap.className = "field-label";
-    updateTextWrap.textContent = "Update text";
-    const updateTextInput = document.createElement("textarea");
-    updateTextInput.className = "field-input field-textarea";
-    updateTextInput.placeholder = "Summarise the meeting update";
-    updateTextWrap.appendChild(updateTextInput);
+    const updateRows = document.createElement("div");
+    updateRows.className = "meeting-update-rows";
 
-    const updateToAudienceWrap = buildLabeledInput(
-      "Who needs this update?",
-      "text",
-      "",
-      false
-    );
-    updateToAudienceWrap.input.placeholder = "Example: leadership team";
+    const updateActions = document.createElement("div");
+    updateActions.className = "meeting-update-actions";
 
-    const updateOwnerWrap = buildLabeledInput("Update owner (person id)", "text", state.draft.chairId || "");
+    const addUpdateRowButton = document.createElement("button");
+    addUpdateRowButton.type = "button";
+    addUpdateRowButton.className = "module-button-secondary";
+    addUpdateRowButton.textContent = "Add another update";
+
+    updateActions.appendChild(addUpdateRowButton);
 
     const updateHint = document.createElement("small");
     updateHint.className = "module-intro";
     updateHint.textContent =
-      "Meeting will be saved first so the update can be linked to a durable meeting id.";
+      "You can add multiple linked updates. Meeting is always saved first so each update links to a durable meeting id.";
 
-    updateFields.append(updateTextWrap, updateToAudienceWrap.wrapper, updateOwnerWrap.wrapper, updateHint);
+    const activePeople = people.filter((person) => !person.archived);
+    const updateOwnerOptions = [
+      { value: "", label: "No owner" },
+      ...activePeople.map((person) => ({ value: person.id, label: person.name || person.id }))
+    ];
+    const updateRecipientOptions = activePeople.map((person) => ({ value: person.id, label: person.name || person.id }));
+
+    const renderLinkedUpdateRows = () => {
+      updateRows.innerHTML = "";
+      const linkedUpdates = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId);
+      state.draft.draftLinkedUpdates = linkedUpdates;
+
+      linkedUpdates.forEach((linkedUpdate, index) => {
+        const rowWrap = document.createElement("article");
+        rowWrap.className = "meeting-update-row";
+
+        const rowTitle = document.createElement("p");
+        rowTitle.className = "module-intro";
+        rowTitle.textContent = `Linked update ${index + 1}`;
+
+        const updateTextWrap = document.createElement("label");
+        updateTextWrap.className = "field-label";
+        updateTextWrap.textContent = "Update text";
+        const updateTextInput = document.createElement("textarea");
+        updateTextInput.className = "field-input field-textarea";
+        updateTextInput.placeholder = "Summarise the meeting update";
+        updateTextInput.value = linkedUpdate.text;
+        updateTextInput.addEventListener("input", () => {
+          state.draft.draftLinkedUpdates[index].text = updateTextInput.value;
+          state.dirtyDraft = true;
+        });
+        updateTextWrap.appendChild(updateTextInput);
+
+        const updateOwnerField = buildSingleSelectField({
+          label: "Update owner",
+          options: updateOwnerOptions,
+          value: linkedUpdate.ownerId,
+          emptyMessage: "Add people first to select an owner."
+        });
+        updateOwnerField.select.addEventListener("change", () => {
+          state.draft.draftLinkedUpdates[index].ownerId = updateOwnerField.select.value;
+          state.dirtyDraft = true;
+        });
+
+        const updateRecipientField = buildMultiSelectField({
+          label: "Recipients",
+          options: updateRecipientOptions,
+          values: linkedUpdate.recipientIds,
+          emptyMessage: "Add people first to select recipients."
+        });
+        updateRecipientField.select.addEventListener("change", () => {
+          state.draft.draftLinkedUpdates[index].recipientIds = readSelectedValues(updateRecipientField.select);
+          state.dirtyDraft = true;
+        });
+
+        const removeUpdateRowButton = document.createElement("button");
+        removeUpdateRowButton.type = "button";
+        removeUpdateRowButton.className = "module-button-secondary";
+        removeUpdateRowButton.textContent = "Remove update";
+        removeUpdateRowButton.disabled = state.draft.draftLinkedUpdates.length <= 1;
+        removeUpdateRowButton.addEventListener("click", () => {
+          state.draft.draftLinkedUpdates.splice(index, 1);
+          if (!state.draft.draftLinkedUpdates.length) {
+            state.draft.draftLinkedUpdates.push(buildDefaultLinkedUpdateDraft(state.draft.chairId));
+          }
+          state.dirtyDraft = true;
+          renderLinkedUpdateRows();
+        });
+
+        rowWrap.append(
+          rowTitle,
+          updateTextWrap,
+          updateOwnerField.wrapper,
+          updateRecipientField.wrapper,
+          removeUpdateRowButton
+        );
+        updateRows.appendChild(rowWrap);
+      });
+    };
+
+    addUpdateRowButton.addEventListener("click", () => {
+      state.draft.draftLinkedUpdates.push(buildDefaultLinkedUpdateDraft(state.draft.chairId));
+      state.dirtyDraft = true;
+      renderLinkedUpdateRows();
+    });
+
+    updateFields.append(updateRows, updateActions, updateHint);
     updateComposerWrap.append(updateToggleButton, updateFields);
 
     fields.append(
@@ -410,8 +494,24 @@ export function renderWorkMeetingsModule({
       state.draft.status = statusSelect.value;
       // UX intentionally constrains selection to canonical entities so free-typed IDs cannot silently
       // create broken references; this improves both data integrity and in-form discoverability.
+      const previousChairId = state.draft.chairId;
       state.draft.chairId = chairField.select.value;
       state.draft.attendeeIds = readSelectedValues(attendeeField.select);
+      // Keep linked update owner defaults aligned with chair changes when rows are still unassigned.
+      if (previousChairId !== state.draft.chairId) {
+        state.draft.draftLinkedUpdates = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, previousChairId).map((row) => {
+          if (row.ownerId && row.ownerId !== previousChairId) {
+            return row;
+          }
+          return {
+            ...row,
+            ownerId: state.draft.chairId
+          };
+        });
+        if (!updateFields.classList.contains("hidden")) {
+          renderLinkedUpdateRows();
+        }
+      }
       state.draft.projectId = projectSelect.value;
       state.draft.allowPostStatusEdits = toggle.checked;
       if (!notesInput.disabled) {
@@ -447,19 +547,36 @@ export function renderWorkMeetingsModule({
       syncDraft();
 
       const shouldCreateUpdate = !updateFields.classList.contains("hidden");
-      const updateText = updateTextInput.value.trim();
-      const toAudienceNote = updateToAudienceWrap.input.value.trim();
-      const ownerId = updateOwnerWrap.input.value.trim();
+      const linkedUpdateRows = shouldCreateUpdate
+        ? normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId)
+        : [];
 
-      if (shouldCreateUpdate && !updateText) {
-        alert("Update text is required when creating a linked update.");
+      const validationErrors = [];
+      const rowsToPersist = [];
+      linkedUpdateRows.forEach((row, index) => {
+        const hasRowInput = Boolean(row.text || row.ownerId || row.recipientIds.length);
+        if (!hasRowInput) {
+          return;
+        }
+
+        if (!row.text) {
+          validationErrors.push(`Linked update ${index + 1}: update text is required.`);
+        }
+        if (!row.recipientIds.length) {
+          validationErrors.push(`Linked update ${index + 1}: select at least one recipient.`);
+        }
+
+        rowsToPersist.push({ rowIndex: index, row });
+      });
+
+      if (validationErrors.length) {
+        alert(validationErrors.join("\n"));
         return;
       }
-      if (shouldCreateUpdate && !toAudienceNote) {
-        alert("Describe who needs this update to create a linked update.");
-        return;
-      }
 
+      // Data integrity ordering:
+      // 1) Persist the meeting first so newly created meetings receive a stable id.
+      // 2) Create linked updates second so each update can reference `meetingId` safely.
       const result = saveMeeting(mode, state.draft, state.draftSource);
       if (!result.ok) {
         alert(result.error);
@@ -467,27 +584,40 @@ export function renderWorkMeetingsModule({
       }
 
       let message = result.message;
-      if (shouldCreateUpdate) {
-        // Ordering constraint: a linked update must reference a persisted meeting id.
-        // New meetings have no stable id until after `saveMeeting` completes.
-        const updateResult = saveUpdate(
-          mode,
-          {
-            text: updateText,
-            ownerId,
-            toUpdate: [{ personId: "", note: toAudienceNote, status: "pending" }],
-            meetingId: result.meetingId
-          },
-          "",
-          people.filter((person) => !person.archived)
-        );
+      if (shouldCreateUpdate && rowsToPersist.length) {
+        const updateErrors = [];
+        let createdCount = 0;
 
-        if (!updateResult.ok) {
-          alert(updateResult.error || "Failed to create linked update.");
+        rowsToPersist.forEach(({ rowIndex, row }) => {
+          const updateResult = saveUpdate(
+            mode,
+            {
+              text: row.text,
+              ownerId: row.ownerId,
+              toUpdate: row.recipientIds.map((personId) => ({ personId, status: "pending" })),
+              meetingId: result.meetingId
+            },
+            "",
+            activePeople
+          );
+
+          if (!updateResult.ok) {
+            updateErrors.push(`Linked update ${rowIndex + 1}: ${updateResult.error || "Failed to create linked update."}`);
+            return;
+          }
+
+          createdCount += 1;
+        });
+
+        if (updateErrors.length) {
+          alert([
+            "Meeting saved, but some linked updates could not be created:",
+            ...updateErrors
+          ].join("\n"));
           return;
         }
 
-        message = `${message} Linked update created.`;
+        message = `${message} ${createdCount} linked update${createdCount === 1 ? "" : "s"} created.`;
       }
 
       state.feedback = message;
@@ -516,15 +646,23 @@ export function renderWorkMeetingsModule({
       const isCurrentlyHidden = updateFields.classList.contains("hidden");
       updateFields.classList.toggle("hidden", !isCurrentlyHidden);
       updateToggleButton.textContent = isCurrentlyHidden
-        ? "Hide update composer"
+        ? "Hide linked updates"
         : "Create update from this meeting";
 
       if (isCurrentlyHidden) {
-        // Prefill update text from notes snippet to reduce duplicate typing.
-        const notesSnippet = (notesInput.value || state.draft.notes || "").trim().slice(0, 240);
-        updateTextInput.value = notesSnippet;
+        if (!state.draft.draftLinkedUpdates.length) {
+          state.draft.draftLinkedUpdates = [buildDefaultLinkedUpdateDraft(state.draft.chairId)];
+        }
+        // Prefill the first row from notes to reduce duplicate typing when creating linked updates.
+        if (!state.draft.draftLinkedUpdates[0].text) {
+          const notesSnippet = (notesInput.value || state.draft.notes || "").trim().slice(0, 240);
+          state.draft.draftLinkedUpdates[0].text = notesSnippet;
+        }
+        renderLinkedUpdateRows();
       }
     });
+
+    renderLinkedUpdateRows();
   }
 
   renderModule();
@@ -749,7 +887,8 @@ function buildDefaultMeeting(date, prefill = null) {
     projectId: "",
     notes: prefill?.notes || "",
     allowPostStatusEdits: false,
-    archived: false
+    archived: false,
+    draftLinkedUpdates: [buildDefaultLinkedUpdateDraft(prefill?.chairId || "")]
   };
 }
 
@@ -790,6 +929,7 @@ function saveMeeting(mode, draft, source) {
 
   const now = new Date().toISOString();
   const meetings = loadMeetings(mode);
+  const normalisedDraft = normaliseMeeting(draft);
 
   if (draft.id) {
     const index = meetings.findIndex((meeting) => meeting.id === draft.id);
@@ -797,14 +937,14 @@ function saveMeeting(mode, draft, source) {
       return { ok: false, error: "Meeting no longer exists." };
     }
     const existing = meetings[index];
-    const statusChanged = existing.status !== draft.status;
+    const statusChanged = existing.status !== normalisedDraft.status;
 
     meetings[index] = {
       ...existing,
-      ...draft,
+      ...normalisedDraft,
       updatedAt: now,
       statusHistory: statusChanged
-        ? [...existing.statusHistory, { status: draft.status, at: now }]
+        ? [...existing.statusHistory, { status: normalisedDraft.status, at: now }]
         : existing.statusHistory,
       auditTrail: [
         ...existing.auditTrail,
@@ -832,11 +972,11 @@ function saveMeeting(mode, draft, source) {
 
   const meetingId = buildId();
   meetings.push({
-    ...normaliseMeeting(draft),
+    ...normalisedDraft,
     id: meetingId,
     createdAt: now,
     updatedAt: now,
-    statusHistory: [{ status: draft.status || "scheduled", at: now }],
+    statusHistory: [{ status: normalisedDraft.status || "scheduled", at: now }],
     auditTrail: [{ at: now, action: "created", source: source || "editor" }],
     lastUpdatedByField: {
       name: now,
@@ -937,6 +1077,36 @@ export function normaliseMeeting(meeting) {
   };
 }
 
+
+function buildDefaultLinkedUpdateDraft(ownerId = "") {
+  return {
+    text: "",
+    ownerId,
+    recipientIds: []
+  };
+}
+
+function normaliseDraftLinkedUpdates(value, fallbackOwnerId = "") {
+  if (!Array.isArray(value) || !value.length) {
+    return [buildDefaultLinkedUpdateDraft(fallbackOwnerId)];
+  }
+
+  const rows = value
+    .map((row) => {
+      if (!row || typeof row !== "object") {
+        return null;
+      }
+      return {
+        text: typeof row.text === "string" ? row.text.trim() : "",
+        ownerId: typeof row.ownerId === "string" ? row.ownerId : fallbackOwnerId,
+        recipientIds: parseEntityIdList(row.recipientIds)
+      };
+    })
+    .filter(Boolean);
+
+  return rows.length ? rows : [buildDefaultLinkedUpdateDraft(fallbackOwnerId)];
+}
+
 function parseEntityIdList(value) {
   const rawValues = Array.isArray(value) ? value : String(value || "").split(",");
   return [...new Set(rawValues.map((item) => String(item).trim()).filter(Boolean))];
@@ -952,7 +1122,15 @@ function loadDraft(mode) {
     return null;
   }
   const parsed = safeJsonParse(raw, null);
-  return parsed ? normaliseMeeting(parsed) : null;
+  if (!parsed) {
+    return null;
+  }
+
+  const meetingDraft = normaliseMeeting(parsed);
+  return {
+    ...meetingDraft,
+    draftLinkedUpdates: normaliseDraftLinkedUpdates(parsed.draftLinkedUpdates, meetingDraft.chairId)
+  };
 }
 
 function clearDraft(mode) {
