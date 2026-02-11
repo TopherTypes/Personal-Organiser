@@ -1,5 +1,6 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } from "./storage-core.js";
+import { buildMultiSelectField, hydrateSelectOptions, readSelectedValues } from "./select-controls.js";
 
 const TASK_STORAGE_KEY_PREFIX = "second-brain.work.tasks";
 const TASK_SCHEMA_VERSION = 1;
@@ -206,6 +207,7 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
       panelWrap.append(
         createTaskForm({
           task,
+          tasks,
           people,
           projects,
           onCancel: () => {
@@ -326,7 +328,7 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
   return row;
 }
 
-function createTaskForm({ task, people, projects, onSave, onCancel }) {
+function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   const form = document.createElement("form");
   form.className = "meeting-slideover";
 
@@ -401,20 +403,26 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
   );
 
   const notes = createField("Notes", "textarea", task?.notes || "", false);
-  const blockedByTaskIds = createField(
-    "Blocked by task IDs (comma-separated)",
-    "text",
-    serialiseTaskIdList(task?.blockedByTaskIds),
-    false,
-    { placeholder: "task_ab12cd34, task_ef56gh78" }
-  );
-  const blockingTaskIds = createField(
-    "Blocking task IDs (comma-separated)",
-    "text",
-    serialiseTaskIdList(task?.blockingTaskIds),
-    false,
-    { placeholder: "task_xy98zt76" }
-  );
+
+  const dependencyOptions = tasks
+    .filter((candidate) => candidate.id !== (task?.id || ""))
+    .map((candidate) => ({
+      value: candidate.id,
+      label: `${candidate.title} (${toTitleCase(candidate.status)})`
+    }));
+
+  const blockedByTaskIds = buildMultiSelectField({
+    label: "Blocked by",
+    options: dependencyOptions,
+    values: parseTaskIdList(task?.blockedByTaskIds),
+    emptyMessage: "Create another task first to link dependencies."
+  });
+  const blockingTaskIds = buildMultiSelectField({
+    label: "Blocking",
+    options: dependencyOptions,
+    values: parseTaskIdList(task?.blockingTaskIds),
+    emptyMessage: "Create another task first to link dependencies."
+  });
 
   const actions = document.createElement("div");
   actions.className = "meeting-actions";
@@ -431,8 +439,8 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
     dueDate.wrap,
     recurrenceWrap,
     customRecurrence.wrap,
-    blockedByTaskIds.wrap,
-    blockingTaskIds.wrap,
+    blockedByTaskIds.wrapper,
+    blockingTaskIds.wrapper,
     notes.wrap,
     actions
   );
@@ -449,8 +457,9 @@ function createTaskForm({ task, people, projects, onSave, onCancel }) {
       dueDate: dueDate.input.value,
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
-      blockedByTaskIds: parseTaskIdList(blockedByTaskIds.input.value),
-      blockingTaskIds: parseTaskIdList(blockingTaskIds.input.value),
+      // Dependencies are selected from canonical task entities so users cannot type orphan IDs.
+      blockedByTaskIds: readSelectedValues(blockedByTaskIds.select),
+      blockingTaskIds: readSelectedValues(blockingTaskIds.select),
       notes: notes.input.value.trim(),
       archived: Boolean(task?.archived)
     });
@@ -465,9 +474,7 @@ function createSelectFilter(labelText, selected, options, onChange) {
   wrap.textContent = labelText;
   const select = document.createElement("select");
   select.className = "field-input";
-  for (const option of options) {
-    addOption(select, option.value, option.label);
-  }
+  hydrateSelectOptions(select, options);
   select.value = selected;
   select.addEventListener("change", () => onChange(select.value));
   wrap.appendChild(select);
@@ -518,6 +525,13 @@ function saveTask(mode, payload, editingId = "") {
 
   const tasks = loadTasks(mode);
   const now = new Date().toISOString();
+  const allowedDependencyTaskIds = new Set(tasks.map((task) => task.id));
+  if (editingId) {
+    allowedDependencyTaskIds.delete(editingId);
+  }
+
+  const canonicalBlockedByTaskIds = normalisedBlockedByTaskIds.filter((id) => allowedDependencyTaskIds.has(id));
+  const canonicalBlockingTaskIds = normalisedBlockingTaskIds.filter((id) => allowedDependencyTaskIds.has(id));
 
   if (editingId) {
     const index = tasks.findIndex((task) => task.id === editingId);
@@ -530,8 +544,8 @@ function saveTask(mode, payload, editingId = "") {
       ...existing,
       ...payload,
       status: canonicalStatus,
-      blockedByTaskIds: normalisedBlockedByTaskIds,
-      blockingTaskIds: normalisedBlockingTaskIds,
+      blockedByTaskIds: canonicalBlockedByTaskIds,
+      blockingTaskIds: canonicalBlockingTaskIds,
       updatedAt: now,
       lastUpdatedByField: {
         ...existing.lastUpdatedByField,
@@ -560,8 +574,8 @@ function saveTask(mode, payload, editingId = "") {
       id: buildTaskId(),
       ...payload,
       status: canonicalStatus,
-      blockedByTaskIds: normalisedBlockedByTaskIds,
-      blockingTaskIds: normalisedBlockingTaskIds,
+      blockedByTaskIds: canonicalBlockedByTaskIds,
+      blockingTaskIds: canonicalBlockingTaskIds,
       createdAt: now,
       updatedAt: now,
       lastUpdatedByField: {
@@ -707,12 +721,9 @@ export function normaliseTaskStatus(status) {
 }
 
 function parseTaskIdList(value) {
+  // Migration-safe fallback: legacy records persisted dependency IDs as comma-separated strings.
   const values = Array.isArray(value) ? value : String(value || "").split(",");
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
-}
-
-function serialiseTaskIdList(value) {
-  return parseTaskIdList(value).join(", ");
 }
 
 function buildDependencyStateLabel(task, taskById) {
