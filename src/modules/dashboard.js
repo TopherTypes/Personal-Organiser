@@ -12,6 +12,7 @@ import { renderPersonalExerciseLogModule } from "./personal-exercise-log.js";
 import { renderPersonalPeopleModule } from "./personal-people.js";
 import { renderPersonalCalendarModule } from "./personal-calendar.js";
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { safeJsonParse, safeJsonWrite } from "./storage-core.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 
 /**
@@ -757,7 +758,13 @@ function renderWorkPeopleModule(uiContext = {}) {
             return;
           }
 
-          archivePerson(state.mode, selectedPerson.id, nextArchivedValue);
+          const archiveResult = archivePerson(state.mode, selectedPerson.id, nextArchivedValue);
+          if (!archiveResult.ok) {
+            state.feedback = archiveResult.error;
+            renderPeopleModule();
+            return;
+          }
+
           state.feedback = nextArchivedValue
             ? `Archived ${selectedPerson.name}.`
             : `Restored ${selectedPerson.name}.`;
@@ -1381,7 +1388,12 @@ function savePerson(mode, payload, editingId) {
     return { ok: false, error: "Name is required." };
   }
 
-  const people = loadPeople(mode);
+  const loaded = loadPeopleForMutation(mode);
+  if (!loaded.ok) {
+    return { ok: false, error: loaded.error };
+  }
+
+  const people = loaded.people;
   const now = new Date().toISOString();
 
   if (editingId) {
@@ -1409,7 +1421,12 @@ function savePerson(mode, payload, editingId) {
     };
 
     people[index] = updated;
-    persistPeople(mode, people);
+    if (!persistPeople(mode, people)) {
+      return {
+        ok: false,
+        error: "Unable to save contact changes because local storage is full or unavailable."
+      };
+    }
     return { ok: true, wasEdit: true, person: updated };
   }
 
@@ -1436,7 +1453,13 @@ function savePerson(mode, payload, editingId) {
   };
 
   people.push(nextPerson);
-  persistPeople(mode, people);
+  if (!persistPeople(mode, people)) {
+    return {
+      ok: false,
+      error: "Unable to save contact because local storage is full or unavailable."
+    };
+  }
+
   return { ok: true, wasEdit: false, person: nextPerson };
 }
 
@@ -1444,7 +1467,12 @@ function savePerson(mode, payload, editingId) {
  * Archive/restore toggle to avoid destructive data loss.
  */
 function archivePerson(mode, personId, archivedValue) {
-  const people = loadPeople(mode);
+  const loaded = loadPeopleForMutation(mode);
+  if (!loaded.ok) {
+    return loaded;
+  }
+
+  const people = loaded.people;
   const now = new Date().toISOString();
 
   const updated = people.map((person) => {
@@ -1463,7 +1491,14 @@ function archivePerson(mode, personId, archivedValue) {
     };
   });
 
-  persistPeople(mode, updated);
+  if (!persistPeople(mode, updated)) {
+    return {
+      ok: false,
+      error: "Unable to update archive status because local storage is full or unavailable."
+    };
+  }
+
+  return { ok: true };
 }
 
 /**
@@ -1474,7 +1509,12 @@ function quickUpdateContact(mode, personId, { date, note }) {
     return { ok: false, error: "Contact date is required for quick updates." };
   }
 
-  const people = loadPeople(mode);
+  const loaded = loadPeopleForMutation(mode);
+  if (!loaded.ok) {
+    return loaded;
+  }
+
+  const people = loaded.people;
   const now = new Date().toISOString();
 
   const updated = people.map((person) => {
@@ -1496,7 +1536,13 @@ function quickUpdateContact(mode, personId, { date, note }) {
     };
   });
 
-  persistPeople(mode, updated);
+  if (!persistPeople(mode, updated)) {
+    return {
+      ok: false,
+      error: "Unable to save contact update because local storage is full or unavailable."
+    };
+  }
+
   return { ok: true };
 }
 
@@ -1517,16 +1563,34 @@ function loadPeople(mode) {
     return [];
   }
 
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.map(normalisePerson);
-  } catch {
+  const parsed = safeJsonParse(raw, null);
+  if (!Array.isArray(parsed)) {
     return [];
   }
+
+  return parsed.map(normalisePerson);
+}
+
+/**
+ * Loads people for mutating writes and blocks destructive saves when persisted data is malformed.
+ */
+function loadPeopleForMutation(mode) {
+  const storageKey = `${STORAGE_KEY_PREFIX}.${mode}.v1`;
+  const raw = localStorage.getItem(storageKey);
+
+  if (!raw) {
+    return { ok: true, people: [] };
+  }
+
+  const parsed = safeJsonParse(raw, null);
+  if (!Array.isArray(parsed)) {
+    return {
+      ok: false,
+      error: "Unable to save contacts because stored people data is unreadable. Restore from backup before editing."
+    };
+  }
+
+  return { ok: true, people: parsed.map(normalisePerson) };
 }
 
 /**
@@ -1534,7 +1598,7 @@ function loadPeople(mode) {
  */
 function persistPeople(mode, people) {
   const storageKey = `${STORAGE_KEY_PREFIX}.${mode}.v1`;
-  localStorage.setItem(storageKey, JSON.stringify(people));
+  return safeJsonWrite(storageKey, people);
 }
 
 /**
