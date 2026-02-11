@@ -2,8 +2,10 @@ import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
 import { saveUpdate } from "./updates.js";
 import {
+  buildEntityTokenMultiSelectField,
   buildMultiSelectField,
   buildSingleSelectField,
+  readEntityTokenHiddenValues,
   readSelectedValues
 } from "./select-controls.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
@@ -257,13 +259,16 @@ export function renderWorkMeetingsModule({
       value: state.draft.chairId || "",
       emptyMessage: "Add people first to select a meeting chair."
     });
-    const attendeeField = buildMultiSelectField({
+    // Person-entity selection benefits from token-based autocomplete because it scales better than
+    // native <select multiple> for long directories while still constraining IDs to canonical people.
+    const attendeeField = buildEntityTokenMultiSelectField({
       label: "Attendees",
       options: people
         .filter((person) => !person.archived)
         .map((person) => ({ value: person.id, label: person.name || person.id })),
       values: state.draft.attendeeIds || [],
-      emptyMessage: "Add people first to select meeting attendees."
+      emptyMessage: "Add people first to select meeting attendees.",
+      inputPlaceholder: "Search attendees"
     });
 
     const projectWrap = document.createElement("label");
@@ -496,7 +501,10 @@ export function renderWorkMeetingsModule({
       // create broken references; this improves both data integrity and in-form discoverability.
       const previousChairId = state.draft.chairId;
       state.draft.chairId = chairField.select.value;
-      state.draft.attendeeIds = readSelectedValues(attendeeField.select);
+      const selectedAttendeeIds = readEntityTokenHiddenValues(attendeeField.hiddenInput);
+      // Persist attendees in stable insertion order with deduplication so autosave and submit payloads
+      // remain deterministic even after repeated add/remove cycles inside the token control.
+      state.draft.attendeeIds = [...new Set(selectedAttendeeIds)];
       // Keep linked update owner defaults aligned with chair changes when rows are still unassigned.
       if (previousChairId !== state.draft.chairId) {
         state.draft.draftLinkedUpdates = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, previousChairId).map((row) => {
@@ -530,7 +538,7 @@ export function renderWorkMeetingsModule({
       typeSelect,
       statusSelect,
       chairField.select,
-      attendeeField.select,
+      attendeeField.hiddenInput,
       projectSelect,
       toggle
     ].forEach((field) => field.addEventListener("input", syncDraft));
