@@ -44,7 +44,14 @@ const state = {
     retries: 0
   },
   // Tracks whether we are still in the very first app-level sync experience.
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+  isInitialSyncPending: true,
+  // Keeps the progress bar monotonic during the initial sync so repeated
+  // pull/merge passes never appear to jump backwards in the UI.
+  initialSyncProgressPeak: 0
+=======
   isInitialSyncPending: true
+>>>>>>> main
 };
 
 /**
@@ -61,6 +68,10 @@ const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
     syncInitialSyncExperienceState();
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+    syncInitialSyncProgressTracker();
+=======
+>>>>>>> main
 
     // Sync updates change only top-bar information. Patching the header in place
     // avoids remounting module content, which would otherwise close transient UI
@@ -183,6 +194,29 @@ function syncInitialSyncExperienceState() {
   }
 }
 
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+
+/**
+ * Maintains a non-decreasing progress baseline while the initial sync is active.
+ *
+ * Why this exists:
+ * - Sync can run more than one pull/merge/push pass during startup (for example
+ *   a startup trigger followed by an auth-boot trigger).
+ * - Without a peak tracker the progress UI can move backwards (e.g. 90% -> 45%),
+ *   which looks like a regression to users even though sync is still healthy.
+ */
+function syncInitialSyncProgressTracker() {
+  if (!state.isInitialSyncPending || !state.sync.isSyncing) {
+    state.initialSyncProgressPeak = 0;
+    return;
+  }
+
+  const stageProgress = baseInitialSyncProgressValue(state.sync.syncStatus, state.sync.isSyncing);
+  state.initialSyncProgressPeak = Math.max(state.initialSyncProgressPeak, stageProgress);
+}
+
+=======
+>>>>>>> main
 /**
  * Builds a blocking modal for the first automatic sync so users avoid editing
  * data while initial reconciliation is in progress.
@@ -254,11 +288,32 @@ function initialSyncProgressValue(syncStatus, isSyncing) {
     return 100;
   }
 
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+  const baseProgress = baseInitialSyncProgressValue(syncStatus, isSyncing);
+  return Math.max(baseProgress, state.initialSyncProgressPeak);
+}
+
+/**
+ * Returns stage-level baseline progress percentages for first-sync UX.
+ */
+function baseInitialSyncProgressValue(syncStatus, isSyncing) {
+  if (!isSyncing) {
+    return 100;
+  }
+
+=======
+>>>>>>> main
   switch (syncStatus) {
     case "auth-check":
       return 15;
     case "pulling":
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+      // If we've already reached push, a later pull represents verification,
+      // not a restart, so keep progress near completion.
+      return state.initialSyncProgressPeak >= 90 ? 95 : 45;
+=======
       return 45;
+>>>>>>> main
     case "merging":
       return 70;
     case "pushing":
@@ -273,7 +328,13 @@ function describeInitialSyncStage(syncStatus) {
     case "auth-check":
       return "Checking account access…";
     case "pulling":
+<<<<<<< codex/enhance-ui-for-sync-and-lists-4zoeww
+      return state.initialSyncProgressPeak >= 90
+        ? "Verifying cloud state after upload…"
+        : "Pulling cloud data…";
+=======
       return "Pulling cloud data…";
+>>>>>>> main
     case "merging":
       return "Reconciling records…";
     case "pushing":

@@ -546,6 +546,8 @@ textarea:focus-visible,
 .sprints-list,
 .projects-card-list {
   max-height: 60vh;
+  /* Prevent CSS grid children from overflowing when nested in constrained panels. */
+  min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding-right: var(--space-1);
@@ -674,9 +676,22 @@ textarea:focus-visible,
   min-height: 100%;
 }
 
+/**
+ * The people list panel uses a vertical flex layout so the list can stretch to
+ * the full available card height and keep its own scrollbar at the bottom edge.
+ */
+.people-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .people-list {
   display: grid;
   gap: var(--space-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .people-selection-list {
