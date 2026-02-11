@@ -75,10 +75,21 @@ function renderSyncStatus(syncState, onSyncAction) {
   const action = document.createElement("button");
   action.type = "button";
   action.className = "sync-action-button";
+
   if (syncState?.authStatus === "signed-in") {
+    const accountLabel = document.createElement("small");
+    accountLabel.className = "sync-account-label";
+    accountLabel.textContent = syncState?.authSession?.email
+      ? `Connected: ${syncState.authSession.email}`
+      : "Connected to Drive";
+    wrap.appendChild(accountLabel);
+
     action.textContent = "Sync now";
     action.disabled = syncState?.syncStatus === "syncing";
     action.addEventListener("click", () => onSyncAction("sync"));
+  } else if (syncState?.authStatus === "checking") {
+    action.textContent = "Checking Drive session…";
+    action.disabled = true;
   } else {
     action.textContent = "Connect Drive";
     action.addEventListener("click", () => onSyncAction("sign-in"));

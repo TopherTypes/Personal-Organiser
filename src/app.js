@@ -164,7 +164,7 @@ function handleScheduleOneOnOne(person) {
  */
 function handleSyncAction(action) {
   if (action === "sign-in") {
-    syncSubsystem.signIn();
+    void syncSubsystem.signIn();
     return;
   }
 
