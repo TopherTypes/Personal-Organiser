@@ -177,7 +177,20 @@ export function createGoogleAuthClient({
     }
   }
 
-  async function getAccessToken({ interactive = false } = {}) {
+  async function getAccessToken({ interactive = false, allowSilentRefresh = false } = {}) {
+    // Reuse a token already acquired during the current runtime (for example
+    // after user-initiated sign-in) to avoid unnecessary auth round-trips.
+    if (currentAccessToken) {
+      return currentAccessToken;
+    }
+
+    // Non-interactive API calls must not trigger GIS silent popup flows by default,
+    // because some browsers block the popup and emit noisy COOP-related warnings.
+    // Callers can opt in when they explicitly want silent refresh behavior.
+    if (!interactive && !allowSilentRefresh) {
+      throw new Error("Google access token is unavailable without interactive sign-in.");
+    }
+
     const tokenResponse = await acquireToken({ interactive });
     await persistFromTokenResponse(tokenResponse);
     return currentAccessToken;
