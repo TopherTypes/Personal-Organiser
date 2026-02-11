@@ -13,7 +13,7 @@ const sessionUiStateByMode = {
 };
 
 /**
- * Renders the meetings module with calendar/list split layout and slide-over details.
+ * Renders the meetings module with calendar/list split layout and modal meeting editor.
  */
 export function renderWorkMeetingsModule({
   mode = "work",
@@ -101,11 +101,21 @@ export function renderWorkMeetingsModule({
 
   split.append(calendarPane, listPane);
 
-  const slideOver = document.createElement("aside");
-  slideOver.className = "meeting-slideover hidden";
-  slideOver.setAttribute("aria-live", "polite");
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "meeting-modal-overlay hidden";
+  modalOverlay.setAttribute("aria-live", "polite");
+  modalOverlay.addEventListener("click", (event) => {
+    if (event.target !== modalOverlay) {
+      return;
+    }
+    if (state.dirtyDraft && !window.confirm("Discard unsaved meeting changes?")) {
+      return;
+    }
+    closeEditor();
+    renderModule();
+  });
 
-  section.append(header, controls, split, slideOver);
+  section.append(header, controls, split, modalOverlay);
 
   function renderModule() {
     const range = state.view === "week" ? weekRange(state.anchorDate) : monthRange(state.anchorDate);
@@ -171,7 +181,7 @@ export function renderWorkMeetingsModule({
     state.dirtyDraft = false;
     state.draftSource = source;
     state.lastAutoSaveAt = "";
-    renderSlideOver();
+    renderMeetingModal();
     setUnsavedChangesGuard(true);
   }
 
@@ -179,14 +189,19 @@ export function renderWorkMeetingsModule({
     state.draft = null;
     state.dirtyDraft = false;
     state.draftSource = "";
-    slideOver.classList.add("hidden");
-    slideOver.innerHTML = "";
+    modalOverlay.classList.add("hidden");
+    modalOverlay.innerHTML = "";
     setUnsavedChangesGuard(false);
   }
 
-  function renderSlideOver() {
-    slideOver.innerHTML = "";
-    slideOver.classList.remove("hidden");
+  function renderMeetingModal() {
+    modalOverlay.innerHTML = "";
+    modalOverlay.classList.remove("hidden");
+
+    const modal = document.createElement("aside");
+    modal.className = "meeting-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
 
     const heading = document.createElement("h2");
     heading.textContent = state.draft.id ? "Edit meeting" : "Create meeting";
@@ -244,11 +259,30 @@ export function renderWorkMeetingsModule({
     projectSelect.value = state.draft.projectId || "";
     projectWrap.appendChild(projectSelect);
 
+    // Group related scheduling metadata so the modal header area stays compact.
+    const scheduleRow = buildInlineFieldRow([
+      dateInput.wrapper,
+      startInput.wrapper,
+      endInput.wrapper
+    ], "meeting-inline-row-triple");
+
+    // Keep the most frequently adjusted metadata together on one row.
+    const metadataRow = buildInlineFieldRow([
+      typeWrap,
+      statusWrap,
+      projectWrap
+    ], "meeting-inline-row-triple");
+
+    const participantsRow = buildInlineFieldRow([
+      chairInput.wrapper,
+      attendeesWrap
+    ], "meeting-inline-row-double");
+
     const notesWrap = document.createElement("label");
     notesWrap.className = "field-label";
     notesWrap.textContent = "Meeting notes (Markdown supported)";
     const notesInput = document.createElement("textarea");
-    notesInput.className = "field-input field-textarea";
+    notesInput.className = "field-input field-textarea meeting-notes-input";
     notesInput.value = state.draft.notes || "";
 
     const lockInfo = document.createElement("p");
@@ -281,14 +315,9 @@ export function renderWorkMeetingsModule({
 
     fields.append(
       nameInput.wrapper,
-      dateInput.wrapper,
-      startInput.wrapper,
-      endInput.wrapper,
-      typeWrap,
-      statusWrap,
-      chairInput.wrapper,
-      attendeesWrap,
-      projectWrap,
+      scheduleRow,
+      metadataRow,
+      participantsRow,
       notesWrap
     );
 
@@ -314,7 +343,8 @@ export function renderWorkMeetingsModule({
 
     actions.append(saveButton, closeButton);
     form.append(heading, fields, autoSaveText, actions);
-    slideOver.appendChild(form);
+    modal.appendChild(form);
+    modalOverlay.appendChild(modal);
 
     const syncDraft = () => {
       state.draft.name = nameInput.input.value.trim();
@@ -391,7 +421,7 @@ export function renderWorkMeetingsModule({
 
   renderModule();
   if (state.draft) {
-    renderSlideOver();
+    renderMeetingModal();
   }
   return section;
 }
@@ -479,7 +509,9 @@ function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, openEd
     const count = document.createElement("span");
     count.textContent = `${meetingsForDate.length} meeting(s)`;
 
-    card.append(heading, count);
+    const entries = buildCalendarMeetingEntries(meetingsForDate, openEditor);
+
+    card.append(heading, count, entries);
     grid.appendChild(card);
   }
 
@@ -503,11 +535,50 @@ function renderMonthlyCalendar(state, meetingsInRange, allMeetings, range, openE
     const count = document.createElement("span");
     count.textContent = meetingsForDate.length ? `${meetingsForDate.length} items` : "—";
 
-    cell.append(short, count);
+    const entries = buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact: true });
+
+    cell.append(short, count, entries);
     grid.appendChild(cell);
   }
 
   return grid;
+}
+
+function buildInlineFieldRow(fieldElements, layoutClass) {
+  const row = document.createElement("div");
+  row.className = `meeting-inline-row ${layoutClass}`;
+  fieldElements.forEach((element) => row.appendChild(element));
+  return row;
+}
+
+function buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact = false } = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = `calendar-meeting-entries${compact ? " compact" : ""}`;
+
+  const visibleMeetings = meetingsForDate.slice(0, compact ? 2 : 3);
+  for (const meeting of visibleMeetings) {
+    const entry = document.createElement("button");
+    entry.type = "button";
+    entry.className = "calendar-meeting-entry";
+    // Prevent the day-card click handler from creating a new draft when editing an existing meeting.
+    entry.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openEditor(meeting, { source: "calendar-entry" });
+    });
+    entry.textContent = compact
+      ? `${meeting.startTime || "Time TBC"} · ${meeting.name}`
+      : `${meeting.startTime || "Time TBC"} — ${meeting.name}`;
+    wrap.appendChild(entry);
+  }
+
+  if (meetingsForDate.length > visibleMeetings.length) {
+    const more = document.createElement("small");
+    more.className = "module-intro";
+    more.textContent = `+${meetingsForDate.length - visibleMeetings.length} more`;
+    wrap.appendChild(more);
+  }
+
+  return wrap;
 }
 
 function renderMeetingRow(meeting, people, projects, { onOpen, onArchiveToggle }) {
