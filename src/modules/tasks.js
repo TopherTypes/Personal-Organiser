@@ -198,6 +198,7 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
     }
 
     feedback.textContent = state.feedback;
+    feedback.hidden = !state.feedback;
 
     panelWrap.innerHTML = "";
     if (state.isPanelOpen) {
@@ -269,9 +270,23 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   const taskMeta = document.createElement("small");
   taskMeta.className = "person-meta";
-  taskMeta.textContent = `Effort ${task.effort}/10 • Impact ${task.impact}/10 • ${toTitleCase(task.recurrence)}${
+  taskMeta.innerHTML = "";
+
+  const effortSpan = document.createElement("span");
+  effortSpan.className = "task-meta-inline";
+  effortSpan.textContent = `Effort ${task.effort}/10`;
+
+  const impactSpan = document.createElement("span");
+  impactSpan.className = "task-meta-inline";
+  impactSpan.textContent = `Impact ${task.impact}/10`;
+
+  const recurrenceSpan = document.createElement("span");
+  recurrenceSpan.className = "task-meta-inline";
+  recurrenceSpan.textContent = `${toTitleCase(task.recurrence)}${
     task.recurrence === "custom" && task.customRecurrence ? ` (${task.customRecurrence})` : ""
   }`;
+
+  taskMeta.append(effortSpan, document.createTextNode(" • "), impactSpan, document.createTextNode(" • "), recurrenceSpan);
 
   taskCell.append(title, taskMeta);
 
@@ -293,7 +308,11 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   const priorityCell = document.createElement("div");
   priorityCell.className = "tasks-cell";
-  priorityCell.textContent = String(task.priorityScore);
+
+  const priorityPill = document.createElement("span");
+  priorityPill.className = "task-score-pill";
+  priorityPill.textContent = `Score ${task.priorityScore}`;
+  priorityCell.appendChild(priorityPill);
 
   const actions = document.createElement("div");
   actions.className = "tasks-cell tasks-row-actions";

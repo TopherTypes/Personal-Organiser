@@ -128,7 +128,10 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       mode,
       settings: uiContext.settings || {},
       onSettingsChange: uiContext.onSettingsChange,
-      onDataRestore: uiContext.onDataRestore
+      onDataRestore: uiContext.onDataRestore,
+      onBackupRestore: uiContext.onBackupRestore,
+      syncState: uiContext.syncState,
+      onResolveSyncConflicts: uiContext.onResolveSyncConflicts
     });
   }
 
