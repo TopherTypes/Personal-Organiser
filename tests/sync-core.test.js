@@ -61,6 +61,45 @@ test("mergeDocument resolves conflicts with latest field timestamp and only surf
   assert.equal(result.document.items[0].notes, "Local notes");
 });
 
+test("mergeDocument preserves top-level entity array shape and merges by id", () => {
+  const local = [
+    {
+      id: "person-1",
+      name: "Local name",
+      updatedAt: "2026-02-11T10:00:00.000Z",
+      lastUpdatedByField: {
+        name: "2026-02-11T10:00:00.000Z"
+      }
+    },
+    {
+      id: "person-2",
+      name: "Local only",
+      updatedAt: "2026-02-11T10:02:00.000Z",
+      lastUpdatedByField: {
+        name: "2026-02-11T10:02:00.000Z"
+      }
+    }
+  ];
+
+  const remote = [
+    {
+      id: "person-1",
+      name: "Remote name",
+      updatedAt: "2026-02-11T09:58:00.000Z",
+      lastUpdatedByField: {
+        name: "2026-02-11T09:58:00.000Z"
+      }
+    }
+  ];
+
+  const result = mergeDocument(local, remote, "work.people");
+
+  assert.equal(Array.isArray(result.document), true);
+  assert.equal(result.document.length, 2);
+  assert.equal(result.document.find((person) => person.id === "person-1")?.name, "Local name");
+  assert.equal(result.document.find((person) => person.id === "person-2")?.name, "Local only");
+});
+
 
 
 test("mergeDocument preserves local entity collections when remote payload shape is incompatible", () => {
@@ -186,6 +225,22 @@ test("countDocumentDifferences reports changed, added, and removed entities", ()
   assert.equal(countDocumentDifferences(left, right), 2);
   assert.equal(countDocumentDifferences(right, left), 2);
   assert.equal(countDocumentDifferences(left, left), 0);
+});
+
+test("countDocumentDifferences supports top-level entity arrays", () => {
+  const left = [
+    { id: "a", value: 1 },
+    { id: "b", value: 2 }
+  ];
+
+  const right = [
+    { id: "a", value: 1 },
+    { id: "b", value: 3 },
+    { id: "c", value: 4 }
+  ];
+
+  assert.equal(countDocumentDifferences(left, right), 2);
+  assert.equal(countDocumentDifferences(right, left), 2);
 });
 
 test("withRetry retries up to maxAttempts and caps backoff delay", async () => {
