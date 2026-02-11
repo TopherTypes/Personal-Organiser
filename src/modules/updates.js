@@ -189,6 +189,37 @@ export function selectCompletedPeopleCount(update) {
 }
 
 /**
+ * Selects update rows that involve one specific person.
+ *
+ * Reuse guidance:
+ * - Keep this selector as the single source of truth for person-centric filtering
+ *   so list views, meeting prefill flows, and reminders do not drift in behaviour.
+ * - By default, this returns only pending rows from non-archived updates because
+ *   most UX surfaces focus on actionable items.
+ * - Set `includeCompleted` when a screen needs historical visibility.
+ */
+export function selectUpdatesForPerson(updates, personId, { includeCompleted = false, includeArchived = false } = {}) {
+  if (!personId || !Array.isArray(updates)) {
+    return [];
+  }
+
+  return updates.flatMap((update) => {
+    if (!includeArchived && update?.archived) {
+      return [];
+    }
+
+    const matchingEntries = normaliseToUpdateList(update?.toUpdate)
+      .filter((entry) => entry.personId === personId)
+      .filter((entry) => (includeCompleted ? true : entry.status === "pending"));
+
+    return matchingEntries.map((entry) => ({
+      update,
+      entry,
+    }));
+  });
+}
+
+/**
  * Applies schema defaults and normalises nested `toUpdate` entries.
  */
 export function normaliseUpdate(update) {

@@ -6,6 +6,7 @@ import { loadSettings, saveSettings } from "./modules/settings.js";
 import { createSyncSubsystem } from "./modules/sync.js";
 import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
 import { restoreDatasetBackup } from "./modules/dataset-backups.js";
+import { loadUpdates, selectUpdatesForPerson } from "./modules/updates.js";
 
 /**
  * In-memory app state for the shell.
@@ -213,11 +214,22 @@ function handleScheduleOneOnOne(person) {
     return;
   }
 
+  // Keep the prefill context intentionally compact so meeting notes remain scannable
+  // while still surfacing the most important open follow-ups for prep.
+  const pendingUpdates = selectUpdatesForPerson(loadUpdates(state.activeMode), person.id)
+    .map(({ update }) => `• ${update.text}`)
+    .slice(0, 3);
+
+  const pendingUpdatesContext = pendingUpdates.length
+    ? ["Pending updates for prep:", ...pendingUpdates].join("\n")
+    : "";
+
   state.activeModuleByMode[state.activeMode] = "meetings";
   state.meetingPrefillByMode[state.activeMode] = {
     name: `1:1 with ${person.name}`,
     type: "one-on-one",
-    attendeeIds: [person.id]
+    attendeeIds: [person.id],
+    notes: pendingUpdatesContext
   };
   renderApp();
 }

@@ -3,7 +3,7 @@ import { renderWorkProjectsModule } from "./projects.js";
 import { renderWorkTasksModule } from "./tasks.js";
 import { renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
-import { renderWorkUpdatesModule } from "./updates.js";
+import { loadUpdates, markPersonPending, markPersonUpdated, renderWorkUpdatesModule, selectUpdatesForPerson } from "./updates.js";
 import { renderSettingsModule } from "./settings.js";
 import { renderPersonalTasksModule } from "./personal-tasks.js";
 import { renderPersonalProjectsModule } from "./personal-projects.js";
@@ -407,9 +407,26 @@ function renderWorkPeopleModule(uiContext = {}) {
 
     detailPanel.innerHTML = "";
     const selectedPerson = state.selectedPersonId ? findPersonById(state.mode, state.selectedPersonId) : null;
+    const updates = loadUpdates(state.mode);
 
     detailPanel.appendChild(
       createPersonDetailsPanel(selectedPerson, {
+        showCompletedUpdates: state.showCompletedUpdates,
+        personUpdates: selectedPerson ? selectUpdatesForPerson(updates, selectedPerson.id, { includeCompleted: true }) : [],
+        onToggleShowCompletedUpdates: () => {
+          state.showCompletedUpdates = !state.showCompletedUpdates;
+          renderPeopleModule();
+        },
+        onMarkUpdateStatus: ({ updateId, personId, status }) => {
+          if (status === "updated") {
+            markPersonUpdated(updateId, personId);
+            state.feedback = `Marked update as completed for ${selectedPerson.name}.`;
+          } else {
+            markPersonPending(updateId, personId);
+            state.feedback = `Moved update back to pending for ${selectedPerson.name}.`;
+          }
+          renderPeopleModule();
+        },
         onScheduleOneOnOne: (personRecord) => {
           if (typeof uiContext.onScheduleOneOnOne === "function") {
             uiContext.onScheduleOneOnOne(personRecord);
@@ -502,6 +519,7 @@ function createPeopleUiState(mode) {
     isFormOpen: false,
     editingId: null,
     selectedPersonId: null,
+    showCompletedUpdates: false,
     feedback: "",
     toastTimer: null
   };
@@ -582,7 +600,19 @@ function createPersonListItem(person, { selected, onSelect }) {
 /**
  * Renders right-side details view for selected person.
  */
-function createPersonDetailsPanel(person, { onEdit, onArchiveToggle, onQuickUpdate, onScheduleOneOnOne }) {
+function createPersonDetailsPanel(
+  person,
+  {
+    showCompletedUpdates = false,
+    personUpdates = [],
+    onToggleShowCompletedUpdates,
+    onMarkUpdateStatus,
+    onEdit,
+    onArchiveToggle,
+    onQuickUpdate,
+    onScheduleOneOnOne
+  }
+) {
   if (!person) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
@@ -711,7 +741,86 @@ function createPersonDetailsPanel(person, { onEdit, onArchiveToggle, onQuickUpda
   }
 
   timeline.append(timelineHeading, trailList);
-  wrap.append(header, actions, channels, quickUpdate, timeline);
+
+  const updatesPanel = document.createElement("section");
+  updatesPanel.className = "engagement-timeline";
+
+  const updatesHeading = document.createElement("h3");
+  updatesHeading.textContent = "Person updates";
+
+  const updatesDescription = document.createElement("p");
+  updatesDescription.className = "person-meta";
+  updatesDescription.textContent = "Track pending and completed stakeholder updates linked to this person.";
+
+  const updatesToggleLabel = document.createElement("label");
+  updatesToggleLabel.className = "person-meta";
+
+  const updatesToggle = document.createElement("input");
+  updatesToggle.type = "checkbox";
+  updatesToggle.checked = showCompletedUpdates;
+  updatesToggle.addEventListener("change", () => {
+    if (typeof onToggleShowCompletedUpdates === "function") {
+      onToggleShowCompletedUpdates();
+    }
+  });
+
+  const updatesToggleText = document.createElement("span");
+  updatesToggleText.textContent = " Show completed updates";
+  updatesToggleLabel.append(updatesToggle, updatesToggleText);
+
+  // Panel default is action-oriented (pending only). Toggling completed items gives
+  // quick historical context without changing the underlying selector contract.
+  const visiblePersonUpdates = personUpdates.filter(({ entry }) => showCompletedUpdates || entry.status === "pending");
+  const updatesList = document.createElement("ul");
+  updatesList.className = "contact-trail";
+
+  if (visiblePersonUpdates.length === 0) {
+    const emptyUpdates = document.createElement("li");
+    emptyUpdates.textContent = showCompletedUpdates
+      ? "No updates linked to this person yet."
+      : "No pending updates for this person.";
+    updatesList.appendChild(emptyUpdates);
+  } else {
+    for (const { update, entry } of visiblePersonUpdates) {
+      const updateRow = document.createElement("li");
+
+      const summary = document.createElement("span");
+      const completedAt = entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : "";
+      summary.textContent = entry.status === "updated"
+        ? `${update.text} · Completed ${completedAt || "recently"}`
+        : update.text;
+
+      const rowAction = document.createElement("button");
+      rowAction.type = "button";
+      rowAction.className = "button button-secondary";
+
+      if (entry.status === "pending") {
+        rowAction.textContent = "Mark updated";
+        rowAction.addEventListener("click", () => {
+          onMarkUpdateStatus({
+            updateId: update.id,
+            personId: person.id,
+            status: "updated"
+          });
+        });
+      } else {
+        rowAction.textContent = "Undo";
+        rowAction.addEventListener("click", () => {
+          onMarkUpdateStatus({
+            updateId: update.id,
+            personId: person.id,
+            status: "pending"
+          });
+        });
+      }
+
+      updateRow.append(summary, rowAction);
+      updatesList.appendChild(updateRow);
+    }
+  }
+
+  updatesPanel.append(updatesHeading, updatesDescription, updatesToggleLabel, updatesList);
+  wrap.append(header, actions, channels, quickUpdate, updatesPanel, timeline);
   return wrap;
 }
 
