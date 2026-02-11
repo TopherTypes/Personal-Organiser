@@ -31,3 +31,7 @@ class LocalStorageMock {
 if (!globalThis.localStorage) {
   globalThis.localStorage = new LocalStorageMock();
 }
+
+if (!globalThis.sessionStorage) {
+  globalThis.sessionStorage = new LocalStorageMock();
+}

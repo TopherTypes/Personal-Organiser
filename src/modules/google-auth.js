@@ -1,23 +1,76 @@
 const GOOGLE_AUTH_STORAGE_KEY = "second-brain.sync.auth-session.v1";
+const GOOGLE_AUTH_RUNTIME_TOKEN_KEY = "second-brain.sync.auth-runtime-token.v1";
 const EXPIRY_SAFETY_WINDOW_MS = 30_000;
 
 /**
  * Creates a thin Google Identity Services auth client wrapper used by sync.
  *
- * The client intentionally persists only non-sensitive session metadata.
- * Access tokens are kept in memory only long enough to validate auth and fetch
- * profile context, then discarded so we do not store long-lived credentials.
+ * The client persists non-sensitive session metadata in localStorage and keeps
+ * short-lived access tokens in sessionStorage to survive same-tab reloads.
+ * This avoids interactive re-auth loops while still preventing long-lived token
+ * persistence across browser restarts.
  */
 export function createGoogleAuthClient({
   clientId,
   scope = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
   storageKey = GOOGLE_AUTH_STORAGE_KEY,
   localStorageRef = localStorage,
+  sessionStorageRef = globalThis.sessionStorage,
   now = () => Date.now(),
   googleRef = globalThis.google
 } = {}) {
   const hasConfig = typeof clientId === "string" && clientId.trim().length > 0;
   let currentAccessToken = "";
+
+  function loadRuntimeToken() {
+    if (!sessionStorageRef || typeof sessionStorageRef.getItem !== "function") {
+      return null;
+    }
+
+    const raw = sessionStorageRef.getItem(GOOGLE_AUTH_RUNTIME_TOKEN_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+
+      const accessToken = typeof parsed.accessToken === "string" ? parsed.accessToken : "";
+      const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : 0;
+      if (!accessToken || expiresAt - now() <= EXPIRY_SAFETY_WINDOW_MS) {
+        return null;
+      }
+
+      return { accessToken, expiresAt };
+    } catch {
+      return null;
+    }
+  }
+
+  function saveRuntimeToken({ accessToken, expiresAt }) {
+    if (!sessionStorageRef || typeof sessionStorageRef.setItem !== "function") {
+      return;
+    }
+
+    sessionStorageRef.setItem(
+      GOOGLE_AUTH_RUNTIME_TOKEN_KEY,
+      JSON.stringify({
+        accessToken: accessToken || "",
+        expiresAt: expiresAt || 0
+      })
+    );
+  }
+
+  function clearRuntimeToken() {
+    if (!sessionStorageRef || typeof sessionStorageRef.removeItem !== "function") {
+      return;
+    }
+
+    sessionStorageRef.removeItem(GOOGLE_AUTH_RUNTIME_TOKEN_KEY);
+  }
 
   function loadSession() {
     const raw = localStorageRef.getItem(storageKey);
@@ -54,6 +107,7 @@ export function createGoogleAuthClient({
 
   function clearSession() {
     currentAccessToken = "";
+    clearRuntimeToken();
     localStorageRef.removeItem(storageKey);
   }
 
@@ -112,8 +166,16 @@ export function createGoogleAuthClient({
 
   async function persistFromTokenResponse(tokenResponse) {
     const expiresInSeconds = Number(tokenResponse?.expires_in || 0);
-    const expiresAt = now() + Math.max(0, expiresInSeconds) * 1000;
+    const existingSession = loadSession();
+    const fallbackExpiresAt = existingSession?.expiresAt || now() + 55 * 60 * 1000;
+    const expiresAt =
+      Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+        ? now() + expiresInSeconds * 1000
+        : fallbackExpiresAt;
     currentAccessToken = typeof tokenResponse?.access_token === "string" ? tokenResponse.access_token : "";
+    if (currentAccessToken) {
+      saveRuntimeToken({ accessToken: currentAccessToken, expiresAt });
+    }
     const email = tokenResponse?.email || (await resolveAccountEmail(tokenResponse?.access_token || ""));
 
     const session = {
@@ -181,6 +243,14 @@ export function createGoogleAuthClient({
     // Reuse a token already acquired during the current runtime (for example
     // after user-initiated sign-in) to avoid unnecessary auth round-trips.
     if (currentAccessToken) {
+      return currentAccessToken;
+    }
+
+    // Restore short-lived runtime token cache persisted in session storage so page
+    // reloads do not force the user through interactive re-authentication loops.
+    const cachedRuntimeToken = loadRuntimeToken();
+    if (cachedRuntimeToken) {
+      currentAccessToken = cachedRuntimeToken.accessToken;
       return currentAccessToken;
     }
 
