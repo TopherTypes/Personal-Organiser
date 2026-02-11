@@ -3,7 +3,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SYNCABLE_DOCUMENTS, __TESTING__ } from "../src/modules/sync.js";
 
-const { mergeDocument, countDocumentDifferences, shouldQueueManualConflict, withRetry } = __TESTING__;
+const {
+  mergeDocument,
+  countDocumentDifferences,
+  shouldQueueManualConflict,
+  withRetry,
+  removeAllAppLocalStorageEntries
+} = __TESTING__;
 
 
 
@@ -167,4 +173,17 @@ test("withRetry retries up to maxAttempts and caps backoff delay", async () => {
 
   assert.equal(attempts, 4);
   assert.deepEqual(waits, [120, 240, 300]);
+});
+
+test("removeAllAppLocalStorageEntries only removes second-brain namespaced keys", () => {
+  localStorage.clear();
+  localStorage.setItem("second-brain.work.tasks.work.v1", "{}");
+  localStorage.setItem("second-brain.ui.settings.v1", "{}");
+  localStorage.setItem("another-app.preference", "keep");
+
+  removeAllAppLocalStorageEntries();
+
+  assert.equal(localStorage.getItem("second-brain.work.tasks.work.v1"), null);
+  assert.equal(localStorage.getItem("second-brain.ui.settings.v1"), null);
+  assert.equal(localStorage.getItem("another-app.preference"), "keep");
 });

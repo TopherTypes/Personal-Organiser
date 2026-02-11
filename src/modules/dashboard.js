@@ -141,6 +141,7 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       onSettingsChange: uiContext.onSettingsChange,
       onDataRestore: uiContext.onDataRestore,
       onBackupRestore: uiContext.onBackupRestore,
+      onFullDataReset: uiContext.onFullDataReset,
       syncState: uiContext.syncState,
       onResolveSyncConflicts: uiContext.onResolveSyncConflicts
     });

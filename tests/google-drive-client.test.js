@@ -120,3 +120,44 @@ test("push/pull round-trip normalizes payload and provisions SecondBrain file la
   const names = files.map((item) => item.name).sort();
   assert.deepEqual(names, ["meta.json", "personal.json", "work.json"]);
 });
+
+test("purgeSecondBrainData deletes files inside the SecondBrain folder and then deletes the folder", async () => {
+  const deletedIds = [];
+
+  const fetchImpl = async (url, options = {}) => {
+    const method = (options.method || "GET").toUpperCase();
+    const parsed = new URL(url);
+
+    if (method === "GET" && parsed.pathname === "/drive/v3/files" && parsed.searchParams.get("q")?.includes("SecondBrain")) {
+      return createJsonResponse({
+        files: [{ id: "folder-1", name: "SecondBrain", mimeType: "application/vnd.google-apps.folder" }]
+      });
+    }
+
+    if (method === "GET" && parsed.pathname === "/drive/v3/files" && decodeURIComponent(parsed.searchParams.get("q") || "").includes("in parents")) {
+      return createJsonResponse({
+        files: [
+          { id: "file-work", name: "work.json", mimeType: "application/json" },
+          { id: "file-personal", name: "personal.json", mimeType: "application/json" }
+        ]
+      });
+    }
+
+    if (method === "DELETE" && parsed.pathname.startsWith("/drive/v3/files/")) {
+      deletedIds.push(parsed.pathname.split("/").pop());
+      return createTextResponse("", { status: 200 });
+    }
+
+    return createTextResponse(`Unhandled route: ${method} ${parsed.pathname}${parsed.search}`, { status: 500 });
+  };
+
+  const client = createGoogleDriveClient({
+    authClient: { getAccessToken: async () => "token" },
+    fetchImpl
+  });
+
+  const result = await client.purgeSecondBrainData();
+
+  assert.deepEqual(result, { deletedFolder: true, deletedFileCount: 2 });
+  assert.deepEqual(deletedIds, ["file-work", "file-personal", "folder-1"]);
+});
