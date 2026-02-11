@@ -1,6 +1,11 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
 import { saveUpdate } from "./updates.js";
+import {
+  buildMultiSelectField,
+  buildSingleSelectField,
+  readSelectedValues
+} from "./select-controls.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
 
@@ -239,14 +244,24 @@ export function renderWorkMeetingsModule({
     statusSelect.value = state.draft.status || "scheduled";
     statusWrap.appendChild(statusSelect);
 
-    const chairInput = buildLabeledInput("Chair (free-text or person id)", "text", state.draft.chairId || "");
-    const attendeesWrap = document.createElement("label");
-    attendeesWrap.className = "field-label";
-    attendeesWrap.textContent = "Attendees (person IDs comma-separated)";
-    const attendeesInput = document.createElement("input");
-    attendeesInput.className = "field-input";
-    attendeesInput.value = (state.draft.attendeeIds || []).join(", ");
-    attendeesWrap.appendChild(attendeesInput);
+    const peopleOptions = [
+      { value: "", label: "No chair selected" },
+      ...people.filter((person) => !person.archived).map((person) => ({ value: person.id, label: person.name || person.id }))
+    ];
+    const chairField = buildSingleSelectField({
+      label: "Chair",
+      options: peopleOptions,
+      value: state.draft.chairId || "",
+      emptyMessage: "Add people first to select a meeting chair."
+    });
+    const attendeeField = buildMultiSelectField({
+      label: "Attendees",
+      options: people
+        .filter((person) => !person.archived)
+        .map((person) => ({ value: person.id, label: person.name || person.id })),
+      values: state.draft.attendeeIds || [],
+      emptyMessage: "Add people first to select meeting attendees."
+    });
 
     const projectWrap = document.createElement("label");
     projectWrap.className = "field-label";
@@ -275,8 +290,8 @@ export function renderWorkMeetingsModule({
     ], "meeting-inline-row-triple");
 
     const participantsRow = buildInlineFieldRow([
-      chairInput.wrapper,
-      attendeesWrap
+      chairField.wrapper,
+      attendeeField.wrapper
     ], "meeting-inline-row-double");
 
     const notesWrap = document.createElement("label");
@@ -393,11 +408,10 @@ export function renderWorkMeetingsModule({
       state.draft.endTime = endInput.input.value;
       state.draft.type = typeSelect.value;
       state.draft.status = statusSelect.value;
-      state.draft.chairId = chairInput.input.value.trim();
-      state.draft.attendeeIds = attendeesInput.value
-        .split(",")
-        .map((personId) => personId.trim())
-        .filter(Boolean);
+      // UX intentionally constrains selection to canonical entities so free-typed IDs cannot silently
+      // create broken references; this improves both data integrity and in-form discoverability.
+      state.draft.chairId = chairField.select.value;
+      state.draft.attendeeIds = readSelectedValues(attendeeField.select);
       state.draft.projectId = projectSelect.value;
       state.draft.allowPostStatusEdits = toggle.checked;
       if (!notesInput.disabled) {
@@ -415,8 +429,8 @@ export function renderWorkMeetingsModule({
       endInput.input,
       typeSelect,
       statusSelect,
-      chairInput.input,
-      attendeesInput,
+      chairField.select,
+      attendeeField.select,
       projectSelect,
       toggle
     ].forEach((field) => field.addEventListener("input", syncDraft));
@@ -904,8 +918,10 @@ export function normaliseMeeting(meeting) {
     endTime: meeting.endTime || "",
     status: meeting.status || "scheduled",
     type: meeting.type || "standard",
-    attendeeIds: Array.isArray(meeting.attendeeIds) ? meeting.attendeeIds : [],
-    chairId: meeting.chairId || "",
+    // Migration-safe fallback: legacy drafts persisted attendees as comma-separated strings.
+    attendeeIds: parseEntityIdList(meeting.attendeeIds),
+    // Some older records stored chair as free text; preserve the raw string for backward compatibility.
+    chairId: String(meeting.chairId || "").trim(),
     projectId: meeting.projectId || "",
     notes: meeting.notes || "",
     allowPostStatusEdits: Boolean(meeting.allowPostStatusEdits),
@@ -919,6 +935,11 @@ export function normaliseMeeting(meeting) {
         ? meeting.lastUpdatedByField
         : {}
   };
+}
+
+function parseEntityIdList(value) {
+  const rawValues = Array.isArray(value) ? value : String(value || "").split(",");
+  return [...new Set(rawValues.map((item) => String(item).trim()).filter(Boolean))];
 }
 
 function autoSaveDraft(mode, draft) {

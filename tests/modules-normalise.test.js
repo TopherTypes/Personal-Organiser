@@ -33,11 +33,11 @@ test("normaliseProject sanitises people links and timestamp maps", () => {
   assert.deepEqual(project.lastUpdatedByField, {});
 });
 
-test("normaliseMeeting enforces valid array/object defaults", () => {
-  const meeting = normaliseMeeting({ name: "Sync", attendeeIds: "oops", auditTrail: null });
+test("normaliseMeeting keeps migration-safe attendee parsing and object defaults", () => {
+  const meeting = normaliseMeeting({ name: "Sync", attendeeIds: "p1, p1, p2", auditTrail: null });
 
   assert.equal(meeting.name, "Sync");
-  assert.deepEqual(meeting.attendeeIds, []);
+  assert.deepEqual(meeting.attendeeIds, ["p1", "p2"]);
   assert.deepEqual(meeting.auditTrail, []);
 });
 
