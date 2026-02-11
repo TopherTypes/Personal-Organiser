@@ -184,11 +184,16 @@ export function createGoogleAuthClient({
       return currentAccessToken;
     }
 
-    // Non-interactive API calls must not trigger GIS silent popup flows by default,
-    // because some browsers block the popup and emit noisy COOP-related warnings.
-    // Callers can opt in when they explicitly want silent refresh behavior.
+    // Non-interactive API calls should still be able to recover token memory when a
+    // valid auth session is already persisted (for example after a page reload).
+    // We keep the default guard for truly unauthenticated sessions to avoid surprise
+    // GIS flows in unrelated background operations.
     if (!interactive && !allowSilentRefresh) {
-      throw new Error("Google access token is unavailable without interactive sign-in.");
+      const existingSession = loadSession();
+      const hasPersistedSession = !!existingSession && existingSession.expiresAt - now() > EXPIRY_SAFETY_WINDOW_MS;
+      if (!hasPersistedSession) {
+        throw new Error("Google access token is unavailable without interactive sign-in.");
+      }
     }
 
     const tokenResponse = await acquireToken({ interactive });
