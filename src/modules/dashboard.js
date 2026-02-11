@@ -3,6 +3,7 @@ import { renderWorkProjectsModule } from "./projects.js";
 import { renderWorkTasksModule } from "./tasks.js";
 import { renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
+import { renderWorkUpdatesModule } from "./updates.js";
 import { renderSettingsModule } from "./settings.js";
 import { renderPersonalTasksModule } from "./personal-tasks.js";
 import { renderPersonalProjectsModule } from "./personal-projects.js";
@@ -97,6 +98,16 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
 
   if (mode === "work" && activeModule === "sprints") {
     return renderWorkSprintsModule({ mode });
+  }
+
+  if (mode === "work" && activeModule === "updates") {
+    // Dashboard owns orchestration only: it injects dependency snapshots (people/meetings)
+    // while the Updates module owns persistence boundaries and versioned storage writes.
+    return renderWorkUpdatesModule({
+      mode,
+      people: loadPeople("work"),
+      meetings: loadMeetings("work")
+    });
   }
 
   if (mode === "personal" && activeModule === "tasks") {
