@@ -1,6 +1,14 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
-import { buildUpdateOwnerOptions, saveUpdate, selectActivePeople } from "./updates.js";
+import {
+  buildUpdateOwnerOptions,
+  loadUpdates,
+  markPersonPending,
+  markPersonUpdated,
+  saveUpdate,
+  selectActivePeople,
+  selectUpdatesForPerson
+} from "./updates.js";
 import {
   buildEntityTokenMultiSelectField,
   buildSingleSelectField,
@@ -189,6 +197,7 @@ export function renderWorkMeetingsModule({
     };
     state.dirtyDraft = false;
     state.draftSource = source;
+    state.showOneOnOneCompletedHistory = false;
     state.lastAutoSaveAt = "";
     renderMeetingModal();
     setUnsavedChangesGuard(true);
@@ -299,6 +308,128 @@ export function renderWorkMeetingsModule({
       chairField.wrapper,
       attendeeField.wrapper
     ], "meeting-inline-row-double");
+
+    const oneOnOneUpdatesPanel = document.createElement("section");
+    oneOnOneUpdatesPanel.className = "meeting-one-on-one-updates";
+
+    const oneOnOneUpdatesHeading = document.createElement("h3");
+    oneOnOneUpdatesHeading.textContent = "1:1 follow-up updates";
+
+    const oneOnOneUpdatesDescription = document.createElement("p");
+    oneOnOneUpdatesDescription.className = "module-intro";
+    oneOnOneUpdatesDescription.textContent =
+      "Review update follow-ups for the selected attendee without leaving the meeting modal.";
+
+    const oneOnOneUpdatesToggleLabel = document.createElement("label");
+    oneOnOneUpdatesToggleLabel.className = "field-label field-checkbox meeting-one-on-one-toggle";
+
+    const oneOnOneUpdatesToggle = document.createElement("input");
+    oneOnOneUpdatesToggle.type = "checkbox";
+    oneOnOneUpdatesToggle.checked = Boolean(state.showOneOnOneCompletedHistory);
+
+    const oneOnOneUpdatesToggleText = document.createElement("span");
+    oneOnOneUpdatesToggleText.textContent = "Show completed history";
+    oneOnOneUpdatesToggleLabel.append(oneOnOneUpdatesToggle, oneOnOneUpdatesToggleText);
+
+    const oneOnOneUpdatesList = document.createElement("ul");
+    oneOnOneUpdatesList.className = "contact-trail meeting-one-on-one-list";
+
+    const renderOneOnOneUpdatesPanel = () => {
+      const attendeeIds = Array.isArray(state.draft.attendeeIds) ? state.draft.attendeeIds : [];
+      const isOneOnOneMeeting = state.draft.type === "one-on-one";
+
+      // This panel intentionally only appears in 1:1 meetings because update follow-ups are
+      // person-specific. Showing the same panel for standard group meetings is ambiguous and
+      // would suggest one attendee's status represents the full room.
+      oneOnOneUpdatesPanel.classList.toggle("hidden", !isOneOnOneMeeting);
+      if (!isOneOnOneMeeting) {
+        return;
+      }
+
+      oneOnOneUpdatesList.innerHTML = "";
+      oneOnOneUpdatesToggle.checked = Boolean(state.showOneOnOneCompletedHistory);
+
+      if (attendeeIds.length !== 1) {
+        oneOnOneUpdatesDescription.textContent =
+          "1:1 follow-up updates are person-specific, so this view requires exactly one attendee.";
+        oneOnOneUpdatesToggleLabel.classList.add("hidden");
+        const guidance = document.createElement("li");
+        guidance.textContent = attendeeIds.length === 0
+          ? "Select one attendee to view 1:1 follow-up updates."
+          : "Select only one attendee to view 1:1 follow-up updates.";
+        oneOnOneUpdatesList.appendChild(guidance);
+        return;
+      }
+
+      const attendeeId = attendeeIds[0];
+      const attendee = people.find((person) => person.id === attendeeId);
+      oneOnOneUpdatesToggleLabel.classList.remove("hidden");
+      oneOnOneUpdatesDescription.textContent =
+        `Review pending updates for ${attendee?.name || attendeeId}. Toggle history to include completed items.`;
+
+      const personUpdates = selectUpdatesForPerson(loadUpdates(mode), attendeeId, { includeCompleted: true });
+      const visibleUpdates = personUpdates.filter(({ entry }) => state.showOneOnOneCompletedHistory || entry.status === "pending");
+
+      if (!visibleUpdates.length) {
+        const empty = document.createElement("li");
+        empty.textContent = state.showOneOnOneCompletedHistory
+          ? "No updates linked to this attendee yet."
+          : "No pending updates for this attendee.";
+        oneOnOneUpdatesList.appendChild(empty);
+        return;
+      }
+
+      visibleUpdates.forEach(({ update, entry }) => {
+        const row = document.createElement("li");
+
+        const summary = document.createElement("span");
+        if (entry.status === "updated") {
+          const completedDate = entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : "recently";
+          summary.textContent = `${update.text} · Completed ${completedDate}`;
+        } else {
+          summary.textContent = update.text;
+        }
+
+        const quickActions = document.createElement("div");
+        quickActions.className = "meeting-one-on-one-actions";
+
+        const markUpdatedButton = document.createElement("button");
+        markUpdatedButton.type = "button";
+        markUpdatedButton.className = "button button-secondary";
+        markUpdatedButton.textContent = "Mark updated";
+        markUpdatedButton.disabled = entry.status === "updated";
+        markUpdatedButton.addEventListener("click", () => {
+          markPersonUpdated(update.id, attendeeId);
+          renderOneOnOneUpdatesPanel();
+        });
+
+        const markPendingButton = document.createElement("button");
+        markPendingButton.type = "button";
+        markPendingButton.className = "button button-secondary";
+        markPendingButton.textContent = "Mark pending";
+        markPendingButton.disabled = entry.status === "pending";
+        markPendingButton.addEventListener("click", () => {
+          markPersonPending(update.id, attendeeId);
+          renderOneOnOneUpdatesPanel();
+        });
+
+        quickActions.append(markUpdatedButton, markPendingButton);
+        row.append(summary, quickActions);
+        oneOnOneUpdatesList.appendChild(row);
+      });
+    };
+
+    oneOnOneUpdatesToggle.addEventListener("change", () => {
+      state.showOneOnOneCompletedHistory = oneOnOneUpdatesToggle.checked;
+      renderOneOnOneUpdatesPanel();
+    });
+
+    oneOnOneUpdatesPanel.append(
+      oneOnOneUpdatesHeading,
+      oneOnOneUpdatesDescription,
+      oneOnOneUpdatesToggleLabel,
+      oneOnOneUpdatesList
+    );
 
     const notesWrap = document.createElement("label");
     notesWrap.className = "field-label";
@@ -470,6 +601,7 @@ export function renderWorkMeetingsModule({
       scheduleRow,
       metadataRow,
       participantsRow,
+      oneOnOneUpdatesPanel,
       notesWrap,
       updateComposerWrap
     );
@@ -535,6 +667,7 @@ export function renderWorkMeetingsModule({
         state.draft.notes = notesInput.value;
       }
       notesPreview.textContent = state.draft.notes || "No notes yet.";
+      renderOneOnOneUpdatesPanel();
       state.dirtyDraft = true;
       setUnsavedChangesGuard(true);
     };
@@ -686,6 +819,7 @@ export function renderWorkMeetingsModule({
     });
 
     renderLinkedUpdateRows();
+    renderOneOnOneUpdatesPanel();
   }
 
   renderModule();
@@ -706,7 +840,8 @@ function createMeetingsUiState(mode, initialPrefill) {
     dirtyDraft: false,
     draftSource: "",
     feedback: "",
-    lastAutoSaveAt: ""
+    lastAutoSaveAt: "",
+    showOneOnOneCompletedHistory: false
   };
 
   const autosavedDraft = loadDraft(mode);
