@@ -3,10 +3,8 @@ import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, saf
 import { buildUpdateOwnerOptions, saveUpdate, selectActivePeople } from "./updates.js";
 import {
   buildEntityTokenMultiSelectField,
-  buildMultiSelectField,
   buildSingleSelectField,
-  readEntityTokenHiddenValues,
-  readSelectedValues
+  readEntityTokenHiddenValues
 } from "./select-controls.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
@@ -421,14 +419,15 @@ export function renderWorkMeetingsModule({
           state.dirtyDraft = true;
         });
 
-        const updateRecipientField = buildMultiSelectField({
-          label: "Recipients",
+        const updateRecipientField = buildEntityTokenMultiSelectField({
+          label: "People to update",
           options: updateRecipientOptions,
           values: linkedUpdate.recipientIds,
-          emptyMessage: "Add people first to select recipients."
+          emptyMessage: "Add people first to select recipients.",
+          inputPlaceholder: "Search people to update"
         });
-        updateRecipientField.select.addEventListener("change", () => {
-          state.draft.draftLinkedUpdates[index].recipientIds = readSelectedValues(updateRecipientField.select);
+        updateRecipientField.hiddenInput.addEventListener("input", () => {
+          state.draft.draftLinkedUpdates[index].recipientIds = readEntityTokenHiddenValues(updateRecipientField.hiddenInput);
           state.dirtyDraft = true;
         });
 
@@ -618,7 +617,7 @@ export function renderWorkMeetingsModule({
             {
               text: row.text,
               ownerId: row.ownerId,
-              toUpdate: row.recipientIds.map((personId) => ({ personId, status: "pending" })),
+              toUpdate: row.recipientIds.map((personId) => ({ personId, status: "pending", required: true, updatedAt: "" })),
               meetingId: result.meetingId
             },
             "",
