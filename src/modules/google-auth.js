@@ -144,12 +144,20 @@ export function createGoogleAuthClient({
     return { status: "signed-in", session };
   }
 
-  async function ensureValidSession({ allowInteractiveFallback = false } = {}) {
+  async function ensureValidSession({ allowInteractiveFallback = false, allowSilentRefresh = true } = {}) {
     const existingSession = loadSession();
     if (existingSession && existingSession.expiresAt - now() > EXPIRY_SAFETY_WINDOW_MS) {
       const refreshedSession = { ...existingSession, lastAuthCheckAt: now() };
       saveSession(refreshedSession);
       return { status: "signed-in", session: refreshedSession };
+    }
+
+    // Browser privacy and popup policies can block GIS silent token refresh attempts
+    // (`prompt=none`) in background tasks. Callers can disable silent refresh for
+    // non-user-initiated flows to prevent noisy popup/COOP console errors.
+    if (!allowSilentRefresh) {
+      clearSession();
+      return { status: "signed-out", session: null };
     }
 
     const silentResult = await checkSessionSilently();
