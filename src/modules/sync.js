@@ -17,6 +17,9 @@ export const SYNCABLE_DOCUMENTS = [
   { id: "work.people", localKey: "second-brain.work.people.work.v1" },
   { id: "work.sprints", localKey: "second-brain.work.sprints.work" },
   { id: "work.meetings", localKey: "second-brain.work.meetings.work" },
+  // Work updates belong to the work sync scope because they drive stakeholder communication planning
+  // alongside projects/meetings, even when an update is not linked to any single meeting.
+  { id: "work.updates", localKey: "second-brain.work.updates.work.v1" },
   { id: "personal.tasks", localKey: "second-brain.personal.tasks.v1" },
   { id: "personal.projects", localKey: "second-brain.personal.projects.v1" },
   { id: "personal.people", localKey: "second-brain.personal.people.v1" },
@@ -49,6 +52,13 @@ const MANUAL_CONFLICT_FIELDS = new Set([
   "endTime",
   "assigneeId",
   "projectId",
+  // Updates ownership/linkage fields are conflict-sensitive because incorrect auto-merges can silently
+  // move follow-ups to the wrong person or detach the wrong meeting context.
+  "ownerId",
+  // meetingId is intentionally optional for valid standalone/orphan updates; when both sides set different
+  // non-empty values close together, we still escalate so users can keep the intended relationship.
+  "meetingId",
+  "toUpdate",
   "archived"
 ]);
 

@@ -23,7 +23,10 @@ const DATASET_KEYS = Object.freeze({
     "second-brain.work.projects.work",
     "second-brain.work.people.work.v1",
     "second-brain.work.sprints.work",
-    "second-brain.work.meetings.work"
+    "second-brain.work.meetings.work",
+    // Keep updates in work exports/imports because they are part of work execution history and
+    // should survive dataset restore even when some rows intentionally have no meetingId link.
+    "second-brain.work.updates.work.v1"
   ]),
   personal: Object.freeze([
     "second-brain.personal.tasks.v1",
