@@ -53,7 +53,15 @@ export function saveSettings(nextSettings) {
 /**
  * Renders Settings UI for user customisation.
  */
-export function renderSettingsModule({ mode, settings, onSettingsChange, onDataRestore, onBackupRestore }) {
+export function renderSettingsModule({
+  mode,
+  settings,
+  onSettingsChange,
+  onDataRestore,
+  onBackupRestore,
+  syncState,
+  onResolveSyncConflicts
+}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard settings-module";
 
@@ -109,10 +117,82 @@ export function renderSettingsModule({ mode, settings, onSettingsChange, onDataR
   );
 
   const dataManagement = createDataManagementSection({ onDataRestore });
+  const syncConflictSection = createSyncConflictSection({ syncState, onResolveSyncConflicts });
   const backupsSection = createBackupsSection({ onBackupRestore, onDataRestore });
 
-  section.append(title, intro, list, dataManagement, backupsSection);
+  section.append(title, intro, list, dataManagement, syncConflictSection, backupsSection);
   return section;
+}
+
+/**
+ * Builds an explicit conflict-resolution workflow instead of passive conflict badges.
+ */
+function createSyncConflictSection({ syncState, onResolveSyncConflicts }) {
+  const wrap = document.createElement("section");
+  wrap.className = "settings-data-management";
+
+  const title = document.createElement("h2");
+  title.textContent = "Sync conflict resolution";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent =
+    "When local and remote edits collide, review each conflict and choose which value to keep before the next sync.";
+
+  const conflicts = Array.isArray(syncState?.conflicts) ? syncState.conflicts : [];
+  if (conflicts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No unresolved sync conflicts.";
+    wrap.append(title, hint, empty);
+    return wrap;
+  }
+
+  const list = document.createElement("div");
+  list.className = "settings-list";
+  const selectsByConflictId = new Map();
+
+  for (const conflict of conflicts) {
+    const item = document.createElement("article");
+    item.className = "settings-item";
+
+    const heading = document.createElement("span");
+    heading.className = "settings-label";
+    heading.textContent = `${conflict.documentId} → ${conflict.entityId} → ${conflict.field}`;
+
+    const values = document.createElement("small");
+    values.className = "settings-hint";
+    values.textContent = `Local: ${stringifyConflictValue(conflict.localValue)} | Remote: ${stringifyConflictValue(conflict.remoteValue)}`;
+
+    const choice = document.createElement("select");
+    choice.className = "field-input";
+    choice.append(
+      buildOption("suggested", `Suggested (${stringifyConflictValue(conflict.suggestedValue)})`),
+      buildOption("local", "Keep local value"),
+      buildOption("remote", "Keep remote value")
+    );
+
+    selectsByConflictId.set(conflict.conflictId, choice);
+    item.append(heading, values, choice);
+    list.appendChild(item);
+  }
+
+  const applyButton = createActionButton("Apply conflict resolutions", async () => {
+    if (typeof onResolveSyncConflicts !== "function") {
+      window.alert("Conflict resolution handler is unavailable.");
+      return;
+    }
+
+    const resolutions = {};
+    for (const [conflictId, select] of selectsByConflictId.entries()) {
+      resolutions[conflictId] = select.value;
+    }
+
+    await onResolveSyncConflicts(resolutions);
+  });
+
+  wrap.append(title, hint, list, applyButton);
+  return wrap;
 }
 
 /**
@@ -328,17 +408,25 @@ function createSelectSetting({ label, hint, value, options, onChange }) {
 
   const input = document.createElement("select");
   input.className = "field-input";
-  input.value = value;
   for (const [optionValue, optionLabel] of options) {
     const option = document.createElement("option");
     option.value = optionValue;
     option.textContent = optionLabel;
     input.appendChild(option);
   }
+  input.value = options.some(([optionValue]) => optionValue === value) ? value : options[0]?.[0] || "";
   input.addEventListener("change", (event) => onChange(event.target.value));
 
   row.append(heading, help, input);
   return row;
+}
+
+function stringifyConflictValue(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value);
 }
 
 function createToggleSetting({ label, hint, checked, onChange }) {
