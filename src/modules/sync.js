@@ -1,4 +1,5 @@
 import { createGoogleAuthClient } from "./google-auth.js";
+import { createGoogleDriveClient } from "./google-drive-client.js";
 
 /**
  * Sync subsystem coordinating local queue detection, remote pull/push, and deterministic conflict resolution.
@@ -8,9 +9,7 @@ import { createGoogleAuthClient } from "./google-auth.js";
  */
 
 const SYNC_SHADOW_STORAGE_KEY = "second-brain.sync.shadow.v1";
-const SYNC_REMOTE_STORAGE_KEY = "second-brain.sync.remote.v1";
-
-const SYNCABLE_DOCUMENTS = [
+export const SYNCABLE_DOCUMENTS = [
   { id: "work.tasks", localKey: "second-brain.work.tasks.work.v1" },
   { id: "work.projects", localKey: "second-brain.work.projects.work" },
   { id: "work.people", localKey: "second-brain.work.people.work.v1" },
@@ -37,6 +36,7 @@ const DEFAULT_RETRY_POLICY = {
 export function createSyncSubsystem({
   onStateChange,
   authClientFactory = createGoogleAuthClient,
+  driveClientFactory = createGoogleDriveClient,
   windowRef = window,
   navigatorRef = navigator
 } = {}) {
@@ -57,8 +57,8 @@ export function createSyncSubsystem({
     isSyncing: false
   };
 
-  const driveClient = createLocalDriveAdapter();
   const authClient = authClientFactory({ clientId: windowRef.__APP_CONFIG__?.googleClientId || "" });
+  const driveClient = driveClientFactory({ authClient });
   let loopTimerId = 0;
 
   recalculatePendingChanges();
@@ -552,38 +552,4 @@ function isTransientError(error) {
 
 function wait(delayMs) {
   return new Promise((resolve) => window.setTimeout(resolve, delayMs));
-}
-
-/**
- * Temporary Drive adapter backed by localStorage.
- *
- * This keeps interfaces aligned with planned Google Drive transport while allowing offline-first
- * flow to be fully exercised in the static app environment.
- */
-function createLocalDriveAdapter() {
-  const remoteRoot = loadJson(SYNC_REMOTE_STORAGE_KEY, {});
-
-  return {
-    async pullDocument(documentId) {
-      // Simulate occasional transient network faults to exercise retry/backoff behavior.
-      if (Math.random() < 0.02) {
-        const transientError = new Error("Network timeout while pulling document.");
-        transientError.transient = true;
-        throw transientError;
-      }
-
-      return remoteRoot[documentId] ?? null;
-    },
-
-    async pushDocument(documentId, payload) {
-      if (Math.random() < 0.02) {
-        const transientError = new Error("Network timeout while pushing document.");
-        transientError.transient = true;
-        throw transientError;
-      }
-
-      remoteRoot[documentId] = payload;
-      localStorage.setItem(SYNC_REMOTE_STORAGE_KEY, JSON.stringify(remoteRoot));
-    }
-  };
 }
