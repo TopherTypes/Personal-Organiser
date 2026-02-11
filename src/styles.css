@@ -490,6 +490,37 @@ textarea:focus-visible,
   gap: var(--space-2);
 }
 
+/*
+ * 1:1 follow-up panel stays visually compact so it supplements the modal
+ * without competing with notes and update-composer sections.
+ */
+.meeting-one-on-one-updates {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+
+.meeting-one-on-one-updates h3 {
+  margin: 0;
+}
+
+.meeting-one-on-one-toggle {
+  margin: 0;
+}
+
+.meeting-one-on-one-list {
+  margin: 0;
+}
+
+.meeting-one-on-one-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
 .project-card {
   padding: var(--space-4);
   display: grid;
