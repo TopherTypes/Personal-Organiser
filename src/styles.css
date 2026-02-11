@@ -854,6 +854,64 @@ textarea:focus-visible,
   overflow-x: auto;
 }
 
+.updates-form,
+.updates-editor-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/*
+ * Keep form labels in the updates editor vertically stacked so long text fields,
+ * date controls and selects do not visually collide in compact widths.
+ */
+.updates-editor-form .field-label {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.updates-table-wrap {
+  overflow-x: auto;
+}
+
+.updates-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.updates-table th,
+.updates-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.updates-table th {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  background: var(--bg-muted);
+}
+
+.updates-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.updates-slideover {
+  position: fixed;
+  right: var(--space-4);
+  top: var(--space-4);
+  width: min(420px, calc(100vw - var(--space-6)));
+  max-height: calc(100dvh - var(--space-8));
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Raise above module content while staying below full-screen modals. */
+  z-index: 20;
+}
+
 .tasks-table-row {
   min-width: 780px;
   display: grid;

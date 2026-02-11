@@ -14,34 +14,254 @@ const WORK_UPDATES_STORAGE_KEY = "second-brain.work.updates.work.v1";
  * - Storage remains mode-scoped and versioned so migration boundaries stay local.
  */
 export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [] } = {}) {
+  const state = {
+    isEditorOpen: false,
+    editingId: "",
+    feedback: ""
+  };
+
   const section = document.createElement("section");
   section.className = "mode-dashboard updates-module";
 
-  const title = document.createElement("h1");
-  title.textContent = "Work Updates";
+  const renderModule = () => {
+    section.innerHTML = "";
 
-  const intro = document.createElement("p");
-  intro.className = "module-intro";
-  intro.textContent =
-    "Capture stakeholder update drafts with owner, due date, and meeting context while keeping storage isolated per mode.";
+    const title = document.createElement("h1");
+    title.textContent = "Work Updates";
 
-  const updates = loadUpdates(mode);
-  const activeUpdates = updates.filter((update) => !update.archived);
+    const intro = document.createElement("p");
+    intro.className = "module-intro";
+    intro.textContent =
+      "Capture stakeholder update drafts with owner, due date, and meeting context while keeping storage isolated per mode.";
+
+    const updates = loadUpdates(mode);
+    const activeUpdates = updates.filter((update) => !update.archived);
+    const activePeople = selectActivePeople(people);
+
+    const form = document.createElement("form");
+    form.className = "updates-form card";
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.className = "field-input";
+    textInput.placeholder = "What update do you need to send?";
+    textInput.required = true;
+
+    const toUpdateField = buildEntityTokenMultiSelectField({
+      label: "People to update",
+      options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
+      values: [],
+      emptyMessage: "Add people first to select update recipients.",
+      inputPlaceholder: "Search people to update"
+    });
+
+    const ownerLabel = document.createElement("label");
+    ownerLabel.className = "field-label";
+    ownerLabel.textContent = "Owner (optional)";
+
+    const ownerSelect = document.createElement("select");
+    ownerSelect.className = "field-input";
+    // Use the same canonical option builder as meetings so every update-entry point
+    // enforces active-people ownership constraints identically.
+    for (const option of buildUpdateOwnerOptions(activePeople)) {
+      addOption(ownerSelect, option.value, option.label);
+    }
+    ownerLabel.appendChild(ownerSelect);
+
+    const createButton = document.createElement("button");
+    createButton.type = "submit";
+    createButton.className = "enter-mode-button";
+    createButton.textContent = "Add update";
+
+    form.append(textInput, toUpdateField.wrapper, ownerLabel, createButton);
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
+      const result = saveUpdate(
+        mode,
+        {
+          text: textInput.value,
+          ownerId: ownerSelect.value,
+          toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
+        },
+        "",
+        activePeople
+      );
+
+      if (!result.ok) {
+        state.feedback = result.error || "Unable to save update.";
+        renderModule();
+        return;
+      }
+
+      state.feedback = "Update created.";
+      renderModule();
+    });
+
+    const summary = document.createElement("p");
+    summary.className = "module-intro";
+    summary.textContent = [
+      `${activeUpdates.length} active update${activeUpdates.length === 1 ? "" : "s"}`,
+      `${people.length} available people`,
+      `${meetings.length} available meetings`
+    ].join(" · ");
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "updates-table-wrap card";
+
+    const table = document.createElement("table");
+    table.className = "updates-table";
+
+    const headerRow = document.createElement("tr");
+    ["Update", "Owner", "Meeting", "Due date", "Pending", "Updated", "Actions"].forEach((label) => {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.textContent = label;
+      headerRow.appendChild(cell);
+    });
+
+    const head = document.createElement("thead");
+    head.appendChild(headerRow);
+    table.appendChild(head);
+
+    const body = document.createElement("tbody");
+    if (!activeUpdates.length) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 7;
+      emptyCell.className = "empty-state";
+      emptyCell.textContent = "No active updates yet. Add one from the updates workflow.";
+      emptyRow.appendChild(emptyCell);
+      body.appendChild(emptyRow);
+    }
+
+    for (const update of activeUpdates) {
+      const row = document.createElement("tr");
+
+      const textCell = document.createElement("td");
+      textCell.textContent = update.text;
+
+      const ownerCell = document.createElement("td");
+      ownerCell.textContent = resolveOwnerDisplayName(update, people);
+
+      const meetingCell = document.createElement("td");
+      meetingCell.textContent = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
+
+      const dueDateCell = document.createElement("td");
+      dueDateCell.textContent = update.dueDate || "Not set";
+
+      const pendingCell = document.createElement("td");
+      pendingCell.textContent = String(selectPendingPeopleCount(update));
+
+      const completedCell = document.createElement("td");
+      completedCell.textContent = String(selectCompletedPeopleCount(update));
+
+      const actionCell = document.createElement("td");
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "module-button-secondary";
+      editButton.textContent = "Edit";
+      editButton.addEventListener("click", () => {
+        state.editingId = update.id;
+        state.isEditorOpen = true;
+        renderModule();
+      });
+      actionCell.appendChild(editButton);
+
+      row.append(textCell, ownerCell, meetingCell, dueDateCell, pendingCell, completedCell, actionCell);
+      body.appendChild(row);
+    }
+
+    table.appendChild(body);
+    tableWrap.appendChild(table);
+
+    if (state.feedback) {
+      const feedback = document.createElement("p");
+      feedback.className = "feedback";
+      feedback.textContent = state.feedback;
+      section.appendChild(feedback);
+      state.feedback = "";
+    }
+
+    section.append(title, intro, summary, form, tableWrap);
+
+    if (state.isEditorOpen) {
+      const editing = updates.find((update) => update.id === state.editingId);
+      section.appendChild(
+        renderUpdateEditor({
+          update: editing,
+          people,
+          meetings,
+          onClose: () => {
+            state.isEditorOpen = false;
+            state.editingId = "";
+            renderModule();
+          },
+          onSave: (draft, editingId) => {
+            const result = saveUpdate(mode, draft, editingId, activePeople);
+            if (!result.ok) {
+              state.feedback = result.error || "Unable to save update.";
+              renderModule();
+              return;
+            }
+
+            state.feedback = "Update saved.";
+            state.isEditorOpen = false;
+            state.editingId = "";
+            renderModule();
+          }
+        })
+      );
+    }
+  };
+
+  renderModule();
+  return section;
+}
+
+function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
+  const panel = document.createElement("aside");
+  panel.className = "meeting-slideover updates-slideover card";
+
+  const heading = document.createElement("h2");
+  heading.textContent = update ? "Edit update" : "Update not found";
+
+  if (!update) {
+    const message = document.createElement("p");
+    message.className = "empty-state";
+    message.textContent = "The selected update could not be found. It may have been deleted.";
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "module-button-secondary";
+    closeButton.textContent = "Close";
+    closeButton.addEventListener("click", onClose);
+
+    panel.append(heading, message, closeButton);
+    return panel;
+  }
+
   const activePeople = selectActivePeople(people);
-
   const form = document.createElement("form");
-  form.className = "updates-form";
+  form.className = "updates-editor-form";
 
-  const textInput = document.createElement("input");
-  textInput.type = "text";
-  textInput.className = "field-input";
-  textInput.placeholder = "What update do you need to send?";
+  const textLabel = document.createElement("label");
+  textLabel.className = "field-label";
+  textLabel.textContent = "Update";
+  const textInput = document.createElement("textarea");
+  textInput.className = "field-input field-textarea";
   textInput.required = true;
+  textInput.value = update.text;
+  textLabel.appendChild(textInput);
 
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
     options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
-    values: [],
+    values: normaliseToUpdateList(update.toUpdate)
+      .map((entry) => entry.personId)
+      .filter(Boolean),
     emptyMessage: "Add people first to select update recipients.",
     inputPlaceholder: "Search people to update"
   });
@@ -49,82 +269,70 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   const ownerLabel = document.createElement("label");
   ownerLabel.className = "field-label";
   ownerLabel.textContent = "Owner (optional)";
-
   const ownerSelect = document.createElement("select");
   ownerSelect.className = "field-input";
-  // Use the same canonical option builder as meetings so every update-entry point
-  // enforces active-people ownership constraints identically.
   for (const option of buildUpdateOwnerOptions(activePeople)) {
     addOption(ownerSelect, option.value, option.label);
   }
+  ownerSelect.value = update.ownerId;
   ownerLabel.appendChild(ownerSelect);
 
-  const createButton = document.createElement("button");
-  createButton.type = "submit";
-  createButton.className = "enter-mode-button";
-  createButton.textContent = "Add update";
+  const meetingLabel = document.createElement("label");
+  meetingLabel.className = "field-label";
+  meetingLabel.textContent = "Linked meeting (optional)";
+  const meetingSelect = document.createElement("select");
+  meetingSelect.className = "field-input";
+  addOption(meetingSelect, "", "No linked meeting");
+  meetings.filter((meeting) => !meeting.archived).forEach((meeting) => addOption(meetingSelect, meeting.id, meeting.name));
+  if (Array.from(meetingSelect.options).some((option) => option.value === update.meetingId)) {
+    meetingSelect.value = update.meetingId;
+  }
+  meetingLabel.appendChild(meetingSelect);
 
-  form.append(textInput, toUpdateField.wrapper, ownerLabel, createButton);
+  const dueDateLabel = document.createElement("label");
+  dueDateLabel.className = "field-label";
+  dueDateLabel.textContent = "Due date (optional)";
+  const dueDateInput = document.createElement("input");
+  dueDateInput.type = "date";
+  dueDateInput.className = "field-input";
+  dueDateInput.value = update.dueDate;
+  dueDateLabel.appendChild(dueDateInput);
 
+  const actions = document.createElement("div");
+  actions.className = "tasks-row-actions";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "module-button-secondary";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", onClose);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "enter-mode-button";
+  saveButton.textContent = "Save update";
+
+  actions.append(cancelButton, saveButton);
+  form.append(textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel, actions);
+
+  // Always submit normalised recipient records so persistence retains canonical shape.
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-
     const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
-    const result = saveUpdate(
-      mode,
+    onSave(
       {
         text: textInput.value,
         ownerId: ownerSelect.value,
+        meetingId: meetingSelect.value,
+        dueDate: dueDateInput.value,
         toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
       },
-      "",
-      activePeople
+      update.id
     );
-
-    if (!result.ok) {
-      alert(result.error || "Unable to save update.");
-      return;
-    }
-
-    const next = renderWorkUpdatesModule({ mode, people, meetings });
-    section.replaceWith(next);
   });
 
-  const summary = document.createElement("p");
-  summary.className = "module-intro";
-  summary.textContent = [
-    `${activeUpdates.length} active update${activeUpdates.length === 1 ? "" : "s"}`,
-    `${people.length} available people`,
-    `${meetings.length} available meetings`
-  ].join(" · ");
-
-  const list = document.createElement("ul");
-  list.className = "updates-list";
-
-  if (activeUpdates.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty-state";
-    empty.textContent = "No active updates yet. Add one from the updates workflow.";
-    section.append(title, intro, summary, form, empty);
-    return section;
-  }
-
-  for (const update of activeUpdates) {
-    const item = document.createElement("li");
-    item.className = "updates-list-item";
-
-    const ownerName = resolveOwnerDisplayName(update, people);
-    const meetingName = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
-
-    const pendingCount = selectPendingPeopleCount(update);
-    const completedCount = selectCompletedPeopleCount(update);
-
-    item.textContent = `${update.text} · Owner: ${ownerName} · Pending: ${pendingCount} · Updated: ${completedCount} · ${meetingName}`;
-    list.appendChild(item);
-  }
-
-  section.append(title, intro, summary, form, list);
-  return section;
+  panel.append(heading, form);
+  return panel;
 }
 
 /**
