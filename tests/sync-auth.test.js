@@ -84,6 +84,34 @@ test("startup keeps signed-out when silent auth fails", async () => {
   assert.equal(state.authSession, null);
 });
 
+
+
+test("startup auth check disables silent GIS refresh in background flow", async () => {
+  localStorage.clear();
+
+  const ensureCalls = [];
+  const fakeAuthClient = {
+    ensureValidSession: async (options = {}) => {
+      ensureCalls.push(options);
+      return { status: "signed-out", session: null };
+    },
+    signInInteractive: async () => ({ status: "signed-in", session: null }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
+  });
+
+  sync.start();
+  await flushTasks();
+
+  assert.deepEqual(ensureCalls[0], { allowSilentRefresh: false });
+});
+
 test("expired token path falls back to signed-out before sync", async () => {
   localStorage.clear();
 
