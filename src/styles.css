@@ -463,6 +463,28 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
+.meeting-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/*
+ * Inline row helpers keep secondary metadata compact,
+ * preserving most vertical space for long-form meeting notes.
+ */
+.meeting-inline-row {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.meeting-inline-row-triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.meeting-inline-row-double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .meeting-form .field-label {
   display: grid;
   gap: var(--space-2);
@@ -944,7 +966,7 @@ textarea:focus-visible,
 }
 
 .meeting-notes-input {
-  min-height: 18rem;
+  min-height: 22rem;
 }
 
 .notes-preview {
@@ -1122,6 +1144,11 @@ body[data-density="compact"] .footer {
     width: 100%;
     max-height: calc(100vh - 2rem);
     padding: var(--space-4);
+  }
+
+  .meeting-inline-row-triple,
+  .meeting-inline-row-double {
+    grid-template-columns: 1fr;
   }
 }
 

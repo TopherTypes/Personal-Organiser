@@ -259,6 +259,25 @@ export function renderWorkMeetingsModule({
     projectSelect.value = state.draft.projectId || "";
     projectWrap.appendChild(projectSelect);
 
+    // Group related scheduling metadata so the modal header area stays compact.
+    const scheduleRow = buildInlineFieldRow([
+      dateInput.wrapper,
+      startInput.wrapper,
+      endInput.wrapper
+    ], "meeting-inline-row-triple");
+
+    // Keep the most frequently adjusted metadata together on one row.
+    const metadataRow = buildInlineFieldRow([
+      typeWrap,
+      statusWrap,
+      projectWrap
+    ], "meeting-inline-row-triple");
+
+    const participantsRow = buildInlineFieldRow([
+      chairInput.wrapper,
+      attendeesWrap
+    ], "meeting-inline-row-double");
+
     const notesWrap = document.createElement("label");
     notesWrap.className = "field-label";
     notesWrap.textContent = "Meeting notes (Markdown supported)";
@@ -296,14 +315,9 @@ export function renderWorkMeetingsModule({
 
     fields.append(
       nameInput.wrapper,
-      dateInput.wrapper,
-      startInput.wrapper,
-      endInput.wrapper,
-      typeWrap,
-      statusWrap,
-      chairInput.wrapper,
-      attendeesWrap,
-      projectWrap,
+      scheduleRow,
+      metadataRow,
+      participantsRow,
       notesWrap
     );
 
@@ -528,6 +542,13 @@ function renderMonthlyCalendar(state, meetingsInRange, allMeetings, range, openE
   }
 
   return grid;
+}
+
+function buildInlineFieldRow(fieldElements, layoutClass) {
+  const row = document.createElement("div");
+  row.className = `meeting-inline-row ${layoutClass}`;
+  fieldElements.forEach((element) => row.appendChild(element));
+  return row;
 }
 
 function buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact = false } = {}) {
