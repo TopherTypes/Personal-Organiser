@@ -65,6 +65,7 @@ const syncSubsystem = createSyncSubsystem({
     state.sync = syncState;
     syncInitialSyncExperienceState();
     syncInitialSyncProgressTracker();
+    syncInitialSyncProgressTracker();
 
     // Sync updates change only top-bar information. Patching the header in place
     // avoids remounting module content, which would otherwise close transient UI
@@ -297,6 +298,9 @@ function baseInitialSyncProgressValue(syncStatus, isSyncing) {
       // If we've already reached push, a later pull represents verification,
       // not a restart, so keep progress near completion.
       return state.initialSyncProgressPeak >= 90 ? 95 : 45;
+      // If we've already reached push, a later pull represents verification,
+      // not a restart, so keep progress near completion.
+      return state.initialSyncProgressPeak >= 90 ? 95 : 45;
     case "merging":
       return 70;
     case "pushing":
@@ -311,6 +315,9 @@ function describeInitialSyncStage(syncStatus) {
     case "auth-check":
       return "Checking account access…";
     case "pulling":
+      return state.initialSyncProgressPeak >= 90
+        ? "Verifying cloud state after upload…"
+        : "Pulling cloud data…";
       return state.initialSyncProgressPeak >= 90
         ? "Verifying cloud state after upload…"
         : "Pulling cloud data…";
