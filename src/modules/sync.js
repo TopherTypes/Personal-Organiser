@@ -1,3 +1,5 @@
+import { createGoogleAuthClient } from "./google-auth.js";
+
 /**
  * Sync subsystem coordinating local queue detection, remote pull/push, and deterministic conflict resolution.
  *
@@ -7,7 +9,6 @@
 
 const SYNC_SHADOW_STORAGE_KEY = "second-brain.sync.shadow.v1";
 const SYNC_REMOTE_STORAGE_KEY = "second-brain.sync.remote.v1";
-const SYNC_AUTH_STORAGE_KEY = "second-brain.sync.auth.v1";
 
 const SYNCABLE_DOCUMENTS = [
   { id: "work.tasks", localKey: "second-brain.work.tasks.work.v1" },
@@ -33,15 +34,21 @@ const DEFAULT_RETRY_POLICY = {
 /**
  * Creates an in-browser sync subsystem.
  */
-export function createSyncSubsystem({ onStateChange } = {}) {
+export function createSyncSubsystem({
+  onStateChange,
+  authClientFactory = createGoogleAuthClient,
+  windowRef = window,
+  navigatorRef = navigator
+} = {}) {
   const listeners = new Set();
   if (typeof onStateChange === "function") {
     listeners.add(onStateChange);
   }
 
   const state = {
-    syncStatus: navigator.onLine ? "idle" : "offline",
-    authStatus: loadAuthStatus(),
+    syncStatus: navigatorRef.onLine ? "idle" : "offline",
+    authStatus: "signed-out",
+    authSession: null,
     pendingChanges: 0,
     conflictCount: 0,
     lastSuccessfulSyncAt: "",
@@ -51,6 +58,7 @@ export function createSyncSubsystem({ onStateChange } = {}) {
   };
 
   const driveClient = createLocalDriveAdapter();
+  const authClient = authClientFactory({ clientId: windowRef.__APP_CONFIG__?.googleClientId || "" });
   let loopTimerId = 0;
 
   recalculatePendingChanges();
@@ -77,12 +85,15 @@ export function createSyncSubsystem({ onStateChange } = {}) {
     }
 
     // Keep sync status aligned with browser connectivity.
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    windowRef.addEventListener("online", handleOnline);
+    windowRef.addEventListener("offline", handleOffline);
 
-    loopTimerId = window.setInterval(() => {
+    loopTimerId = windowRef.setInterval(() => {
       void syncNow({ reason: "scheduled" });
     }, 30000);
+
+    // Boot path: attempt silent restoration first so returning users see connected state without prompts.
+    void runBootAuthCheck();
 
     // Attempt immediate sync so topbar reflects true status quickly.
     void syncNow({ reason: "startup" });
@@ -90,12 +101,12 @@ export function createSyncSubsystem({ onStateChange } = {}) {
 
   function stop() {
     if (loopTimerId) {
-      window.clearInterval(loopTimerId);
+      windowRef.clearInterval(loopTimerId);
       loopTimerId = 0;
     }
 
-    window.removeEventListener("online", handleOnline);
-    window.removeEventListener("offline", handleOffline);
+    windowRef.removeEventListener("online", handleOnline);
+    windowRef.removeEventListener("offline", handleOffline);
   }
 
   function handleOnline() {
@@ -107,15 +118,44 @@ export function createSyncSubsystem({ onStateChange } = {}) {
     setPartialState({ syncStatus: "offline", errorMessage: "" });
   }
 
-  function signIn() {
-    localStorage.setItem(SYNC_AUTH_STORAGE_KEY, "signed-in");
-    setPartialState({ authStatus: "signed-in", syncStatus: navigator.onLine ? "idle" : "offline" });
-    void syncNow({ reason: "auth" });
+  async function runBootAuthCheck() {
+    setPartialState({ authStatus: "checking" });
+
+    const result = await authClient.ensureValidSession();
+    setPartialState({
+      authStatus: result.status,
+      authSession: result.session,
+      syncStatus: navigatorRef.onLine ? "idle" : "offline"
+    });
+
+    if (result.status === "signed-in") {
+      void syncNow({ reason: "auth-boot" });
+    }
+  }
+
+  async function signIn() {
+    setPartialState({ authStatus: "checking", errorMessage: "" });
+
+    try {
+      const result = await authClient.signInInteractive();
+      setPartialState({
+        authStatus: result.status,
+        authSession: result.session,
+        syncStatus: navigatorRef.onLine ? "idle" : "offline"
+      });
+      void syncNow({ reason: "auth-interactive" });
+    } catch (error) {
+      setPartialState({
+        authStatus: "signed-out",
+        authSession: null,
+        errorMessage: `Sign-in failed: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
   }
 
   function signOut() {
-    localStorage.setItem(SYNC_AUTH_STORAGE_KEY, "signed-out");
-    setPartialState({ authStatus: "signed-out" });
+    const result = authClient.signOut();
+    setPartialState({ authStatus: result.status, authSession: result.session });
   }
 
   function recalculatePendingChanges() {
@@ -135,11 +175,20 @@ export function createSyncSubsystem({ onStateChange } = {}) {
     recalculatePendingChanges();
 
     if (state.authStatus !== "signed-in") {
-      setPartialState({ syncStatus: navigator.onLine ? "idle" : "offline", errorMessage: "" });
+      setPartialState({ syncStatus: navigatorRef.onLine ? "idle" : "offline", errorMessage: "" });
       return;
     }
 
-    if (!navigator.onLine) {
+    // Token expiry is checked before sync so stale persisted metadata does not imply auth validity.
+    const authResult = await authClient.ensureValidSession();
+    if (authResult.status !== "signed-in") {
+      setPartialState({ authStatus: "signed-out", authSession: null, syncStatus: navigatorRef.onLine ? "idle" : "offline" });
+      return;
+    }
+
+    setPartialState({ authSession: authResult.session });
+
+    if (!navigatorRef.onLine) {
       setPartialState({ syncStatus: "offline", errorMessage: "" });
       return;
     }
@@ -448,11 +497,6 @@ function extractObjectTimestamp(value) {
 
 function isEqualValue(leftValue, rightValue) {
   return JSON.stringify(leftValue) === JSON.stringify(rightValue);
-}
-
-function loadAuthStatus() {
-  const raw = localStorage.getItem(SYNC_AUTH_STORAGE_KEY);
-  return raw === "signed-in" ? "signed-in" : "signed-out";
 }
 
 function loadJson(key, fallback) {

@@ -10,6 +10,16 @@
     <title>The Second Brain</title>
     <link rel="stylesheet" href="./src/styles.css" />
     <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <script>
+      // Runtime auth config. Keep client id in deploy-time config rather than source-controlled secrets.
+      window.__APP_CONFIG__ = {
+        // Prefer deploy-time override, but default to the provisioned OAuth client for local/dev usage.
+        googleClientId:
+          window.__APP_GOOGLE_CLIENT_ID__ ||
+          "1090517659423-98cmjomh6b4b7nntt5ckj8vhdh0e6ase.apps.googleusercontent.com"
+      };
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <!--
