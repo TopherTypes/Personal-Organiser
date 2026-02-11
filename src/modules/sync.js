@@ -104,9 +104,26 @@ export function createSyncSubsystem({
     listeners.forEach((listener) => listener(snapshot));
   }
 
+  /**
+   * Applies partial state updates and only emits when at least one value changes.
+   *
+   * This avoids unnecessary app-wide re-renders (for example, scheduled sync checks
+   * that compute the same pending count) which can otherwise reset transient UI such
+   * as open slide-over editors.
+   */
   function setPartialState(nextState) {
-    Object.assign(state, nextState);
-    emitState();
+    let hasChanges = false;
+
+    for (const [key, value] of Object.entries(nextState || {})) {
+      if (!Object.is(state[key], value)) {
+        state[key] = value;
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      emitState();
+    }
   }
 
   function subscribe(listener) {
