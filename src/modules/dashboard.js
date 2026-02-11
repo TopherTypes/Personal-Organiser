@@ -351,6 +351,43 @@ function renderWorkPeopleModule(uiContext = {}) {
         );
       }
 
+      /**
+       * Supports arrow-key navigation within the split-view listbox so keyboard
+       * users can switch records without leaving the list context.
+       */
+      list.addEventListener("keydown", (event) => {
+        const selectable = Array.from(list.querySelectorAll(".people-list-button"));
+        if (!selectable.length) {
+          return;
+        }
+
+        const activeIndex = selectable.findIndex((button) => button.dataset.personId === state.selectedPersonId);
+        const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          selectable[Math.min(currentIndex + 1, selectable.length - 1)].click();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          selectable[Math.max(currentIndex - 1, 0)].click();
+          return;
+        }
+
+        if (event.key === "Home") {
+          event.preventDefault();
+          selectable[0].click();
+          return;
+        }
+
+        if (event.key === "End") {
+          event.preventDefault();
+          selectable[selectable.length - 1].click();
+        }
+      });
+
       listWrap.appendChild(list);
     }
 
@@ -491,6 +528,8 @@ function createPersonListItem(person, { selected, onSelect }) {
   button.className = "people-list-button";
   button.setAttribute("role", "option");
   button.setAttribute("aria-selected", String(selected));
+  button.dataset.personId = person.id;
+  button.tabIndex = selected ? 0 : -1;
 
   if (selected) {
     item.classList.add("selected");

@@ -40,7 +40,7 @@
   --border: #2f3954;
   --border-strong: #455378;
   --text: #edf2ff;
-  --text-muted: #b5bfd9;
+  --text-muted: #c4cde2;
   --accent: #8aa5ff;
   --accent-contrast: #0f1730;
   --accent-soft: #253865;
@@ -106,7 +106,7 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: var(--space-4);
   align-items: center;
-  padding: var(--space-4) var(--space-6);
+  padding: 0.6rem var(--space-5);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
@@ -121,14 +121,14 @@ textarea:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  align-items: stretch;
+  align-items: center;
   justify-content: flex-end;
 }
 
 .mode-switch {
   display: inline-flex;
-  gap: var(--space-2);
-  padding: var(--space-1);
+  gap: var(--space-1);
+  padding: 0.2rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-muted);
@@ -137,7 +137,7 @@ textarea:focus-visible,
 .mode-button {
   border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.45rem 0.9rem;
+  padding: 0.38rem 0.75rem;
   color: var(--text);
   background: transparent;
   cursor: pointer;
@@ -159,19 +159,19 @@ textarea:focus-visible,
 }
 
 .sync-status {
-  min-width: 250px;
+  min-width: 270px;
   max-width: 360px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated);
-  padding: var(--space-3);
+  padding: 0.5rem 0.65rem;
   display: grid;
-  gap: var(--space-1);
+  gap: 0.15rem;
 }
 
 .sync-status-line {
   font-weight: 650;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
 }
 
 .sync-status-line.state-auth-check,
@@ -192,17 +192,35 @@ textarea:focus-visible,
 .sync-status-detail,
 .sync-account-label {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .sync-status-info,
 .sync-status-error {
   color: var(--text-muted);
-  font-size: 0.79rem;
+  font-size: 0.73rem;
 }
 
 .sync-status-error {
   color: var(--danger);
+}
+
+
+.sync-status-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sync-status-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.sync-action-button {
+  white-space: nowrap;
 }
 
 .sync-retry-indicator,
@@ -342,6 +360,7 @@ textarea:focus-visible,
 .sync-action-button {
   margin-top: 0;
   border-radius: var(--radius-sm);
+  min-height: 2.25rem;
   padding: 0.52rem 0.85rem;
   cursor: pointer;
   border: 1px solid transparent;
@@ -386,6 +405,69 @@ textarea:focus-visible,
   border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+/*
+ * Shared module-layout primitives so non-People modules follow the same
+ * information hierarchy (header -> controls -> cards/content).
+ */
+.mode-dashboard > h1 {
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  margin-bottom: var(--space-2);
+}
+
+.mode-dashboard > .module-intro {
+  max-width: 72ch;
+}
+
+.people-header,
+.meetings-header,
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.meetings-header-actions,
+.meeting-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.meeting-form,
+.project-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-1);
+}
+
+.meeting-form {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.meeting-form .field-label {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.project-card {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.tasks-list,
+.meetings-list,
+.sprints-list,
+.projects-card-list {
+  display: grid;
+  gap: var(--space-3);
 }
 
 .people-module,
@@ -520,6 +602,7 @@ textarea:focus-visible,
 .people-list-item.selected {
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .people-list-button {
@@ -889,6 +972,10 @@ body[data-density="compact"] .footer {
     padding: var(--space-3) var(--space-4);
   }
 
+  .mode-switch {
+    width: fit-content;
+  }
+
   .account-sync-cluster {
     justify-content: flex-start;
   }
@@ -896,6 +983,10 @@ body[data-density="compact"] .footer {
   .sync-status {
     max-width: 100%;
     width: 100%;
+  }
+
+  .sync-status-footer {
+    flex-wrap: wrap;
   }
 
   .content,
@@ -952,6 +1043,25 @@ body[data-density="compact"] .footer {
     position: static;
     width: auto;
     max-height: none;
+  }
+}
+
+
+@media (max-width: 640px) {
+  .brand {
+    font-size: 0.98rem;
+  }
+
+  .account-sync-cluster {
+    width: 100%;
+  }
+
+  .mode-button {
+    padding-inline: 0.65rem;
+  }
+
+  .sync-status {
+    min-width: 0;
   }
 }
 
