@@ -160,12 +160,14 @@ function renderWorkPeopleModule(uiContext = {}) {
   const state = createPeopleUiState("work");
 
   const section = document.createElement("section");
-  section.className = "mode-dashboard people-module";
+  section.className = "mode-dashboard people-module people-shell";
 
-  const header = document.createElement("div");
-  header.className = "people-header";
+  const header = document.createElement("header");
+  header.className = "people-page-header";
 
   const titleWrap = document.createElement("div");
+  titleWrap.className = "people-title-wrap";
+
   const title = document.createElement("h1");
   title.textContent = "Work People";
 
@@ -174,24 +176,27 @@ function renderWorkPeopleModule(uiContext = {}) {
   intro.textContent =
     "Track work contacts, stakeholder relationships, and keep a timestamped log of engagements.";
 
-  titleWrap.append(title, intro);
+  const metrics = document.createElement("div");
+  metrics.className = "people-metrics";
 
   const createButton = document.createElement("button");
   createButton.type = "button";
-  createButton.className = "enter-mode-button";
+  createButton.className = "button button-primary";
   createButton.textContent = "Add person";
   createButton.addEventListener("click", () => {
     state.editingId = null;
     state.isFormOpen = true;
+    state.selectedPersonId = null;
     renderPeopleModule();
   });
 
+  titleWrap.append(title, intro, metrics);
   header.append(titleWrap, createButton);
 
   const notice = document.createElement("p");
-  notice.className = "archive-note";
+  notice.className = "info-banner";
   notice.textContent =
-    "Data safety: records are archived (not deleted) and remain recoverable in this module.";
+    "ℹ️ Data safety: records are archived (not deleted) and remain recoverable in this module.";
 
   const controls = document.createElement("div");
   controls.className = "people-controls";
@@ -199,7 +204,7 @@ function renderWorkPeopleModule(uiContext = {}) {
   const search = document.createElement("input");
   search.type = "search";
   search.className = "field-input";
-  search.placeholder = "Search name, organisation, role, relationship, note";
+  search.placeholder = "Search by name, organisation, role, relationship, or notes";
   search.value = state.search;
   search.setAttribute("aria-label", "Search people");
   search.addEventListener("input", (event) => {
@@ -212,7 +217,7 @@ function renderWorkPeopleModule(uiContext = {}) {
   filter.setAttribute("aria-label", "Filter by status");
   addOption(filter, "active", "Active only");
   addOption(filter, "archived", "Archived only");
-  addOption(filter, "all", "All");
+  addOption(filter, "all", "All statuses");
   filter.value = state.filter;
   filter.addEventListener("change", (event) => {
     state.filter = event.target.value;
@@ -233,66 +238,204 @@ function renderWorkPeopleModule(uiContext = {}) {
     renderPeopleModule();
   });
 
-  controls.append(search, filter, sort);
+  const clearFilters = document.createElement("button");
+  clearFilters.type = "button";
+  clearFilters.className = "button button-secondary clear-filters";
+  clearFilters.textContent = "Clear filters";
+  clearFilters.addEventListener("click", () => {
+    state.search = "";
+    state.filter = "active";
+    state.sort = "updated-desc";
+    renderPeopleModule();
+  });
+
+  controls.append(search, filter, sort, clearFilters);
 
   const message = document.createElement("p");
   message.className = "feedback";
 
+  const workspace = document.createElement("div");
+  workspace.className = "people-workspace";
+
+  const listPanel = document.createElement("div");
+  listPanel.className = "people-list-panel card";
+
   const listWrap = document.createElement("div");
   listWrap.className = "people-list";
+
+  const detailPanel = document.createElement("section");
+  detailPanel.className = "people-detail-panel card";
+  detailPanel.setAttribute("aria-live", "polite");
 
   const formWrap = document.createElement("div");
   formWrap.className = "people-form-wrap";
 
-  section.append(header, notice, controls, message, listWrap, formWrap);
+  const toast = document.createElement("div");
+  toast.className = "snackbar";
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
+
+  listPanel.appendChild(listWrap);
+  workspace.append(listPanel, detailPanel);
+  section.append(header, notice, controls, message, workspace, formWrap, toast);
+
+  function setToast(text) {
+    toast.textContent = text;
+    toast.classList.add("visible");
+    window.clearTimeout(state.toastTimer);
+    state.toastTimer = window.setTimeout(() => {
+      toast.classList.remove("visible");
+    }, 2200);
+  }
 
   function renderPeopleModule() {
     const result = queryPeople(state);
+    const counts = getPeopleCounts(state.mode);
+
+    metrics.innerHTML = "";
+    metrics.append(
+      createMetricChip("Total", counts.total),
+      createMetricChip("Active", counts.active),
+      createMetricChip("Archived", counts.archived)
+    );
+
     message.textContent = state.feedback || `Showing ${result.length} contact(s).`;
+
+    search.value = state.search;
+    filter.value = state.filter;
+    sort.value = state.sort;
+
+    const hasActiveFilters = state.search.trim() || state.filter !== "active" || state.sort !== "updated-desc";
+    clearFilters.hidden = !hasActiveFilters;
+
+    if (!state.selectedPersonId && result.length > 0) {
+      state.selectedPersonId = result[0].id;
+    }
+
+    if (state.selectedPersonId && !result.some((person) => person.id === state.selectedPersonId)) {
+      state.selectedPersonId = result[0]?.id || null;
+    }
 
     listWrap.innerHTML = "";
     if (result.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "empty-state";
-      empty.textContent =
-        state.filter === "archived"
-          ? "No archived contacts yet."
-          : "No contacts match your filters. Add your first stakeholder to get started.";
-      listWrap.appendChild(empty);
+      listWrap.appendChild(createEmptyPeopleState({
+        hasFilters: Boolean(state.search.trim() || state.filter !== "active"),
+        onClear: () => {
+          state.search = "";
+          state.filter = "active";
+          state.sort = "updated-desc";
+          renderPeopleModule();
+        },
+        onAdd: () => {
+          state.isFormOpen = true;
+          state.editingId = null;
+          renderPeopleModule();
+        }
+      }));
     } else {
+      const list = document.createElement("ul");
+      list.className = "people-selection-list";
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", "People list");
+
       for (const person of result) {
-        listWrap.appendChild(
-          createPersonCard(person, {
-            onScheduleOneOnOne: (personRecord) => {
-              if (typeof uiContext.onScheduleOneOnOne === "function") {
-                uiContext.onScheduleOneOnOne(personRecord);
-              }
-            },
-            onEdit: () => {
-              state.editingId = person.id;
-              state.isFormOpen = true;
-              renderPeopleModule();
-            },
-            onArchiveToggle: () => {
-              archivePerson(state.mode, person.id, !person.archived);
-              state.feedback = person.archived
-                ? `Restored ${person.name}.`
-                : `Archived ${person.name}.`;
-              renderPeopleModule();
-            },
-            onQuickUpdate: (payload) => {
-              const updateResult = quickUpdateContact(state.mode, person.id, payload);
-              if (updateResult.ok) {
-                state.feedback = `Logged contact update for ${person.name}.`;
-              } else {
-                state.feedback = updateResult.error;
-              }
+        list.appendChild(
+          createPersonListItem(person, {
+            selected: state.selectedPersonId === person.id,
+            onSelect: () => {
+              state.selectedPersonId = person.id;
+              state.feedback = "";
               renderPeopleModule();
             }
           })
         );
       }
+
+      /**
+       * Supports arrow-key navigation within the split-view listbox so keyboard
+       * users can switch records without leaving the list context.
+       */
+      list.addEventListener("keydown", (event) => {
+        const selectable = Array.from(list.querySelectorAll(".people-list-button"));
+        if (!selectable.length) {
+          return;
+        }
+
+        const activeIndex = selectable.findIndex((button) => button.dataset.personId === state.selectedPersonId);
+        const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          selectable[Math.min(currentIndex + 1, selectable.length - 1)].click();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          selectable[Math.max(currentIndex - 1, 0)].click();
+          return;
+        }
+
+        if (event.key === "Home") {
+          event.preventDefault();
+          selectable[0].click();
+          return;
+        }
+
+        if (event.key === "End") {
+          event.preventDefault();
+          selectable[selectable.length - 1].click();
+        }
+      });
+
+      listWrap.appendChild(list);
     }
+
+    detailPanel.innerHTML = "";
+    const selectedPerson = state.selectedPersonId ? findPersonById(state.mode, state.selectedPersonId) : null;
+
+    detailPanel.appendChild(
+      createPersonDetailsPanel(selectedPerson, {
+        onScheduleOneOnOne: (personRecord) => {
+          if (typeof uiContext.onScheduleOneOnOne === "function") {
+            uiContext.onScheduleOneOnOne(personRecord);
+          }
+        },
+        onEdit: () => {
+          state.editingId = selectedPerson.id;
+          state.isFormOpen = true;
+          renderPeopleModule();
+        },
+        onArchiveToggle: () => {
+          const nextArchivedValue = !selectedPerson.archived;
+          const confirmation = window.confirm(
+            nextArchivedValue
+              ? `Archive ${selectedPerson.name}? You can restore this record later.`
+              : `Restore ${selectedPerson.name} to active contacts?`
+          );
+
+          if (!confirmation) {
+            return;
+          }
+
+          archivePerson(state.mode, selectedPerson.id, nextArchivedValue);
+          state.feedback = nextArchivedValue
+            ? `Archived ${selectedPerson.name}.`
+            : `Restored ${selectedPerson.name}.`;
+          renderPeopleModule();
+        },
+        onQuickUpdate: (payload) => {
+          const updateResult = quickUpdateContact(state.mode, selectedPerson.id, payload);
+          if (updateResult.ok) {
+            state.feedback = `Logged contact update for ${selectedPerson.name}.`;
+            setToast("Contact logged successfully.");
+          } else {
+            state.feedback = updateResult.error;
+          }
+          renderPeopleModule();
+        }
+      })
+    );
 
     formWrap.innerHTML = "";
     if (state.isFormOpen) {
@@ -317,9 +460,11 @@ function renderWorkPeopleModule(uiContext = {}) {
             applyPersonProjectLinks(state.mode, saveResult.person.id, payload.projectLinks);
             state.isFormOpen = false;
             state.editingId = null;
+            state.selectedPersonId = saveResult.person.id;
             state.feedback = saveResult.wasEdit
               ? `Updated ${payload.person.name}.`
               : `Added ${payload.person.name}.`;
+            setToast(saveResult.wasEdit ? "Contact updated." : "Contact added.");
             renderPeopleModule();
           }
         })
@@ -342,100 +487,194 @@ function createPeopleUiState(mode) {
     sort: "updated-desc",
     isFormOpen: false,
     editingId: null,
-    feedback: ""
+    selectedPersonId: null,
+    feedback: "",
+    toastTimer: null
   };
 }
 
 /**
- * Creates a card row with key details and quick contact update controls.
+ * Builds compact metric chips for quick page-level scanning.
  */
-function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate, onScheduleOneOnOne }) {
-  const card = document.createElement("article");
-  card.className = "person-card";
+function createMetricChip(label, value) {
+  const chip = document.createElement("p");
+  chip.className = "metric-chip";
+  chip.textContent = `${label}: ${value}`;
+  return chip;
+}
 
-  const top = document.createElement("div");
-  top.className = "person-card-top";
+/**
+ * Returns total, active, and archived counts for the current mode.
+ */
+function getPeopleCounts(mode) {
+  const people = loadPeople(mode);
+  const archived = people.filter((person) => person.archived).length;
+  return {
+    total: people.length,
+    archived,
+    active: people.length - archived
+  };
+}
 
-  const heading = document.createElement("h3");
-  heading.textContent = person.name;
+/**
+ * Creates a listbox option for split-view people navigation.
+ */
+function createPersonListItem(person, { selected, onSelect }) {
+  const item = document.createElement("li");
+  item.className = "people-list-item";
 
-  const pill = document.createElement("span");
-  pill.className = person.archived ? "status-pill archived" : "status-pill active";
-  pill.textContent = person.archived ? "Archived" : "Active";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "people-list-button";
+  button.setAttribute("role", "option");
+  button.setAttribute("aria-selected", String(selected));
+  button.dataset.personId = person.id;
+  button.tabIndex = selected ? 0 : -1;
 
-  top.append(heading, pill);
+  if (selected) {
+    item.classList.add("selected");
+  }
 
-  const detail = document.createElement("p");
-  detail.className = "person-meta";
-  detail.textContent = `${person.role || "No role"} • ${person.organisation || "No organisation"}`;
+  button.addEventListener("click", onSelect);
+
+  const header = document.createElement("div");
+  header.className = "people-list-item-head";
+
+  const name = document.createElement("strong");
+  name.textContent = person.name;
+
+  const status = document.createElement("span");
+  status.className = person.archived ? "status-badge archived" : "status-badge active";
+  status.textContent = person.archived ? "Archived" : "Active";
+
+  const orgRole = document.createElement("p");
+  orgRole.className = "person-meta";
+  orgRole.textContent = `${person.organisation || "No organisation"} · ${person.role || "No role"}`;
 
   const relationship = document.createElement("p");
   relationship.className = "person-meta";
   relationship.textContent = `Relationship: ${person.relationship || "Not set"}`;
 
-  const contact = document.createElement("p");
-  contact.className = "person-meta";
-  contact.textContent = `Email: ${person.email || "-"} • Phone: ${person.phone || "-"}`;
-
   const lastContact = document.createElement("p");
   lastContact.className = "person-meta";
   lastContact.textContent = `Last contact: ${person.lastContactDate || "Not logged"}`;
 
-  const note = document.createElement("p");
-  note.className = "person-note";
-  note.textContent = `Latest note: ${person.notes || "No notes yet"}`;
+  header.append(name, status);
+  button.append(header, orgRole, relationship, lastContact);
+  item.appendChild(button);
+  return item;
+}
+
+/**
+ * Renders right-side details view for selected person.
+ */
+function createPersonDetailsPanel(person, { onEdit, onArchiveToggle, onQuickUpdate, onScheduleOneOnOne }) {
+  if (!person) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Select a contact to review details and log interactions.";
+    return empty;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "people-details";
+
+  const header = document.createElement("header");
+  header.className = "person-detail-header";
+
+  const identity = document.createElement("div");
+
+  const name = document.createElement("h2");
+  name.textContent = person.name;
+
+  const meta = document.createElement("p");
+  meta.className = "person-meta";
+  meta.textContent = `${person.role || "No role"} · ${person.organisation || "No organisation"}`;
+
+  const relationship = document.createElement("p");
+  relationship.className = "person-meta";
+  relationship.textContent = `Relationship: ${person.relationship || "Not set"}`;
+
+  const status = document.createElement("span");
+  status.className = person.archived ? "status-badge archived" : "status-badge active";
+  status.textContent = person.archived ? "Archived" : "Active";
+
+  identity.append(name, meta, relationship);
+  header.append(identity, status);
 
   const actions = document.createElement("div");
   actions.className = "person-actions";
 
+  const logContact = document.createElement("button");
+  logContact.type = "button";
+  logContact.className = "button button-primary";
+  logContact.textContent = "Log contact";
+  logContact.addEventListener("click", () => {
+    const dateField = wrap.querySelector(".quick-update-date");
+    const noteField = wrap.querySelector(".quick-update-note");
+    if (!dateField || !noteField) {
+      return;
+    }
+
+    onQuickUpdate({
+      date: dateField.value,
+      note: noteField.value.trim()
+    });
+  });
+
+  const scheduleOneOnOne = document.createElement("button");
+  scheduleOneOnOne.type = "button";
+  scheduleOneOnOne.className = "button button-secondary";
+  scheduleOneOnOne.textContent = "Schedule 1:1";
+  scheduleOneOnOne.addEventListener("click", () => onScheduleOneOnOne(person));
+
   const editButton = document.createElement("button");
   editButton.type = "button";
-  editButton.className = "ghost-button";
+  editButton.className = "button button-secondary";
   editButton.textContent = "Edit";
   editButton.addEventListener("click", onEdit);
 
-  const oneOnOneButton = document.createElement("button");
-  oneOnOneButton.type = "button";
-  oneOnOneButton.className = "ghost-button";
-  oneOnOneButton.textContent = "Schedule 1:1";
-  oneOnOneButton.addEventListener("click", () => onScheduleOneOnOne(person));
-
   const archiveButton = document.createElement("button");
   archiveButton.type = "button";
-  archiveButton.className = "ghost-button";
+  archiveButton.className = "button button-danger-subtle";
   archiveButton.textContent = person.archived ? "Restore" : "Archive";
   archiveButton.addEventListener("click", onArchiveToggle);
 
-  actions.append(editButton, oneOnOneButton, archiveButton);
+  actions.append(logContact, scheduleOneOnOne, editButton, archiveButton);
 
-  const quick = document.createElement("form");
-  quick.className = "quick-update";
+  const channels = document.createElement("p");
+  channels.className = "person-meta";
+  channels.textContent = `Email: ${person.email || "-"} · Phone: ${person.phone || "-"}`;
+
+  const quickUpdate = document.createElement("div");
+  quickUpdate.className = "quick-update card-muted";
+
+  const quickTitle = document.createElement("h3");
+  quickTitle.textContent = "Log interaction";
+
+  const quickDescription = document.createElement("p");
+  quickDescription.className = "person-meta";
+  quickDescription.textContent = "Add the latest engagement touchpoint and note.";
 
   const dateInput = document.createElement("input");
   dateInput.type = "date";
-  dateInput.className = "field-input";
+  dateInput.className = "field-input quick-update-date";
   dateInput.value = isoDateToday();
-  dateInput.setAttribute("aria-label", `Contact date for ${person.name}`);
+  dateInput.setAttribute("aria-label", `Interaction date for ${person.name}`);
 
   const noteInput = document.createElement("input");
   noteInput.type = "text";
-  noteInput.className = "field-input";
-  noteInput.placeholder = "Quick contact note";
-  noteInput.setAttribute("aria-label", `Contact note for ${person.name}`);
+  noteInput.className = "field-input quick-update-note";
+  noteInput.placeholder = "Add a concise summary of this touchpoint";
+  noteInput.setAttribute("aria-label", `Interaction note for ${person.name}`);
 
-  const saveQuickButton = document.createElement("button");
-  saveQuickButton.type = "submit";
-  saveQuickButton.className = "ghost-button";
-  saveQuickButton.textContent = "Log contact";
+  quickUpdate.append(quickTitle, quickDescription, dateInput, noteInput);
 
-  quick.append(dateInput, noteInput, saveQuickButton);
-  quick.addEventListener("submit", (event) => {
-    event.preventDefault();
-    onQuickUpdate({
-      date: dateInput.value,
-      note: noteInput.value.trim()
-    });
-  });
+  const timeline = document.createElement("section");
+  timeline.className = "engagement-timeline";
+
+  const timelineHeading = document.createElement("h3");
+  timelineHeading.textContent = "Engagement timeline";
 
   const trailList = document.createElement("ul");
   trailList.className = "contact-trail";
@@ -444,15 +683,61 @@ function createPersonCard(person, { onEdit, onArchiveToggle, onQuickUpdate, onSc
     empty.textContent = "No contact trail yet.";
     trailList.appendChild(empty);
   } else {
-    for (const entry of person.contactTrail.slice(-5).reverse()) {
+    for (const entry of person.contactTrail.slice().reverse()) {
       const line = document.createElement("li");
-      line.textContent = `${entry.date} — ${entry.note || "No note"}`;
+      const entryDate = document.createElement("strong");
+      entryDate.textContent = entry.date;
+
+      const entryNote = document.createElement("span");
+      entryNote.textContent = entry.note || "No note";
+
+      line.append(entryDate, entryNote);
       trailList.appendChild(line);
     }
   }
 
-  card.append(top, detail, relationship, contact, lastContact, note, actions, quick, trailList);
-  return card;
+  timeline.append(timelineHeading, trailList);
+  wrap.append(header, actions, channels, quickUpdate, timeline);
+  return wrap;
+}
+
+/**
+ * Renders empty states for no contacts and no search matches.
+ */
+function createEmptyPeopleState({ hasFilters, onClear, onAdd }) {
+  const empty = document.createElement("div");
+  empty.className = "empty-state-block";
+
+  const title = document.createElement("h3");
+  title.textContent = hasFilters ? "No matching contacts" : "No contacts yet";
+
+  const copy = document.createElement("p");
+  copy.className = "empty-state";
+  copy.textContent = hasFilters
+    ? "Try a different search, status filter, or reset your controls."
+    : "Add your first work contact to start tracking interactions and relationships.";
+
+  const actions = document.createElement("div");
+  actions.className = "empty-state-actions";
+
+  if (hasFilters) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "button button-secondary";
+    clear.textContent = "Clear search and filters";
+    clear.addEventListener("click", onClear);
+    actions.appendChild(clear);
+  }
+
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "button button-primary";
+  add.textContent = "Add person";
+  add.addEventListener("click", onAdd);
+  actions.appendChild(add);
+
+  empty.append(title, copy, actions);
+  return empty;
 }
 
 /**

@@ -1,6 +1,5 @@
 /**
- * Renders the top bar that remains visible across all app states.
- * Includes mode switch plus live sync status indicators.
+ * Renders the app-level top bar with branding, mode switch, and account/sync cluster.
  */
 export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, syncState, onSyncAction }) {
   const header = document.createElement("header");
@@ -10,8 +9,12 @@ export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, s
   brand.className = "brand";
   brand.textContent = "The Second Brain";
 
+  const accountCluster = document.createElement("div");
+  accountCluster.className = "account-sync-cluster";
+
   const modeSwitch = document.createElement("div");
   modeSwitch.className = "mode-switch";
+  modeSwitch.setAttribute("aria-label", "Mode switch");
 
   const workButton = createModeButton("Work", "work", activeMode, isModeSwitchDisabled, onModeChange);
   const personalButton = createModeButton(
@@ -23,48 +26,88 @@ export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, s
   );
 
   modeSwitch.append(workButton, personalButton);
+  accountCluster.append(modeSwitch, renderSyncStatus(syncState, onSyncAction));
 
-  const syncStatus = renderSyncStatus(syncState, onSyncAction);
-
-  header.append(brand, modeSwitch, syncStatus);
+  header.append(brand, accountCluster);
   return header;
 }
 
 /**
  * Creates the sync status segment with state, pending queue count, and conflict badge.
+ *
+ * The compact summary row keeps top-bar height small while preserving all
+ * previously exposed state details and action behavior.
  */
 function renderSyncStatus(syncState, onSyncAction) {
-  const wrap = document.createElement("div");
+  const wrap = document.createElement("section");
   wrap.className = "sync-status";
   wrap.setAttribute("aria-live", "polite");
+  wrap.setAttribute("aria-label", "Account and sync");
 
   const state = syncState?.syncStatus || "idle";
   const pending = Number(syncState?.pendingChanges || 0);
   const conflicts = Number(syncState?.conflictCount || 0);
   const retries = Number(syncState?.retries || 0);
 
-  const statusLine = document.createElement("div");
+  const statusLine = document.createElement("p");
   statusLine.className = `sync-status-line state-${state}`;
-  statusLine.textContent = `Sync: ${stateLabel(state)}`;
+  statusLine.textContent = stateLabel(state);
 
-  const detailLine = document.createElement("small");
+  const detailLine = document.createElement("p");
   detailLine.className = "sync-status-detail";
 
   const lastSyncLabel = syncState?.lastSuccessfulSyncAt
     ? formatRelativeSyncTime(syncState.lastSuccessfulSyncAt)
-    : "never";
+    : "Never synced";
 
   const failureDetail = syncState?.syncStatus === "error" ? errorReasonLabel(syncState?.errorReason) : "";
-  detailLine.textContent = `Pending ${pending} · Last ${lastSyncLabel}${retries > 0 ? ` · Retrying (${retries})` : ""}${failureDetail ? ` · ${failureDetail}` : ""}`;
+  detailLine.textContent = `Pending ${pending} · Last ${lastSyncLabel}${failureDetail ? ` · ${failureDetail}` : ""}`;
 
-  wrap.append(statusLine, detailLine);
+  const accountLabel = document.createElement("p");
+  accountLabel.className = "sync-account-label";
+  accountLabel.textContent =
+    syncState?.authStatus === "signed-in"
+      ? syncState?.authSession?.email || "Connected to Drive"
+      : "Drive not connected";
+
+  const footer = document.createElement("div");
+  footer.className = "sync-status-footer";
+
+  const tags = document.createElement("div");
+  tags.className = "sync-status-tags";
+
+  if (retries > 0) {
+    const retry = document.createElement("span");
+    retry.className = "sync-retry-indicator";
+    retry.textContent = `Retrying (${retries})`;
+    tags.appendChild(retry);
+  }
 
   if (conflicts > 0) {
     const conflict = document.createElement("span");
     conflict.className = "sync-conflict-count";
     conflict.textContent = `${conflicts} conflict${conflicts === 1 ? "" : "s"}`;
-    wrap.appendChild(conflict);
+    tags.appendChild(conflict);
   }
+
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "button button-secondary sync-action-button";
+
+  if (syncState?.authStatus === "signed-in") {
+    action.textContent = "Sync now";
+    action.disabled = isBusySyncState(syncState?.syncStatus);
+    action.addEventListener("click", () => onSyncAction("sync"));
+  } else if (syncState?.authStatus === "checking") {
+    action.textContent = "Checking Drive…";
+    action.disabled = true;
+  } else {
+    action.textContent = "Connect Drive";
+    action.addEventListener("click", () => onSyncAction("sign-in"));
+  }
+
+  footer.append(tags, action);
+  wrap.append(statusLine, detailLine, accountLabel, footer);
 
   if (syncState?.infoMessage) {
     const info = document.createElement("small");
@@ -80,30 +123,6 @@ function renderSyncStatus(syncState, onSyncAction) {
     wrap.appendChild(error);
   }
 
-  const action = document.createElement("button");
-  action.type = "button";
-  action.className = "sync-action-button";
-
-  if (syncState?.authStatus === "signed-in") {
-    const accountLabel = document.createElement("small");
-    accountLabel.className = "sync-account-label";
-    accountLabel.textContent = syncState?.authSession?.email
-      ? `Connected: ${syncState.authSession.email}`
-      : "Connected to Drive";
-    wrap.appendChild(accountLabel);
-
-    action.textContent = "Sync now";
-    action.disabled = isBusySyncState(syncState?.syncStatus);
-    action.addEventListener("click", () => onSyncAction("sync"));
-  } else if (syncState?.authStatus === "checking") {
-    action.textContent = "Checking Drive session…";
-    action.disabled = true;
-  } else {
-    action.textContent = "Connect Drive";
-    action.addEventListener("click", () => onSyncAction("sign-in"));
-  }
-
-  wrap.appendChild(action);
   return wrap;
 }
 
@@ -129,19 +148,19 @@ function createModeButton(label, mode, activeMode, isDisabled, onModeChange) {
 function stateLabel(state) {
   switch (state) {
     case "auth-check":
-      return "Checking auth";
+      return "Checking authentication";
     case "pulling":
-      return "Pulling";
+      return "Syncing: pulling";
     case "merging":
-      return "Merging";
+      return "Syncing: merging";
     case "pushing":
-      return "Pushing";
+      return "Syncing: pushing";
     case "offline":
       return "Offline";
     case "error":
-      return "Error";
+      return "Sync issue";
     default:
-      return "Idle";
+      return "Ready to sync";
   }
 }
 
@@ -150,7 +169,7 @@ function errorReasonLabel(reason) {
     case "auth-expired":
       return "Session expired";
     case "quota":
-      return "Quota/rate limit";
+      return "Quota or rate limit";
     case "network-timeout":
       return "Network timeout";
     case "schema-mismatch":
@@ -167,7 +186,7 @@ function isBusySyncState(state) {
 function formatRelativeSyncTime(timestamp) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) {
-    return "never";
+    return "Never synced";
   }
 
   const elapsedMs = Date.now() - date.getTime();
