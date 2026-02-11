@@ -53,7 +53,10 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     const ownerName = people.find((person) => person.id === update.ownerId)?.name || "No owner";
     const meetingName = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
 
-    item.textContent = `${update.text} · Owner: ${ownerName} · To update: ${update.toUpdate.length} · ${meetingName}`;
+    const pendingCount = selectPendingPeopleCount(update);
+    const completedCount = selectCompletedPeopleCount(update);
+
+    item.textContent = `${update.text} · Owner: ${ownerName} · Pending: ${pendingCount} · Updated: ${completedCount} · ${meetingName}`;
     list.appendChild(item);
   }
 
@@ -155,6 +158,37 @@ export function archiveUpdate(mode, updateId, shouldArchive) {
 }
 
 /**
+ * Marks one person as updated for a given update id.
+ *
+ * `toUpdate` tracks per-person state rather than a single update-level flag because
+ * one update can fan out to multiple recipients that complete asynchronously.
+ */
+export function markPersonUpdated(updateId, personId, at = new Date().toISOString()) {
+  updatePersonStatus("work", updateId, personId, "updated", at);
+}
+
+/**
+ * Optionally un-toggles a person back to pending.
+ */
+export function markPersonPending(updateId, personId) {
+  updatePersonStatus("work", updateId, personId, "pending", "");
+}
+
+/**
+ * Selector for how many recipients still need the update.
+ */
+export function selectPendingPeopleCount(update) {
+  return normaliseToUpdateList(update?.toUpdate).filter((entry) => entry.status === "pending").length;
+}
+
+/**
+ * Selector for how many recipients were already updated.
+ */
+export function selectCompletedPeopleCount(update) {
+  return normaliseToUpdateList(update?.toUpdate).filter((entry) => entry.status === "updated").length;
+}
+
+/**
  * Applies schema defaults and normalises nested `toUpdate` entries.
  */
 export function normaliseUpdate(update) {
@@ -180,31 +214,102 @@ function normaliseToUpdateList(toUpdate) {
     return [];
   }
 
+  // Schema migration note:
+  // legacy records stored `toUpdate` as an array of person ids (`["person-1", "person-2"]`).
+  // These are normalised into pending recipient entries so sync/merge code sees a stable shape.
   return toUpdate
     .map((entry) => {
       if (typeof entry === "string") {
-        const trimmed = entry.trim();
-        return trimmed ? { personId: "", note: trimmed } : null;
+        const personId = entry.trim();
+        return personId
+          ? {
+              personId,
+              required: true,
+              status: "pending",
+              updatedAt: ""
+            }
+          : null;
       }
 
       if (!entry || typeof entry !== "object") {
         return null;
       }
 
-      const note = typeof entry.note === "string" ? entry.note.trim() : "";
       const personId = typeof entry.personId === "string" ? entry.personId : "";
+      const note = typeof entry.note === "string" ? entry.note.trim() : "";
+      const required = typeof entry.required === "boolean" ? entry.required : true;
+      const status = entry.status === "updated" ? "updated" : "pending";
+      const updatedAt = status === "updated" ? ensureIsoTimestamp(entry.updatedAt) : "";
 
-      if (!note && !personId) {
+      if (!personId && !note) {
         return null;
       }
 
       return {
         personId,
+        required,
+        status,
+        updatedAt,
         note,
-        status: typeof entry.status === "string" ? entry.status : "pending"
       };
     })
     .filter(Boolean);
+}
+
+function updatePersonStatus(mode, updateId, personId, status, at) {
+  if (mode !== "work" || !updateId || !personId) {
+    return;
+  }
+
+  const updates = loadUpdates(mode).map((update) => {
+    if (update.id !== updateId) {
+      return update;
+    }
+
+    const now = new Date().toISOString();
+    const targetAt = status === "updated" ? ensureIsoTimestamp(at, now) : "";
+    const entries = normaliseToUpdateList(update.toUpdate);
+    const existingIndex = entries.findIndex((entry) => entry.personId === personId);
+
+    if (existingIndex >= 0) {
+      const current = entries[existingIndex];
+      entries[existingIndex] = {
+        ...current,
+        status,
+        updatedAt: targetAt,
+      };
+    } else {
+      entries.push({
+        personId,
+        required: true,
+        status,
+        updatedAt: targetAt,
+      });
+    }
+
+    return {
+      ...update,
+      toUpdate: entries,
+      updatedAt: now,
+      auditTrail: [...update.auditTrail, { at: now, action: status === "updated" ? "person-updated" : "person-pending", personId }]
+    };
+  });
+
+  persistUpdates(mode, updates);
+}
+
+function ensureIsoTimestamp(value, fallback = "") {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return fallback;
+  }
+
+  // Canonical ISO output keeps timestamps deterministic during sync/merge.
+  return parsed.toISOString();
 }
 
 function persistUpdates(mode, updates) {
