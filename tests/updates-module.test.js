@@ -190,6 +190,51 @@ test("saveUpdate accepts action owner 'me' for task-linked actions", () => {
   assert.equal(saved.dueDate, "2026-01-10");
 });
 
+test("saveUpdate enforces owner and due date for action entities", () => {
+  localStorage.clear();
+
+  const noOwner = saveUpdate("work", {
+    entityType: "action",
+    text: "Follow up contract",
+    dueDate: "2026-01-10",
+    toUpdate: ["person-a"]
+  });
+  assert.equal(noOwner.ok, false);
+  assert.equal(noOwner.error, "Actions require an owner.");
+
+  const noDueDate = saveUpdate("work", {
+    entityType: "action",
+    text: "Follow up contract",
+    ownerId: "person-a",
+    toUpdate: ["person-a"]
+  });
+  assert.equal(noDueDate.ok, false);
+  assert.equal(noDueDate.error, "Actions require a due date.");
+});
+
+test("saveUpdate accepts action owner 'me' for task-linked actions", () => {
+  localStorage.clear();
+
+  const result = saveUpdate(
+    "work",
+    {
+      entityType: "action",
+      text: "Prepare weekly status",
+      ownerId: "me",
+      dueDate: "2026-01-10",
+      toUpdate: ["person-a"]
+    },
+    "",
+    [{ id: "person-a", name: "Alex", archived: false }]
+  );
+
+  assert.equal(result.ok, true);
+  const [saved] = loadUpdates("work");
+  assert.equal(saved.entityType, "action");
+  assert.equal(saved.ownerId, "me");
+  assert.equal(saved.dueDate, "2026-01-10");
+});
+
 
 
 test("saveUpdate enforces owner referential integrity when people set is provided", () => {
