@@ -10,6 +10,7 @@ import {
   selectUpdatesForPerson
 } from "./updates.js";
 import {
+  buildSingleSelectField,
   buildEntityTokenMultiSelectField,
   buildEntityTokenSingleSelectField,
   readEntityTokenHiddenValues

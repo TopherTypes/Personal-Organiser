@@ -34,18 +34,18 @@ test("getAccessToken does not attempt silent GIS refresh by default", async () =
   assert.equal(initTokenClientCalls, 0);
 });
 
-test("getAccessToken silently rehydrates token when a valid session exists", async () => {
+test("getAccessToken requires explicit silent-refresh opt-in even with a persisted session", async () => {
   localStorage.clear();
 
-  const tokenRequestPrompts = [];
+  let initTokenClientCalls = 0;
   const googleRef = {
     accounts: {
       oauth2: {
-        initTokenClient({ callback }) {
+        initTokenClient() {
+          initTokenClientCalls += 1;
           return {
-            requestAccessToken({ prompt }) {
-              tokenRequestPrompts.push(prompt);
-              callback({ access_token: "restored-token", expires_in: 3600 });
+            requestAccessToken() {
+              throw new Error("requestAccessToken should not run without allowSilentRefresh");
             }
           };
         }
@@ -64,9 +64,11 @@ test("getAccessToken silently rehydrates token when a valid session exists", asy
     JSON.stringify({ email: "user@example.com", expiresAt: 120_000, lastAuthCheckAt: 500 })
   );
 
-  const token = await authClient.getAccessToken({ interactive: false });
-  assert.equal(token, "restored-token");
-  assert.deepEqual(tokenRequestPrompts, ["none"]);
+  await assert.rejects(
+    authClient.getAccessToken({ interactive: false }),
+    /unavailable without interactive sign-in/
+  );
+  assert.equal(initTokenClientCalls, 0);
 });
 
 
