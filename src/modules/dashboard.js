@@ -254,9 +254,11 @@ function renderWorkOverviewDashboard(uiContext = {}) {
       description: "Stakeholders with pending work updates.",
       emptyText: "No pending update recipients right now.",
       items: people
-        .filter((person) => selectUpdatesForPerson(updates, person.id).some(({ item }) => item.status === "pending"))
+        // `selectUpdatesForPerson` returns `{ update, entry }` rows and defaults to pending-only,
+        // so non-zero length already indicates the person has pending follow-ups.
+        .filter((person) => selectUpdatesForPerson(updates, person.id).length > 0)
         .slice(0, 4),
-      getLabel: (person) => `${person.name || "Unnamed person"} · ${selectUpdatesForPerson(updates, person.id).filter(({ item }) => item.status === "pending").length} pending`,
+      getLabel: (person) => `${person.name || "Unnamed person"} · ${selectUpdatesForPerson(updates, person.id).length} pending`,
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "updates" }),
       footerAction: createFooterAction("Open updates", () => navigateFromDashboard(uiContext, { moduleKey: "updates" }))
     })
