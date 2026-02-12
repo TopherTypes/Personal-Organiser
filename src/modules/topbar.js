@@ -1,7 +1,14 @@
 /**
  * Renders the app-level top bar with branding, mode switch, and account/sync cluster.
  */
-export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, syncState, onSyncAction }) {
+export function renderTopBar({
+  activeMode,
+  isModeSwitchDisabled,
+  onModeChange,
+  syncState,
+  onSyncAction,
+  onOpenCommandPalette
+}) {
   const header = document.createElement("header");
   header.className = "top-bar";
 
@@ -26,7 +33,14 @@ export function renderTopBar({ activeMode, isModeSwitchDisabled, onModeChange, s
   );
 
   modeSwitch.append(workButton, personalButton);
-  accountCluster.append(modeSwitch, renderSyncStatus(syncState, onSyncAction));
+  const commandPaletteButton = document.createElement("button");
+  commandPaletteButton.type = "button";
+  commandPaletteButton.className = "button button-secondary command-palette-button";
+  commandPaletteButton.textContent = "Search (Ctrl/Cmd+K)";
+  commandPaletteButton.setAttribute("aria-label", "Open command palette");
+  commandPaletteButton.addEventListener("click", () => onOpenCommandPalette());
+
+  accountCluster.append(modeSwitch, commandPaletteButton, renderSyncStatus(syncState, onSyncAction));
 
   header.append(brand, accountCluster);
   return header;

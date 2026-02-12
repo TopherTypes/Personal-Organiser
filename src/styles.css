@@ -1762,3 +1762,81 @@ body[data-density="compact"] .footer {
     animation-duration: 0ms !important;
   }
 }
+
+/*
+ * Command palette overlay keeps navigation fast without losing context from the current module.
+ */
+.command-palette-button {
+  white-space: nowrap;
+}
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: color-mix(in srgb, #0b1120 52%, transparent);
+  display: grid;
+  place-items: start center;
+  padding: 12vh var(--space-4) var(--space-4);
+}
+
+.command-palette {
+  width: min(760px, 100%);
+  max-height: min(70vh, 640px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: 0 18px 45px rgba(12, 14, 32, 0.3);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+.command-palette-input {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.95rem 1rem;
+  font-size: 1rem;
+  background: transparent;
+}
+
+.command-palette-results {
+  margin: 0;
+  padding: 0.4rem;
+  list-style: none;
+  overflow: auto;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.command-palette-row {
+  border-radius: var(--radius-sm);
+}
+
+.command-palette-row.active,
+.command-palette-row:hover {
+  background: color-mix(in srgb, var(--accent-soft) 74%, transparent);
+}
+
+.command-palette-action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.58rem 0.68rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.command-palette-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.command-palette-empty {
+  padding: 0.6rem 0.7rem;
+  color: var(--text-muted);
+}
