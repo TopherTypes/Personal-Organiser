@@ -95,6 +95,13 @@ function renderSyncStatus(syncState, onSyncAction) {
     tags.appendChild(resolveButton);
   }
 
+  // When no retry/conflict indicators are present, collapsing the empty tags
+  // container removes dead space and keeps the sync card vertically compact.
+  if (!tags.childElementCount) {
+    tags.classList.add("hidden");
+    footer.classList.add("sync-status-footer-actions-only");
+  }
+
   const action = document.createElement("button");
   action.type = "button";
   action.className = "button button-secondary sync-action-button";

@@ -158,19 +158,19 @@ textarea:focus-visible,
 }
 
 .sync-status {
-  min-width: 410px;
-  max-width: 600px;
+  min-width: 500px;
+  max-width: 760px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated);
-  padding: 0.45rem 0.65rem;
+  padding: 0.28rem 0.52rem;
   display: grid;
-  gap: 0.08rem;
+  gap: 0;
 }
 
 .sync-status-line {
   font-weight: 650;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
 }
 
 .sync-status-line,
@@ -197,13 +197,13 @@ textarea:focus-visible,
 .sync-status-detail,
 .sync-account-label {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
 }
 
 .sync-status-info,
 .sync-status-error {
   color: var(--text-muted);
-  font-size: 0.73rem;
+  font-size: 0.66rem;
 }
 
 .sync-status-error {
@@ -215,7 +215,16 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: 0.35rem;
+  margin-top: 0.12rem;
+}
+
+/*
+ * Compact footer variant used when there are no status tags so the action button
+ * sits flush right without reserving extra horizontal space for an empty region.
+ */
+.sync-status-footer-actions-only {
+  justify-content: flex-end;
 }
 
 .sync-status-tags {
@@ -232,6 +241,9 @@ textarea:focus-visible,
 
 .sync-action-button {
   white-space: nowrap;
+  min-height: 1.9rem;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.82rem;
 }
 
 .sync-retry-indicator,
@@ -779,6 +791,10 @@ textarea:focus-visible,
   list-style: none;
   display: grid;
   gap: var(--space-2);
+  max-height: 40vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
 }
 
 .contact-trail li {
@@ -816,6 +832,14 @@ textarea:focus-visible,
   padding: var(--space-4);
 }
 
+/*
+ * Shared width contract for create/edit lightbox dialogs outside meetings.
+ * Keeping this in one class makes modal sizing consistent across modules.
+ */
+.entity-editor-modal {
+  width: min(760px, 100%);
+}
+
 .people-form-wrap {
   position: sticky;
   bottom: var(--space-4);
@@ -838,6 +862,91 @@ textarea:focus-visible,
   padding: 0.55rem 0.62rem;
   color: var(--text);
   background: var(--bg-elevated);
+}
+
+/*
+ * Token-based typeahead controls intentionally mimic modern mail recipient fields:
+ * chips wrap inline above a plain input and suggestions float in a clean, bulletless list.
+ */
+.entity-token-field {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0.5rem;
+  position: relative;
+}
+
+.token-multi-select-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.entity-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--accent-soft) 75%, var(--bg-elevated));
+  border-radius: 999px;
+  padding: 0.18rem 0.18rem 0.18rem 0.55rem;
+  max-width: 100%;
+}
+
+.entity-token-label {
+  color: var(--text);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-token-remove {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  color: var(--text-muted);
+}
+
+.entity-token-remove:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.token-multi-select-suggestions {
+  margin: 0;
+  padding: 0.2rem;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.token-multi-select-option {
+  list-style: none;
+  padding: 0.38rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.token-multi-select-option:hover,
+.token-multi-select-option.is-highlighted {
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+}
+
+.project-people-role-grid {
+  max-height: 52vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
+}
+
+.project-role-people-field {
+  margin: 0;
 }
 
 .field-textarea {
@@ -926,21 +1035,6 @@ textarea:focus-visible,
 
 .updates-table tbody tr:last-child td {
   border-bottom: none;
-}
-
-.updates-slideover {
-  position: fixed;
-  right: var(--space-4);
-  top: var(--space-4);
-  width: min(420px, calc(100vw - var(--space-6)));
-  max-height: calc(100dvh - var(--space-8));
-  padding: var(--space-4);
-  display: grid;
-  gap: var(--space-3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* Raise above module content while staying below full-screen modals. */
-  z-index: 20;
 }
 
 .tasks-table-row {

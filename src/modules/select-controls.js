@@ -117,6 +117,7 @@ export function buildEntityTokenMultiSelectField({
   className = "field-label",
   options = [],
   values = [],
+  maxSelections = Infinity,
   emptyMessage = "",
   disabledWhenEmpty = true,
   inputPlaceholder = "Search and add"
@@ -126,7 +127,7 @@ export function buildEntityTokenMultiSelectField({
   wrapper.textContent = label;
 
   const container = document.createElement("div");
-  container.className = "field-input";
+  container.className = "field-input entity-token-field";
 
   const tokenList = document.createElement("div");
   tokenList.className = "token-multi-select-list";
@@ -156,6 +157,7 @@ export function buildEntityTokenMultiSelectField({
   })).filter((option) => option.value);
 
   const selectedIds = [];
+  const maxSelectable = Number.isFinite(maxSelections) && maxSelections > 0 ? Math.floor(maxSelections) : Infinity;
   let highlightedIndex = -1;
 
   const syncHiddenInput = () => {
@@ -185,7 +187,15 @@ export function buildEntityTokenMultiSelectField({
     if (!candidate || selectedIds.includes(id)) {
       return;
     }
-    selectedIds.push(id);
+    if (selectedIds.length >= maxSelectable) {
+      if (maxSelectable === 1) {
+        selectedIds.splice(0, selectedIds.length, id);
+      } else {
+        return;
+      }
+    } else {
+      selectedIds.push(id);
+    }
     input.value = "";
     highlightedIndex = -1;
     renderTokens();
@@ -204,18 +214,25 @@ export function buildEntityTokenMultiSelectField({
 
       const token = document.createElement("span");
       token.className = "entity-token";
-      token.textContent = option.label;
+
+      const tokenLabel = document.createElement("span");
+      tokenLabel.className = "entity-token-label";
+      tokenLabel.textContent = option.label;
 
       const removeButton = document.createElement("button");
       removeButton.type = "button";
-      removeButton.className = "module-button-secondary";
-      removeButton.textContent = "Remove";
+      removeButton.className = "entity-token-remove";
+      removeButton.textContent = "×";
       removeButton.setAttribute("aria-label", `Remove ${option.label}`);
       removeButton.addEventListener("click", () => removeSelectedId(id));
 
-      token.appendChild(removeButton);
+      token.append(tokenLabel, removeButton);
       tokenList.appendChild(token);
     });
+
+    if (maxSelectable === 1) {
+      input.placeholder = selectedIds.length ? "Selection locked to one person" : inputPlaceholder;
+    }
   };
 
   const getVisibleSuggestions = () => {
@@ -232,6 +249,14 @@ export function buildEntityTokenMultiSelectField({
   };
 
   const renderSuggestions = () => {
+    if (selectedIds.length >= maxSelectable) {
+      suggestions.innerHTML = "";
+      highlightedIndex = -1;
+      input.setAttribute("aria-activedescendant", "");
+      input.setAttribute("aria-expanded", "false");
+      return;
+    }
+
     const visibleSuggestions = getVisibleSuggestions();
     suggestions.innerHTML = "";
 
@@ -332,6 +357,8 @@ export function buildEntityTokenMultiSelectField({
     input.disabled = true;
   }
 
+  hiddenInput.dataset.maxSelections = Number.isFinite(maxSelectable) ? String(maxSelectable) : "";
+
   container.append(tokenList, input, suggestions);
   wrapper.append(container, hiddenInput);
 
@@ -351,5 +378,20 @@ export function buildEntityTokenMultiSelectField({
  * Reads selected IDs from the hidden-input representation used by token controls.
  */
 export function readEntityTokenHiddenValues(hiddenInput) {
-  return [...new Set((hiddenInput?.value || "").split(",").map((value) => value.trim()).filter(Boolean))];
+  const values = [...new Set((hiddenInput?.value || "").split(",").map((value) => value.trim()).filter(Boolean))];
+  const maxSelections = Number(hiddenInput?.dataset?.maxSelections || 0);
+  if (maxSelections === 1) {
+    return values.slice(0, 1);
+  }
+  return values;
+}
+
+/**
+ * Convenience helper for "type then select" controls that permit one entity only.
+ */
+export function buildEntityTokenSingleSelectField(config) {
+  return buildEntityTokenMultiSelectField({
+    ...config,
+    maxSelections: 1
+  });
 }
