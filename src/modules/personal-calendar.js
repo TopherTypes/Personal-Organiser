@@ -53,7 +53,9 @@ export function renderPersonalCalendarModule() {
       id: generateId("pcal_"),
       title: name.input.value.trim(),
       date: date.input.value,
-      notes: notes.value.trim()
+      notes: notes.value.trim(),
+      // Timestamp is persisted so cross-device sync can resolve stale writes more accurately later.
+      updatedAt: new Date().toISOString()
     });
     persistEvents(events);
     form.reset();
@@ -83,7 +85,46 @@ export function renderPersonalCalendarModule() {
       const details = document.createElement("p");
       details.textContent = entry.notes || "No notes";
 
-      row.append(summary, details);
+      const controls = document.createElement("div");
+      controls.className = "row-controls";
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "secondary-button";
+      editButton.textContent = "Edit";
+      editButton.addEventListener("click", () => {
+        const updated = collectEditedEventValues(entry);
+        if (!updated) {
+          return;
+        }
+
+        updateEventById(entry.id, {
+          ...updated,
+          // Every mutation updates the merge timestamp to help future sync conflict resolution.
+          updatedAt: new Date().toISOString()
+        });
+        renderList();
+      });
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "secondary-button";
+      deleteButton.textContent = "Delete";
+      deleteButton.addEventListener("click", () => {
+        const confirmed = window.confirm(
+          `Delete \"${entry.title}\" on ${entry.date}? This cannot be undone.`
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        deleteEventById(entry.id);
+        renderList();
+      });
+
+      controls.append(editButton, deleteButton);
+      row.append(summary, details, controls);
       list.appendChild(row);
     });
   }
@@ -117,6 +158,64 @@ function loadEvents() {
  */
 function persistEvents(events) {
   localStorage.setItem(PERSONAL_CALENDAR_KEY, JSON.stringify(events));
+}
+
+/**
+ * Updates a single calendar entry by stable ID so accidental positional edits cannot corrupt data.
+ */
+function updateEventById(eventId, nextValues) {
+  const events = loadEvents();
+  const index = events.findIndex((event) => event.id === eventId);
+  if (index === -1) {
+    return;
+  }
+
+  events[index] = {
+    ...events[index],
+    ...nextValues
+  };
+  persistEvents(events);
+}
+
+/**
+ * Removes an entry by ID and persists the remaining collection in one write.
+ */
+function deleteEventById(eventId) {
+  const nextEvents = loadEvents().filter((event) => event.id !== eventId);
+  persistEvents(nextEvents);
+}
+
+/**
+ * Uses lightweight prompts to edit all mutable fields while preserving cancellation semantics.
+ */
+function collectEditedEventValues(entry) {
+  const titleInput = window.prompt("Edit title", entry.title);
+  if (titleInput === null) {
+    return null;
+  }
+
+  const dateInput = window.prompt("Edit date (YYYY-MM-DD)", entry.date);
+  if (dateInput === null) {
+    return null;
+  }
+
+  const notesInput = window.prompt("Edit notes", entry.notes || "");
+  if (notesInput === null) {
+    return null;
+  }
+
+  const trimmedTitle = titleInput.trim();
+  const trimmedDate = dateInput.trim();
+  if (!trimmedTitle || !trimmedDate) {
+    window.alert("Title and date are required to save calendar updates.");
+    return null;
+  }
+
+  return {
+    title: trimmedTitle,
+    date: trimmedDate,
+    notes: notesInput.trim()
+  };
 }
 
 function buildInput(labelText, type, required) {
