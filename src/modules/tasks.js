@@ -44,6 +44,9 @@ const RECURRENCE_OPTIONS = [
   "custom"
 ];
 
+const RECURRENCE_FREQUENCIES = ["none", "daily", "weekly", "monthly"];
+const MAX_RECURRENCE_GENERATIONS_PER_LOAD = 24;
+
 /**
  * Renders the work task module with CRUD, archive, filtering, and score-based ordering.
  */
@@ -422,6 +425,17 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     }
   );
 
+  const recurrenceInterval = createField(
+    "Recurrence interval",
+    "number",
+    String(task?.recurrenceMeta?.interval || 1),
+    false,
+    {
+      min: "1",
+      step: "1"
+    }
+  );
+
   const notes = createField("Notes", "textarea", task?.notes || "", false);
 
   const dependencyOptions = tasks
@@ -459,6 +473,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     dueDate.wrap,
     recurrenceWrap,
     customRecurrence.wrap,
+    recurrenceInterval.wrap,
     blockedByTaskIds.wrapper,
     blockingTaskIds.wrapper,
     notes.wrap,
@@ -477,6 +492,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
       dueDate: dueDate.input.value,
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
+      recurrenceInterval: Number(recurrenceInterval.input.value) || 1,
       // Dependencies are selected from canonical task entities so users cannot type orphan IDs.
       blockedByTaskIds: readSelectedValues(blockedByTaskIds.select),
       blockingTaskIds: readSelectedValues(blockingTaskIds.select),
@@ -561,12 +577,14 @@ function saveTask(mode, payload, editingId = "") {
     }
 
     const existing = tasks[index];
+    const recurrenceMeta = buildRecurrenceMetaFromPayload(payload, existing);
     tasks[index] = {
       ...existing,
       ...payload,
       status: canonicalStatus,
       blockedByTaskIds: canonicalBlockedByTaskIds,
       blockingTaskIds: canonicalBlockingTaskIds,
+      recurrenceMeta,
       updatedAt: now,
       lastUpdatedByField: {
         ...existing.lastUpdatedByField,
@@ -579,6 +597,8 @@ function saveTask(mode, payload, editingId = "") {
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
+        recurrenceMeta: now,
+        recurrenceInterval: now,
         blockedByTaskIds: now,
         blockingTaskIds: now,
         notes: now,
@@ -590,6 +610,7 @@ function saveTask(mode, payload, editingId = "") {
     return { ok: true, wasEdit: true };
   }
 
+  const recurrenceMeta = buildRecurrenceMetaFromPayload(payload, null);
   tasks.push(
     normaliseTask({
       id: buildTaskId(),
@@ -597,6 +618,7 @@ function saveTask(mode, payload, editingId = "") {
       status: canonicalStatus,
       blockedByTaskIds: canonicalBlockedByTaskIds,
       blockingTaskIds: canonicalBlockingTaskIds,
+      recurrenceMeta,
       createdAt: now,
       updatedAt: now,
       lastUpdatedByField: {
@@ -609,6 +631,8 @@ function saveTask(mode, payload, editingId = "") {
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
+        recurrenceMeta: now,
+        recurrenceInterval: now,
         blockedByTaskIds: now,
         blockingTaskIds: now,
         notes: now,
@@ -688,13 +712,20 @@ export function loadTasks(mode) {
   }
 
   const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
-  return loadVersionedCollection({
+  const tasks = loadVersionedCollection({
     storageKey,
     collectionKey: "tasks",
     schemaVersion: TASK_SCHEMA_VERSION,
     normaliseItem: normaliseTask,
     fallback: []
   });
+
+  const withGeneratedRecurring = generateRecurringWorkTaskInstances(tasks);
+  if (withGeneratedRecurring.length !== tasks.length) {
+    persistTasks(mode, withGeneratedRecurring);
+  }
+
+  return withGeneratedRecurring;
 }
 
 function persistTasks(mode, tasks) {
@@ -712,6 +743,10 @@ function persistTasks(mode, tasks) {
 }
 
 export function normaliseTask(task) {
+  const recurrenceMeta = normaliseRecurrenceMeta(task?.recurrenceMeta);
+  // Legacy migration support: pre-metadata recurrence values are migrated to the new shape.
+  const migratedRecurrenceMeta = recurrenceMeta || buildRecurrenceMetaFromLegacyTask(task);
+
   return {
     id: task.id || buildTaskId(),
     title: task.title || "",
@@ -723,6 +758,7 @@ export function normaliseTask(task) {
     dueDate: task.dueDate || "",
     recurrence: RECURRENCE_OPTIONS.includes(task.recurrence) ? task.recurrence : "none",
     customRecurrence: task.customRecurrence || "",
+    recurrenceMeta: migratedRecurrenceMeta,
     blockedByTaskIds: parseTaskIdList(task.blockedByTaskIds),
     blockingTaskIds: parseTaskIdList(task.blockingTaskIds),
     notes: task.notes || "",
@@ -734,6 +770,166 @@ export function normaliseTask(task) {
         ? task.lastUpdatedByField
         : {}
   };
+}
+
+function buildRecurrenceMetaFromPayload(payload, existingTask = null) {
+  const legacyFrequency = mapLegacyRecurrenceToFrequency(payload.recurrence);
+  if (legacyFrequency === "none") {
+    return null;
+  }
+
+  return {
+    frequency: legacyFrequency,
+    interval: sanitiseRecurrenceInterval(payload.recurrenceInterval),
+    parentRecurrenceId:
+      payload.recurrenceMeta?.parentRecurrenceId || existingTask?.recurrenceMeta?.parentRecurrenceId || buildTaskId()
+  };
+}
+
+function normaliseRecurrenceMeta(recurrenceMeta) {
+  if (!recurrenceMeta || typeof recurrenceMeta !== "object") {
+    return null;
+  }
+
+  const frequency = RECURRENCE_FREQUENCIES.includes(recurrenceMeta.frequency)
+    ? recurrenceMeta.frequency
+    : "none";
+  if (frequency === "none") {
+    return null;
+  }
+
+  return {
+    frequency,
+    interval: sanitiseRecurrenceInterval(recurrenceMeta.interval),
+    parentRecurrenceId:
+      typeof recurrenceMeta.parentRecurrenceId === "string" && recurrenceMeta.parentRecurrenceId.trim()
+        ? recurrenceMeta.parentRecurrenceId
+        : buildTaskId()
+  };
+}
+
+function buildRecurrenceMetaFromLegacyTask(task) {
+  const frequency = mapLegacyRecurrenceToFrequency(task?.recurrence);
+  if (frequency === "none") {
+    return null;
+  }
+
+  return {
+    frequency,
+    interval: 1,
+    parentRecurrenceId: task?.id || buildTaskId()
+  };
+}
+
+function mapLegacyRecurrenceToFrequency(recurrence) {
+  if (recurrence === "daily") {
+    return "daily";
+  }
+  if (recurrence === "weekly" || recurrence === "weekdays" || recurrence === "weekends") {
+    return "weekly";
+  }
+  if (recurrence === "monthly") {
+    return "monthly";
+  }
+  return "none";
+}
+
+function sanitiseRecurrenceInterval(value) {
+  const parsed = Number.parseInt(String(value || "1"), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function generateRecurringWorkTaskInstances(tasks) {
+  const generated = [...tasks];
+  const today = isoDateToday();
+  const seenSeriesDueDates = new Set(
+    generated
+      .filter((task) => task.recurrenceMeta?.parentRecurrenceId && task.dueDate)
+      .map((task) => `${task.recurrenceMeta.parentRecurrenceId}:${task.dueDate}`)
+  );
+
+  // Recurrence generation runs from the latest dated occurrence in each series to avoid duplicates.
+  const latestBySeries = new Map();
+  for (const task of generated) {
+    const seriesId = task.recurrenceMeta?.parentRecurrenceId;
+    if (!seriesId || !task.dueDate) {
+      continue;
+    }
+
+    const existingLatest = latestBySeries.get(seriesId);
+    if (!existingLatest || task.dueDate > existingLatest.dueDate) {
+      latestBySeries.set(seriesId, task);
+    }
+  }
+
+  for (const latestTask of latestBySeries.values()) {
+    let candidate = latestTask;
+    let guard = 0;
+    while (shouldGenerateNextTaskOccurrence(candidate, today) && guard < MAX_RECURRENCE_GENERATIONS_PER_LOAD) {
+      const nextDueDate = shiftIsoDateByRecurrence(
+        candidate.dueDate,
+        candidate.recurrenceMeta.frequency,
+        candidate.recurrenceMeta.interval
+      );
+      if (!nextDueDate) {
+        break;
+      }
+
+      const seriesDateKey = `${candidate.recurrenceMeta.parentRecurrenceId}:${nextDueDate}`;
+      if (seenSeriesDueDates.has(seriesDateKey)) {
+        break;
+      }
+
+      const nextTask = normaliseTask({
+        ...candidate,
+        id: buildTaskId(),
+        status: "Backlog",
+        dueDate: nextDueDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      generated.push(nextTask);
+      seenSeriesDueDates.add(seriesDateKey);
+      candidate = nextTask;
+      guard += 1;
+    }
+  }
+
+  return generated;
+}
+
+function shouldGenerateNextTaskOccurrence(task, today) {
+  if (!task.recurrenceMeta || !task.dueDate) {
+    return false;
+  }
+
+  const isCompleted = task.status === "Done";
+  const hasDatePassed = task.dueDate < today;
+  return isCompleted || hasDatePassed;
+}
+
+function shiftIsoDateByRecurrence(isoDate, frequency, interval) {
+  const baseDate = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(baseDate.getTime())) {
+    return "";
+  }
+
+  if (frequency === "daily") {
+    baseDate.setDate(baseDate.getDate() + interval);
+  } else if (frequency === "weekly") {
+    baseDate.setDate(baseDate.getDate() + interval * 7);
+  } else if (frequency === "monthly") {
+    baseDate.setMonth(baseDate.getMonth() + interval);
+  } else {
+    return "";
+  }
+
+  return baseDate.toISOString().slice(0, 10);
+}
+
+function isoDateToday() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export function normaliseTaskStatus(status) {

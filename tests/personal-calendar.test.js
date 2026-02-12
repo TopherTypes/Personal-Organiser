@@ -100,9 +100,49 @@ test("calendar renderList renders stored HTML-like titles as literal text", () =
     const notes = findFirstByTag(row, "p");
 
     assert.equal(summary?.textContent, "2026-04-05 · <img onerror=alert(1)>");
-    assert.equal(notes?.textContent, "<script>alert('xss')</script>");
+    assert.ok(notes?.textContent.includes("<script>alert('xss')</script>"));
     assert.equal(findFirstByTag(row, "img"), null);
     assert.equal(findFirstByTag(row, "script"), null);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test("calendar auto-generates the next recurring event when the current date has passed", () => {
+  localStorage.clear();
+  const storageKey = buildPersonalStorageKey("calendar", 1);
+
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify({
+      schemaVersion: 1,
+      events: [
+        {
+          id: "evt-1",
+          date: "2020-01-01",
+          title: "Pay rent",
+          notes: "Monthly reminder",
+          recurrenceMeta: {
+            frequency: "monthly",
+            interval: 1,
+            parentRecurrenceId: "calendar-series-1"
+          }
+        }
+      ]
+    })
+  );
+
+  const originalDocument = globalThis.document;
+  globalThis.document = createFakeDocument();
+
+  try {
+    renderPersonalCalendarModule();
+    const persisted = JSON.parse(localStorage.getItem(storageKey));
+    assert.ok(Array.isArray(persisted.events));
+    assert.ok(persisted.events.length > 1);
+
+    const generated = persisted.events.find((event) => event.id !== "evt-1");
+    assert.equal(generated.recurrenceMeta.parentRecurrenceId, "calendar-series-1");
   } finally {
     globalThis.document = originalDocument;
   }

@@ -12,6 +12,8 @@ const PERSONAL_TASKS_KEY = buildPersonalStorageKey("tasks", 1);
 const PERSONAL_TASKS_COLLECTION_FIELD = "tasks";
 const PERSONAL_TASKS_SCHEMA_VERSION = 1;
 const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "Done", "Cancelled"];
+const RECURRENCE_FREQUENCIES = ["none", "daily", "weekly", "monthly"];
+const MAX_RECURRENCE_GENERATIONS_PER_LOAD = 24;
 
 /**
  * Normalises a task payload from either legacy-array records or versioned envelopes.
@@ -22,11 +24,14 @@ const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "Done", "Cancelled"];
 function normalisePersonalTask(task) {
   const resolvedStatus = TASK_STATUSES.includes(task?.status) ? task.status : TASK_STATUSES[0];
 
+  const recurrenceMeta = normaliseRecurrenceMeta(task?.recurrenceMeta);
+
   return {
     id: typeof task?.id === "string" && task.id.trim() ? task.id : generateId("ptask_"),
     title: typeof task?.title === "string" ? task.title.trim() : "",
     dueDate: typeof task?.dueDate === "string" ? task.dueDate : "",
     status: resolvedStatus,
+    recurrenceMeta: recurrenceMeta || null,
     createdAt:
       typeof task?.createdAt === "string" && task.createdAt.trim()
         ? task.createdAt
@@ -58,6 +63,24 @@ export function renderPersonalTasksModule() {
   const taskInput = buildInput("Task title", "text", true);
   const dueInput = buildInput("Due date", "date", false);
 
+  const recurrenceWrap = document.createElement("label");
+  recurrenceWrap.className = "field-label";
+  recurrenceWrap.textContent = "Recurrence";
+  const recurrence = document.createElement("select");
+  recurrence.className = "field-input";
+  RECURRENCE_FREQUENCIES.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value.slice(0, 1).toUpperCase() + value.slice(1);
+    recurrence.appendChild(option);
+  });
+  recurrenceWrap.appendChild(recurrence);
+
+  const recurrenceIntervalInput = buildInput("Recurrence interval", "number", false);
+  recurrenceIntervalInput.input.min = "1";
+  recurrenceIntervalInput.input.step = "1";
+  recurrenceIntervalInput.input.value = "1";
+
   const statusWrap = document.createElement("label");
   statusWrap.className = "field-label";
   statusWrap.textContent = "Status";
@@ -76,7 +99,7 @@ export function renderPersonalTasksModule() {
   submit.className = "enter-mode-button";
   submit.textContent = "Add task";
 
-  form.append(taskInput.wrap, dueInput.wrap, statusWrap, submit);
+  form.append(taskInput.wrap, dueInput.wrap, statusWrap, recurrenceWrap, recurrenceIntervalInput.wrap, submit);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -92,6 +115,7 @@ export function renderPersonalTasksModule() {
       title: taskInput.input.value.trim(),
       dueDate: dueInput.input.value,
       status: status.value,
+      recurrenceMeta: buildRecurrenceMeta(recurrence.value, recurrenceIntervalInput.input.value),
       createdAt: new Date().toISOString()
     });
     persistPersonalTasks(tasks);
@@ -124,7 +148,10 @@ export function renderPersonalTasksModule() {
 
       const meta = document.createElement("p");
       meta.className = "meeting-meta";
-      meta.textContent = `Status: ${task.status} · Due: ${task.dueDate || "Not set"}`;
+      const recurrenceLabel = task.recurrenceMeta
+        ? `${task.recurrenceMeta.frequency} every ${task.recurrenceMeta.interval}`
+        : "none";
+      meta.textContent = `Status: ${task.status} · Due: ${task.dueDate || "Not set"} · Recurs: ${recurrenceLabel}`;
 
       const edit = document.createElement("button");
       edit.type = "button";
@@ -177,6 +204,23 @@ export function renderPersonalTasksModule() {
       statusSelect.appendChild(option);
     });
 
+    const recurrenceSelect = document.createElement("select");
+    recurrenceSelect.className = "field-input";
+    RECURRENCE_FREQUENCIES.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value.slice(0, 1).toUpperCase() + value.slice(1);
+      option.selected = (task.recurrenceMeta?.frequency || "none") === value;
+      recurrenceSelect.appendChild(option);
+    });
+
+    const recurrenceInterval = document.createElement("input");
+    recurrenceInterval.type = "number";
+    recurrenceInterval.className = "field-input";
+    recurrenceInterval.min = "1";
+    recurrenceInterval.step = "1";
+    recurrenceInterval.value = String(task.recurrenceMeta?.interval || 1);
+
     const save = document.createElement("button");
     save.type = "button";
     save.className = "enter-mode-button";
@@ -199,6 +243,7 @@ export function renderPersonalTasksModule() {
           title: nextTitle,
           dueDate: dueInput.value,
           status: statusSelect.value,
+          recurrenceMeta: buildRecurrenceMeta(recurrenceSelect.value, recurrenceInterval.value, task.recurrenceMeta),
           updatedAt: new Date().toISOString()
         };
       });
@@ -216,7 +261,7 @@ export function renderPersonalTasksModule() {
       renderList();
     });
 
-    row.append(titleInput, dueInput, statusSelect, save, cancel);
+    row.append(titleInput, dueInput, statusSelect, recurrenceSelect, recurrenceInterval, save, cancel);
   }
 
   section.append(title, intro, form, list);
@@ -229,13 +274,20 @@ export function renderPersonalTasksModule() {
  * non-array, or contains malformed JSON.
  */
 function loadPersonalTasks() {
-  return loadVersionedCollection({
+  const tasks = loadVersionedCollection({
     storageKey: PERSONAL_TASKS_KEY,
     collectionKey: PERSONAL_TASKS_COLLECTION_FIELD,
     schemaVersion: PERSONAL_TASKS_SCHEMA_VERSION,
     normaliseItem: normalisePersonalTask,
     fallback: []
   });
+
+  const withGeneratedRecurring = generateRecurringPersonalTasks(tasks);
+  if (withGeneratedRecurring.length !== tasks.length) {
+    persistPersonalTasks(withGeneratedRecurring);
+  }
+
+  return withGeneratedRecurring;
 }
 
 /**
@@ -261,4 +313,107 @@ function buildInput(labelText, type, required) {
   input.required = required;
   wrap.appendChild(input);
   return { wrap, input };
+}
+
+function normaliseRecurrenceMeta(recurrenceMeta) {
+  if (!recurrenceMeta || typeof recurrenceMeta !== "object") {
+    return null;
+  }
+
+  if (!RECURRENCE_FREQUENCIES.includes(recurrenceMeta.frequency) || recurrenceMeta.frequency === "none") {
+    return null;
+  }
+
+  return {
+    frequency: recurrenceMeta.frequency,
+    interval: Math.max(1, Number.parseInt(String(recurrenceMeta.interval || "1"), 10) || 1),
+    parentRecurrenceId:
+      typeof recurrenceMeta.parentRecurrenceId === "string" && recurrenceMeta.parentRecurrenceId.trim()
+        ? recurrenceMeta.parentRecurrenceId
+        : generateId("ptask_")
+  };
+}
+
+function buildRecurrenceMeta(frequency, intervalValue, previousMeta = null) {
+  if (!RECURRENCE_FREQUENCIES.includes(frequency) || frequency === "none") {
+    return null;
+  }
+
+  return {
+    frequency,
+    interval: Math.max(1, Number.parseInt(String(intervalValue || "1"), 10) || 1),
+    parentRecurrenceId: previousMeta?.parentRecurrenceId || generateId("ptask_")
+  };
+}
+
+function generateRecurringPersonalTasks(tasks) {
+  const generated = [...tasks];
+  const today = new Date().toISOString().slice(0, 10);
+  const seenSeriesDueDates = new Set(
+    generated
+      .filter((task) => task.recurrenceMeta?.parentRecurrenceId && task.dueDate)
+      .map((task) => `${task.recurrenceMeta.parentRecurrenceId}:${task.dueDate}`)
+  );
+
+  const latestBySeries = new Map();
+  for (const task of generated) {
+    const seriesId = task.recurrenceMeta?.parentRecurrenceId;
+    if (!seriesId || !task.dueDate) {
+      continue;
+    }
+    const current = latestBySeries.get(seriesId);
+    if (!current || task.dueDate > current.dueDate) {
+      latestBySeries.set(seriesId, task);
+    }
+  }
+
+  for (const latest of latestBySeries.values()) {
+    let candidate = latest;
+    let guard = 0;
+    while ((candidate.status === "Done" || candidate.dueDate < today) && guard < MAX_RECURRENCE_GENERATIONS_PER_LOAD) {
+      const nextDueDate = shiftDateByRecurrence(candidate.dueDate, candidate.recurrenceMeta.frequency, candidate.recurrenceMeta.interval);
+      if (!nextDueDate) {
+        break;
+      }
+
+      const key = `${candidate.recurrenceMeta.parentRecurrenceId}:${nextDueDate}`;
+      if (seenSeriesDueDates.has(key)) {
+        break;
+      }
+
+      const nextTask = normalisePersonalTask({
+        ...candidate,
+        id: generateId("ptask_"),
+        status: "Backlog",
+        dueDate: nextDueDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      generated.push(nextTask);
+      seenSeriesDueDates.add(key);
+      candidate = nextTask;
+      guard += 1;
+    }
+  }
+
+  return generated;
+}
+
+function shiftDateByRecurrence(isoDate, frequency, interval) {
+  const value = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(value.getTime())) {
+    return "";
+  }
+
+  if (frequency === "daily") {
+    value.setDate(value.getDate() + interval);
+  } else if (frequency === "weekly") {
+    value.setDate(value.getDate() + interval * 7);
+  } else if (frequency === "monthly") {
+    value.setMonth(value.getMonth() + interval);
+  } else {
+    return "";
+  }
+
+  return value.toISOString().slice(0, 10);
 }
