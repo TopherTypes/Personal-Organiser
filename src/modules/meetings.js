@@ -815,13 +815,12 @@ export function renderWorkMeetingsModule({
 
       if (isCurrentlyHidden) {
         if (!state.draft.draftLinkedUpdates.length) {
+          // Initialise with a blank row so the user can type a custom summary
+          // instead of inheriting any content from meeting notes.
           state.draft.draftLinkedUpdates = [buildDefaultLinkedUpdateDraft(state.draft.chairId)];
         }
-        // Prefill the first row from notes to reduce duplicate typing when creating linked updates.
-        if (!state.draft.draftLinkedUpdates[0].text) {
-          const notesSnippet = (notesInput.value || state.draft.notes || "").trim().slice(0, 240);
-          state.draft.draftLinkedUpdates[0].text = notesSnippet;
-        }
+        // Intentionally do not prefill linked update text; users should always
+        // start with an empty field and write their own summary.
         renderLinkedUpdateRows();
       }
     });
