@@ -1,5 +1,6 @@
 import { loadTasks } from "./tasks.js";
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
+import { generateId } from "./id.js";
 
 const SPRINT_STORAGE_KEY = "second-brain.work.sprints.work";
 const SPRINT_SCHEMA_VERSION = 1;
@@ -817,7 +818,7 @@ function button(label, onClick, type = "button") {
 }
 
 function buildSprintId() {
-  return `sprint_${Math.random().toString(36).slice(2, 10)}`;
+  return generateId("sprint_");
 }
 
 function toTitleCase(value) {

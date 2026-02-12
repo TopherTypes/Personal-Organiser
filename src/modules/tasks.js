@@ -1,6 +1,7 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } from "./storage-core.js";
 import { buildMultiSelectField, hydrateSelectOptions, readSelectedValues } from "./select-controls.js";
+import { generateId } from "./id.js";
 
 const TASK_STORAGE_KEY_PREFIX = "second-brain.work.tasks";
 const TASK_SCHEMA_VERSION = 1;
@@ -803,7 +804,7 @@ function addOption(select, value, label) {
 }
 
 function buildTaskId() {
-  return `task_${Math.random().toString(36).slice(2, 10)}`;
+  return generateId("task_");
 }
 
 function toTitleCase(value) {

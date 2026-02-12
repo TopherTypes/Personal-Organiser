@@ -1,3 +1,4 @@
+import { generateId } from "./id.js";
 /**
  * Hydrates a <select> element from canonical entity-backed options.
  * Centralising this avoids ad-hoc option rendering drift across modules.
@@ -140,7 +141,7 @@ export function buildEntityTokenMultiSelectField({
   input.setAttribute("aria-autocomplete", "list");
   input.setAttribute("aria-expanded", "false");
 
-  const listId = `entity-token-list-${Math.random().toString(36).slice(2, 10)}`;
+  const listId = `entity-token-list-${generateId()}`;
   input.setAttribute("aria-controls", listId);
 
   const suggestions = document.createElement("ul");

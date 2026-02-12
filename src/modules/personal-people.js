@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 const PERSONAL_PEOPLE_KEY = buildPersonalStorageKey("people", 1);
 
@@ -41,7 +42,7 @@ export function renderPersonalPeopleModule() {
     event.preventDefault();
     const contacts = loadContacts().sort((first, second) => first.name.localeCompare(second.name));
     contacts.unshift({
-      id: `ppl_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("ppl_"),
       name: name.input.value.trim(),
       relationship: relationship.input.value.trim(),
       cadenceTarget: cadenceTarget.input.value.trim(),

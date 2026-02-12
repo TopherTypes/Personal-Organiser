@@ -1,4 +1,5 @@
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
+import { generateId } from "./id.js";
 
 export const PROJECT_STORAGE_KEY = "second-brain.work.projects.work";
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -199,5 +200,5 @@ export function normaliseProject(project) {
 }
 
 function buildProjectId() {
-  return `project_${Math.random().toString(36).slice(2, 10)}`;
+  return generateId("project_");
 }

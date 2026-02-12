@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 /**
  * Personal calendar entries are stored under a versioned key to support safe future schema changes.
@@ -49,7 +50,7 @@ export function renderPersonalCalendarModule() {
     const events = loadEvents();
     // Append to the loaded snapshot and persist once so each submit produces one atomic collection write.
     events.push({
-      id: `pcal_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("pcal_"),
       title: name.input.value.trim(),
       date: date.input.value,
       notes: notes.value.trim()

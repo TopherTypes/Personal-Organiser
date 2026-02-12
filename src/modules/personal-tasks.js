@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 /**
  * Personal modules use versioned localStorage keys so schema upgrades can roll forward safely.
@@ -61,7 +62,7 @@ export function renderPersonalTasksModule() {
     });
     // Mutate the in-memory snapshot first, then persist once, to avoid partial writes.
     tasks.push({
-      id: `ptask_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("ptask_"),
       title: taskInput.input.value.trim(),
       dueDate: dueInput.input.value,
       status: status.value,
