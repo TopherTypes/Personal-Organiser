@@ -1,5 +1,11 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 
+/**
+ * Personal modules store payloads behind versioned keys so schema changes can be introduced safely.
+ *
+ * Project records are intentionally mode-isolated to avoid cross-mode leakage between personal goals
+ * and work delivery plans.
+ */
 const PERSONAL_PROJECTS_KEY = buildPersonalStorageKey("projects", 1);
 
 /**
@@ -44,6 +50,7 @@ export function renderPersonalProjectsModule() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const projects = loadPersonalProjects();
+    // Append before persist so the write is a single snapshot update of the collection.
     projects.push({
       id: `pproj_${Math.random().toString(36).slice(2, 10)}`,
       name: name.input.value.trim(),
@@ -58,6 +65,7 @@ export function renderPersonalProjectsModule() {
 
   function renderList() {
     list.innerHTML = "";
+    // Alphabetical ordering keeps project discovery predictable as the list grows.
     const projects = loadPersonalProjects().sort((a, b) => a.name.localeCompare(b.name));
     if (!projects.length) {
       const empty = document.createElement("p");
@@ -90,6 +98,10 @@ export function renderPersonalProjectsModule() {
   return section;
 }
 
+/**
+ * Loads personal projects defensively and returns an empty array when JSON is missing,
+ * malformed, or not an array payload.
+ */
 function loadPersonalProjects() {
   const raw = localStorage.getItem(PERSONAL_PROJECTS_KEY);
   if (!raw) {
@@ -103,6 +115,10 @@ function loadPersonalProjects() {
   }
 }
 
+/**
+ * Persists the full personal project collection as canonical JSON so future loads only need
+ * malformed-payload fallback for external/corrupted writes.
+ */
 function persistPersonalProjects(projects) {
   localStorage.setItem(PERSONAL_PROJECTS_KEY, JSON.stringify(projects));
 }
