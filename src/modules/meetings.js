@@ -744,6 +744,9 @@ export function renderWorkMeetingsModule({
 
     const planScreen = document.createElement("section");
     const attendScreen = document.createElement("section");
+    // Attend step now uses a split-pane layout so notes stay visible while
+    // 1:1 pending updates remain actionable in the same viewport.
+    attendScreen.className = "meeting-attend-layout";
     const reviewScreen = document.createElement("section");
 
     planScreen.append(nameInput.wrapper, scheduleRow, metadataRow, participantsRow);
