@@ -13,6 +13,7 @@ import { renderPersonalPeopleModule } from "./personal-people.js";
 import { renderPersonalCalendarModule } from "./personal-calendar.js";
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { safeJsonParse, safeJsonWrite } from "./storage-core.js";
+import { generateId } from "./id.js";
 const STORAGE_KEY_PREFIX = "second-brain.work.people";
 const DATASET_BACKUP_PREFIX = "backups/";
 
@@ -1703,7 +1704,7 @@ function addOption(select, value, label) {
  * Generates short IDs suitable for local single-user records.
  */
 function buildId() {
-  return `person_${Math.random().toString(36).slice(2, 10)}`;
+  return generateId("person_");
 }
 
 /**

@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 const PERSONAL_DAILY_LOG_KEY = buildPersonalStorageKey("daily-log", 1);
 
@@ -36,7 +37,7 @@ export function renderPersonalDailyLogModule() {
     event.preventDefault();
     const entries = loadEntries();
     const payload = {
-      id: `dlog_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("dlog_"),
       date: date.input.value,
       nutrition: nutrition.input.value.trim(),
       exercise: exercise.input.value.trim(),

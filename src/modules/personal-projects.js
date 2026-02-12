@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 /**
  * Personal modules store payloads behind versioned keys so schema changes can be introduced safely.
@@ -52,7 +53,7 @@ export function renderPersonalProjectsModule() {
     const projects = loadPersonalProjects();
     // Append before persist so the write is a single snapshot update of the collection.
     projects.push({
-      id: `pproj_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("pproj_"),
       name: name.input.value.trim(),
       targetDate: target.input.value,
       notes: notes.value.trim(),

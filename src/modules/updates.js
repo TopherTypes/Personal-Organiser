@@ -1,5 +1,6 @@
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
+import { generateId } from "./id.js";
 
 const UPDATES_SCHEMA_VERSION = 1;
 const UPDATES_COLLECTION_KEY = "updates";
@@ -818,9 +819,6 @@ function resolveUpdatesStorageKey(mode) {
 }
 
 function buildId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `upd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Keep `upd-` prefix for quick diagnostics while delegating UUID/fallback logic to shared helper.
+  return generateId("upd-");
 }

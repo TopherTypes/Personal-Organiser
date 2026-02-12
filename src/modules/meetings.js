@@ -9,6 +9,7 @@ import {
   selectActivePeople,
   selectUpdatesForPerson
 } from "./updates.js";
+import { generateId } from "./id.js";
 import {
   buildSingleSelectField,
   buildEntityTokenMultiSelectField,
@@ -1864,5 +1865,5 @@ function buildUpdateTypePill(entityType) {
 }
 
 function buildId() {
-  return `meeting_${Math.random().toString(36).slice(2, 10)}`;
+  return generateId("meeting_");
 }

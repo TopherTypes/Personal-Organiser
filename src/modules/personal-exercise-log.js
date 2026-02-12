@@ -1,4 +1,5 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
+import { generateId } from "./id.js";
 
 const PERSONAL_EXERCISE_LOG_KEY = buildPersonalStorageKey("exercise-log", 1);
 
@@ -45,7 +46,7 @@ export function renderPersonalExerciseLogModule() {
     event.preventDefault();
     const entries = loadEntries();
     entries.unshift({
-      id: `elog_${Math.random().toString(36).slice(2, 10)}`,
+      id: generateId("elog_"),
       type: type.value,
       date: date.input.value,
       distanceKm: Number(distance.input.value || 0),
