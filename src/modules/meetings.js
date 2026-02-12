@@ -204,6 +204,7 @@ export function renderWorkMeetingsModule({
     state.workflowStep = "plan";
     state.attachedUpdateEditingId = "";
     state.attachedUpdateFeedback = "";
+    state.reviewComposerDraft = buildDefaultLinkedUpdateDraft(meeting.chairId || "");
     renderMeetingModal();
     setUnsavedChangesGuard(true);
   }
@@ -522,6 +523,9 @@ export function renderWorkMeetingsModule({
     const updateFields = document.createElement("div");
     updateFields.className = "meeting-update-fields";
 
+    const updateComposerForm = document.createElement("div");
+    updateComposerForm.className = "meeting-update-row";
+
     const updateRows = document.createElement("div");
     updateRows.className = "meeting-update-rows";
 
@@ -530,8 +534,8 @@ export function renderWorkMeetingsModule({
 
     const addUpdateRowButton = document.createElement("button");
     addUpdateRowButton.type = "button";
-    addUpdateRowButton.className = "module-button-secondary";
-    addUpdateRowButton.textContent = "Add another update/action";
+    addUpdateRowButton.className = "enter-mode-button";
+    addUpdateRowButton.textContent = "Confirm and add to list";
 
     updateActions.appendChild(addUpdateRowButton);
 
@@ -548,10 +552,89 @@ export function renderWorkMeetingsModule({
     const linkedUpdateValidationMessage = document.createElement("p");
     linkedUpdateValidationMessage.className = "module-intro";
 
+    // Single-form workflow state: one composer at a time, confirmed rows below.
+    state.reviewComposerDraft = normaliseDraftLinkedUpdates([state.reviewComposerDraft], state.draft.chairId)[0];
+
+    const composeTextWrap = document.createElement("label");
+    composeTextWrap.className = "field-label";
+    composeTextWrap.textContent = "Update text";
+    const composeTextInput = document.createElement("textarea");
+    composeTextInput.className = "field-input field-textarea";
+    composeTextInput.placeholder = "Summarise the meeting update";
+    composeTextInput.value = state.reviewComposerDraft.text || "";
+    composeTextInput.addEventListener("input", () => {
+      state.reviewComposerDraft.text = composeTextInput.value;
+    });
+    composeTextWrap.appendChild(composeTextInput);
+
+    const composeTypeField = buildSingleSelectField({
+      label: "Type",
+      options: [
+        { value: "update", label: "Update" },
+        { value: "action", label: "Action" }
+      ],
+      value: state.reviewComposerDraft.entityType || "update"
+    });
+
+    const composeOwnerField = buildSingleSelectField({
+      label: "Update owner",
+      options: updateOwnerOptions,
+      value: state.reviewComposerDraft.ownerId,
+      emptyMessage: "Add people first to select an owner."
+    });
+
+    const composeDueDateField = buildLabeledInput("Due date", "date", state.reviewComposerDraft.dueDate || "");
+
+    const composeRecipientsField = buildEntityTokenMultiSelectField({
+      label: "People to update",
+      options: updateRecipientOptions,
+      values: state.reviewComposerDraft.recipientIds,
+      emptyMessage: "Add people first to select recipients.",
+      inputPlaceholder: "Search people to update"
+    });
+
+    const composerMetadataRow = document.createElement("div");
+    composerMetadataRow.className = "meeting-update-row-metadata";
+    composerMetadataRow.append(composeTypeField.wrapper, composeDueDateField.wrapper, composeOwnerField.wrapper);
+
+    updateComposerForm.append(composeTextWrap, composerMetadataRow, composeRecipientsField.wrapper);
+
+    const syncComposerRequirements = () => {
+      const isAction = composeTypeField.select.value === "action";
+      composeDueDateField.input.required = isAction;
+      composeOwnerField.select.required = isAction;
+    };
+
+    const syncComposerDraft = () => {
+      state.reviewComposerDraft = {
+        text: composeTextInput.value,
+        entityType: composeTypeField.select.value,
+        ownerId: composeOwnerField.select.value,
+        dueDate: composeDueDateField.input.value,
+        recipientIds: readEntityTokenHiddenValues(composeRecipientsField.hiddenInput)
+      };
+      syncComposerRequirements();
+      state.dirtyDraft = true;
+    };
+
+    composeTypeField.select.addEventListener("change", syncComposerDraft);
+    composeOwnerField.select.addEventListener("change", syncComposerDraft);
+    composeDueDateField.input.addEventListener("input", syncComposerDraft);
+    composeRecipientsField.hiddenInput.addEventListener("input", syncComposerDraft);
+    syncComposerRequirements();
+
     const renderLinkedUpdateRows = () => {
       updateRows.innerHTML = "";
       const linkedUpdates = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId);
       state.draft.draftLinkedUpdates = linkedUpdates;
+
+      if (!linkedUpdates.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No queued review items yet. Use the form above to add one.";
+        updateRows.appendChild(empty);
+        return;
+      }
 
       linkedUpdates.forEach((linkedUpdate, index) => {
         const rowWrap = document.createElement("article");
@@ -561,110 +644,71 @@ export function renderWorkMeetingsModule({
         rowTitle.className = "module-intro";
         rowTitle.textContent = `Linked update ${index + 1}`;
 
-        const updateTextWrap = document.createElement("label");
-        updateTextWrap.className = "field-label";
-        updateTextWrap.textContent = "Update text";
-        const updateTextInput = document.createElement("textarea");
-        updateTextInput.className = "field-input field-textarea";
-        updateTextInput.placeholder = "Summarise the meeting update";
-        updateTextInput.value = linkedUpdate.text;
-        updateTextInput.addEventListener("input", () => {
-          state.draft.draftLinkedUpdates[index].text = updateTextInput.value;
-          state.dirtyDraft = true;
-        });
-        updateTextWrap.appendChild(updateTextInput);
+        const updateSummary = document.createElement("p");
+        updateSummary.className = "module-intro";
+        updateSummary.textContent = linkedUpdate.text || "(blank)";
 
-        const entityTypeField = buildSingleSelectField({
-          label: "Type",
-          options: [
-            { value: "update", label: "Update" },
-            { value: "action", label: "Action" }
-          ],
-          value: linkedUpdate.entityType || "update"
-        });
-        entityTypeField.select.addEventListener("change", () => {
-          state.draft.draftLinkedUpdates[index].entityType = entityTypeField.select.value;
-          state.dirtyDraft = true;
-          renderLinkedUpdateRows();
-        });
-
-        const updateOwnerField = buildSingleSelectField({
-          label: "Update owner",
-          options: updateOwnerOptions,
-          value: linkedUpdate.ownerId,
-          emptyMessage: "Add people first to select an owner."
-        });
-        if (linkedUpdate.ownerId && linkedUpdate.ownerId !== "me" && !activeOwnerIds.has(linkedUpdate.ownerId)) {
-          const invalidOwnerHint = document.createElement("small");
-          invalidOwnerHint.className = "module-intro";
-          // This explicit inline guidance makes stale IDs visible instead of silently
-          // propagating them into save payloads where referential checks would fail later.
-          invalidOwnerHint.textContent = "Previous owner is no longer active. Choose an active person, Me, or No owner.";
-          updateOwnerField.wrapper.appendChild(invalidOwnerHint);
-        }
-        updateOwnerField.select.addEventListener("change", () => {
-          state.draft.draftLinkedUpdates[index].ownerId = updateOwnerField.select.value;
-          linkedUpdateValidationMessage.textContent = "";
-          state.dirtyDraft = true;
-        });
-
-        const dueDateField = buildLabeledInput("Due date", "date", linkedUpdate.dueDate || "");
-        const isAction = (linkedUpdate.entityType || "update") === "action";
-        dueDateField.input.required = isAction;
-        dueDateField.wrapper.querySelector("input").addEventListener("input", () => {
-          state.draft.draftLinkedUpdates[index].dueDate = dueDateField.input.value;
-          state.dirtyDraft = true;
-        });
-
-        const updateRecipientField = buildEntityTokenMultiSelectField({
-          label: "People to update",
-          options: updateRecipientOptions,
-          values: linkedUpdate.recipientIds,
-          emptyMessage: "Add people first to select recipients.",
-          inputPlaceholder: "Search people to update"
-        });
-        updateRecipientField.hiddenInput.addEventListener("input", () => {
-          state.draft.draftLinkedUpdates[index].recipientIds = readEntityTokenHiddenValues(updateRecipientField.hiddenInput);
-          state.dirtyDraft = true;
-        });
+        const updateMeta = document.createElement("p");
+        updateMeta.className = "module-intro";
+        updateMeta.textContent = [
+          `Type: ${linkedUpdate.entityType === "action" ? "Action" : "Update"}`,
+          `Owner: ${resolveUpdateOwnerLabel(linkedUpdate.ownerId, people)}`,
+          `Due: ${linkedUpdate.dueDate || "Not set"}`,
+          `Recipients: ${linkedUpdate.recipientIds.length}`
+        ].join(" · ");
 
         const removeUpdateRowButton = document.createElement("button");
         removeUpdateRowButton.type = "button";
         removeUpdateRowButton.className = "module-button-secondary";
-        removeUpdateRowButton.textContent = "Remove update";
-        removeUpdateRowButton.disabled = state.draft.draftLinkedUpdates.length <= 1;
+        removeUpdateRowButton.textContent = "Remove";
         removeUpdateRowButton.addEventListener("click", () => {
           state.draft.draftLinkedUpdates.splice(index, 1);
-          if (!state.draft.draftLinkedUpdates.length) {
-            state.draft.draftLinkedUpdates.push(buildDefaultLinkedUpdateDraft(state.draft.chairId));
-          }
           state.dirtyDraft = true;
           renderLinkedUpdateRows();
         });
 
-        const metadataRow = document.createElement("div");
-        metadataRow.className = "meeting-update-row-metadata";
-        metadataRow.append(entityTypeField.wrapper, dueDateField.wrapper, updateOwnerField.wrapper);
+        const rowActions = document.createElement("div");
+        rowActions.className = "tasks-row-actions";
+        rowActions.append(removeUpdateRowButton);
 
         rowWrap.append(
           rowTitle,
-          entityTypeField.wrapper,
-          updateTextWrap,
-          metadataRow,
-          updateRecipientField.wrapper,
-          removeUpdateRowButton
+          updateSummary,
+          updateMeta,
+          rowActions
         );
         updateRows.appendChild(rowWrap);
       });
     };
 
     addUpdateRowButton.addEventListener("click", () => {
-      state.draft.draftLinkedUpdates.push(buildDefaultLinkedUpdateDraft(state.draft.chairId));
+      syncComposerDraft();
+      const row = normaliseDraftLinkedUpdates([state.reviewComposerDraft], state.draft.chairId)[0];
+      if (!row.text.trim()) {
+        linkedUpdateValidationMessage.textContent = "Add text to confirm this update/action.";
+        return;
+      }
+      if (row.entityType === "action" && !row.ownerId) {
+        linkedUpdateValidationMessage.textContent = "Actions require an owner.";
+        return;
+      }
+      if (row.entityType === "action" && !row.dueDate) {
+        linkedUpdateValidationMessage.textContent = "Actions require a due date.";
+        return;
+      }
+      if (row.entityType !== "action" && !row.recipientIds.length) {
+        linkedUpdateValidationMessage.textContent = "Update items require at least one recipient.";
+        return;
+      }
+
+      linkedUpdateValidationMessage.textContent = "";
+      state.draft.draftLinkedUpdates.push(row);
       state.dirtyDraft = true;
-      renderLinkedUpdateRows();
+      state.reviewComposerDraft = buildDefaultLinkedUpdateDraft(state.draft.chairId);
+      renderMeetingModal();
     });
 
-    updateFields.append(updateRows, linkedUpdateValidationMessage, updateActions, updateHint);
+    updateFields.append(updateComposerForm, linkedUpdateValidationMessage, updateActions, updateRows, updateHint);
     updateComposerWrap.append(updateTitle, updateFields);
 
     const planScreen = document.createElement("section");
@@ -773,7 +817,8 @@ export function renderWorkMeetingsModule({
         textField.textContent = "Text";
         const textInput = document.createElement("textarea");
         textInput.className = "field-input field-textarea";
-        textInput.required = true;
+        // Clearing text in attached-update edit mode triggers quiet deletion.
+        textInput.required = false;
         textInput.value = attachedUpdate.text;
         textField.appendChild(textInput);
 
@@ -834,7 +879,7 @@ export function renderWorkMeetingsModule({
           }
 
           state.attachedUpdateEditingId = "";
-          state.attachedUpdateFeedback = "Attached update saved.";
+          state.attachedUpdateFeedback = result.message || "Attached update saved.";
           renderAttachedUpdatesSection();
         });
 
@@ -930,6 +975,14 @@ export function renderWorkMeetingsModule({
             ownerId: state.draft.chairId
           };
         });
+
+        // Keep the single review composer aligned with chair-owner defaults.
+        if (!state.reviewComposerDraft.ownerId || state.reviewComposerDraft.ownerId === previousChairId) {
+          state.reviewComposerDraft = {
+            ...state.reviewComposerDraft,
+            ownerId: state.draft.chairId
+          };
+        }
         renderLinkedUpdateRows();
       }
       state.draft.projectId = projectSelect.value;
@@ -973,16 +1026,19 @@ export function renderWorkMeetingsModule({
       const validationErrors = [];
       const rowsToPersist = [];
       linkedUpdateRows.forEach((row, index) => {
-        const hasRowInput = Boolean(row.text || row.ownerId || row.recipientIds.length);
+        const hasRowInput = Boolean(row.text || row.ownerId || row.recipientIds.length || row.dueDate);
         if (!hasRowInput) {
           return;
         }
 
+        // Quiet-delete / quiet-skip behavior for blank row text:
+        // if a row is otherwise partially populated but text is blank, we treat
+        // it as intentionally removed and do not surface validation errors.
         if (!row.text) {
-          validationErrors.push(`Linked update ${index + 1}: update text is required.`);
+          return;
         }
-        if (!row.recipientIds.length) {
-          validationErrors.push(`Linked update ${index + 1}: select at least one recipient.`);
+        if (row.entityType !== "action" && !row.recipientIds.length) {
+          validationErrors.push(`Linked update ${index + 1}: select at least one recipient for update items.`);
         }
         if (row.ownerId && row.ownerId !== "me" && !activeOwnerIds.has(row.ownerId)) {
           validationErrors.push(`Linked update ${index + 1}: choose an owner from active people, Me, or No owner.`);
@@ -1110,7 +1166,8 @@ function createMeetingsUiState(mode, initialPrefill) {
     showOneOnOneCompletedHistory: false,
     workflowStep: "plan",
     attachedUpdateEditingId: "",
-    attachedUpdateFeedback: ""
+    attachedUpdateFeedback: "",
+    reviewComposerDraft: buildDefaultLinkedUpdateDraft("")
   };
 
   const autosavedDraft = loadDraft(mode);
@@ -1315,7 +1372,7 @@ function buildDefaultMeeting(date, prefill = null) {
     notes: prefill?.notes || "",
     allowPostStatusEdits: false,
     archived: false,
-    draftLinkedUpdates: [buildDefaultLinkedUpdateDraft(prefill?.chairId || "")]
+    draftLinkedUpdates: []
   };
 }
 
@@ -1517,7 +1574,7 @@ function buildDefaultLinkedUpdateDraft(ownerId = "") {
 
 function normaliseDraftLinkedUpdates(value, fallbackOwnerId = "") {
   if (!Array.isArray(value) || !value.length) {
-    return [buildDefaultLinkedUpdateDraft(fallbackOwnerId)];
+    return [];
   }
 
   const rows = value
@@ -1535,7 +1592,7 @@ function normaliseDraftLinkedUpdates(value, fallbackOwnerId = "") {
     })
     .filter(Boolean);
 
-  return rows.length ? rows : [buildDefaultLinkedUpdateDraft(fallbackOwnerId)];
+  return rows;
 }
 
 function parseEntityIdList(value) {

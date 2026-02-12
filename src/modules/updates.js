@@ -299,7 +299,8 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   textLabel.textContent = "Update";
   const textInput = document.createElement("textarea");
   textInput.className = "field-input field-textarea";
-  textInput.required = true;
+  // Clearing text during edit is interpreted as a quiet delete in `saveUpdate`.
+  textInput.required = false;
   textInput.value = update.text;
   textLabel.appendChild(textInput);
 
@@ -431,13 +432,32 @@ export function saveUpdate(mode, draft, editingId = "", people = null) {
   }
 
   const normalisedDraft = normaliseUpdate(draft);
-  if (!normalisedDraft.text) {
-    return { ok: false, error: "Update text is required." };
-  }
-  if (!normalisedDraft.toUpdate.length) {
-    return { ok: false, error: "At least one person to update is required." };
-  }
   const isAction = normalisedDraft.entityType === UPDATE_ENTITY_TYPES.ACTION;
+
+  // Quiet-delete semantics:
+  // - Editing with empty text removes the existing record.
+  // - Creating with empty text no-ops so accidental blank submits do not create noise.
+  if (!normalisedDraft.text) {
+    if (editingId) {
+      const updates = loadUpdates(mode);
+      const next = updates.filter((update) => update.id !== editingId);
+      if (next.length === updates.length) {
+        return { ok: false, error: "Update no longer exists." };
+      }
+      persistUpdates(mode, next);
+      return { ok: true, message: "Update deleted." };
+    }
+
+    return { ok: true, message: "Skipped empty update." };
+  }
+
+  // Recipient requirements:
+  // - Updates are communication items and require at least one recipient.
+  // - Actions represent owned work and can exist without recipients.
+  if (!isAction && !normalisedDraft.toUpdate.length) {
+    return { ok: false, error: "At least one person to update is required for update items." };
+  }
+
   if (isAction && !normalisedDraft.ownerId) {
     return { ok: false, error: "Actions require an owner." };
   }
