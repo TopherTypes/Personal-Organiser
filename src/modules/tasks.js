@@ -174,10 +174,13 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
       const table = createTaskTable();
       list.appendChild(table);
 
+      // Build lookup maps once to avoid repeated linear scans while rerendering rows.
+      const peopleById = new Map(people.map((person) => [person.id, person]));
+      const projectsById = new Map(projects.map((project) => [project.id, project]));
       const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
-        const assignee = people.find((person) => person.id === task.assigneeId);
-        const project = projects.find((entry) => entry.id === task.projectId);
+        const assignee = peopleById.get(task.assigneeId);
+        const project = projectsById.get(task.projectId);
         table.appendChild(
           createTaskTableRow(task, {
             assigneeLabel: assignee?.name || "Unassigned",
