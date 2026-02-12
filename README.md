@@ -55,6 +55,8 @@ The app is hosted on **GitHub Pages**, with data stored in **my Google Drive**.
 
 - You can make changes offline; they will **queue and sync later**.
 - Sync must be **conflict-safe** and designed to prevent silent data loss when switching devices.
+- Sync status now reports stage-level progress via `syncStatus` (`auth-check` → `pulling` → `merging` → `pushing`, then `idle`; with `offline` and `error` as non-happy-path states).
+- Sync failures now expose normalized `errorReason` values (`auth-expired`, `quota`, `network-timeout`, `schema-mismatch`) so UI guidance is consistent (sign in, wait/retry later, retry on stable network, or investigate schema compatibility).
 
 ### Conflict resolution (high-level policy)
 - Every change should be timestamped.

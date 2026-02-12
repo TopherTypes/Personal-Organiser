@@ -343,7 +343,25 @@ The UI must show, at minimum:
 - last successful sync time
 - pending local changes count
 - conflict count (if any)
-- current sync state (idle/syncing/offline/error)
+- `syncStatus` lifecycle state with stage-level progress:
+  - `idle` (ready to sync)
+  - `auth-check` (checking auth before a cycle)
+  - `pulling` (fetching latest Drive documents)
+  - `merging` (applying conflict-safe merge rules)
+  - `pushing` (writing merged updates back to Drive)
+  - `offline` (device is offline)
+  - `error` (sync cycle failed)
+- normalized `errorReason` values when `syncStatus` is `error`:
+  - `auth-expired`
+  - `quota`
+  - `network-timeout`
+  - `schema-mismatch`
+
+User-facing expectation by failure reason:
+- `auth-expired`: prompt reconnect/sign-in, then retry sync.
+- `quota`: tell users Drive quota/rate limits were hit and to wait before retrying.
+- `network-timeout`: show retry guidance (automatic retries may run; user can retry when connection stabilizes).
+- `schema-mismatch`: flag data format incompatibility and direct users to investigate schema/version mismatch before retrying.
 
 ### 14.5 Backups + revert
 - Keep **last 5 versions** on Drive for each dataset.
