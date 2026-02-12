@@ -201,6 +201,7 @@ export function renderWorkMeetingsModule({
     state.draftSource = source;
     state.showOneOnOneCompletedHistory = false;
     state.lastAutoSaveAt = "";
+    state.workflowStep = "plan";
     renderMeetingModal();
     setUnsavedChangesGuard(true);
   }
@@ -312,6 +313,26 @@ export function renderWorkMeetingsModule({
       chairField.wrapper,
       attendeeField.wrapper
     ], "meeting-inline-row-double");
+
+    const workflowNav = document.createElement("div");
+    workflowNav.className = "meeting-workflow-nav";
+
+    const planStepButton = document.createElement("button");
+    planStepButton.type = "button";
+    planStepButton.className = "module-button-secondary";
+    planStepButton.textContent = "1. Plan";
+
+    const attendStepButton = document.createElement("button");
+    attendStepButton.type = "button";
+    attendStepButton.className = "module-button-secondary";
+    attendStepButton.textContent = "2. Attend";
+
+    const reviewStepButton = document.createElement("button");
+    reviewStepButton.type = "button";
+    reviewStepButton.className = "module-button-secondary";
+    reviewStepButton.textContent = "3. Review";
+
+    workflowNav.append(planStepButton, attendStepButton, reviewStepButton);
 
     const oneOnOneUpdatesPanel = document.createElement("section");
     oneOnOneUpdatesPanel.className = "meeting-one-on-one-updates";
@@ -474,16 +495,11 @@ export function renderWorkMeetingsModule({
     const updateComposerWrap = document.createElement("section");
     updateComposerWrap.className = "meeting-update-composer";
 
-    const updateToggleButton = document.createElement("button");
-    updateToggleButton.type = "button";
-    updateToggleButton.className = "module-button-secondary";
-    // Keep a direct "Add update" action visible in the modal so users do not
-    // need to discover the linked-update composer via alternate wording.
-    updateToggleButton.textContent = "Add update";
-    updateToggleButton.setAttribute("aria-expanded", "false");
+    const updateTitle = document.createElement("h3");
+    updateTitle.textContent = "Meeting review items";
 
     const updateFields = document.createElement("div");
-    updateFields.className = "meeting-update-fields hidden";
+    updateFields.className = "meeting-update-fields";
 
     const updateRows = document.createElement("div");
     updateRows.className = "meeting-update-rows";
@@ -494,7 +510,7 @@ export function renderWorkMeetingsModule({
     const addUpdateRowButton = document.createElement("button");
     addUpdateRowButton.type = "button";
     addUpdateRowButton.className = "module-button-secondary";
-    addUpdateRowButton.textContent = "Add another update";
+    addUpdateRowButton.textContent = "Add another update/action";
 
     updateActions.appendChild(addUpdateRowButton);
 
@@ -537,23 +553,45 @@ export function renderWorkMeetingsModule({
         });
         updateTextWrap.appendChild(updateTextInput);
 
+        const entityTypeField = buildSingleSelectField({
+          label: "Type",
+          options: [
+            { value: "update", label: "Update" },
+            { value: "action", label: "Action" }
+          ],
+          value: linkedUpdate.entityType || "update"
+        });
+        entityTypeField.select.addEventListener("change", () => {
+          state.draft.draftLinkedUpdates[index].entityType = entityTypeField.select.value;
+          state.dirtyDraft = true;
+          renderLinkedUpdateRows();
+        });
+
         const updateOwnerField = buildSingleSelectField({
           label: "Update owner",
           options: updateOwnerOptions,
           value: linkedUpdate.ownerId,
           emptyMessage: "Add people first to select an owner."
         });
-        if (linkedUpdate.ownerId && !activeOwnerIds.has(linkedUpdate.ownerId)) {
+        if (linkedUpdate.ownerId && linkedUpdate.ownerId !== "me" && !activeOwnerIds.has(linkedUpdate.ownerId)) {
           const invalidOwnerHint = document.createElement("small");
           invalidOwnerHint.className = "module-intro";
           // This explicit inline guidance makes stale IDs visible instead of silently
           // propagating them into save payloads where referential checks would fail later.
-          invalidOwnerHint.textContent = "Previous owner is no longer active. Choose an active person or No owner.";
+          invalidOwnerHint.textContent = "Previous owner is no longer active. Choose an active person, Me, or No owner.";
           updateOwnerField.wrapper.appendChild(invalidOwnerHint);
         }
         updateOwnerField.select.addEventListener("change", () => {
           state.draft.draftLinkedUpdates[index].ownerId = updateOwnerField.select.value;
           linkedUpdateValidationMessage.textContent = "";
+          state.dirtyDraft = true;
+        });
+
+        const dueDateField = buildLabeledInput("Due date", "date", linkedUpdate.dueDate || "");
+        const isAction = (linkedUpdate.entityType || "update") === "action";
+        dueDateField.input.required = isAction;
+        dueDateField.wrapper.querySelector("input").addEventListener("input", () => {
+          state.draft.draftLinkedUpdates[index].dueDate = dueDateField.input.value;
           state.dirtyDraft = true;
         });
 
@@ -585,8 +623,10 @@ export function renderWorkMeetingsModule({
 
         rowWrap.append(
           rowTitle,
+          entityTypeField.wrapper,
           updateTextWrap,
           updateOwnerField.wrapper,
+          dueDateField.wrapper,
           updateRecipientField.wrapper,
           removeUpdateRowButton
         );
@@ -601,17 +641,41 @@ export function renderWorkMeetingsModule({
     });
 
     updateFields.append(updateRows, linkedUpdateValidationMessage, updateActions, updateHint);
-    updateComposerWrap.append(updateToggleButton, updateFields);
+    updateComposerWrap.append(updateTitle, updateFields);
 
-    fields.append(
-      nameInput.wrapper,
-      scheduleRow,
-      metadataRow,
-      participantsRow,
-      oneOnOneUpdatesPanel,
-      notesWrap,
-      updateComposerWrap
-    );
+    const planScreen = document.createElement("section");
+    const attendScreen = document.createElement("section");
+    const reviewScreen = document.createElement("section");
+
+    planScreen.append(nameInput.wrapper, scheduleRow, metadataRow, participantsRow);
+    attendScreen.append(notesWrap);
+    reviewScreen.append(oneOnOneUpdatesPanel, updateComposerWrap);
+
+    const syncWorkflowScreen = () => {
+      const activeStep = state.workflowStep || "plan";
+      planScreen.classList.toggle("hidden", activeStep !== "plan");
+      attendScreen.classList.toggle("hidden", activeStep !== "attend");
+      reviewScreen.classList.toggle("hidden", activeStep !== "review");
+      planStepButton.disabled = activeStep === "plan";
+      attendStepButton.disabled = activeStep === "attend";
+      reviewStepButton.disabled = activeStep === "review";
+    };
+
+    planStepButton.addEventListener("click", () => {
+      state.workflowStep = "plan";
+      syncWorkflowScreen();
+    });
+    attendStepButton.addEventListener("click", () => {
+      state.workflowStep = "attend";
+      syncWorkflowScreen();
+    });
+    reviewStepButton.addEventListener("click", () => {
+      state.workflowStep = "review";
+      syncWorkflowScreen();
+    });
+
+    syncWorkflowScreen();
+    fields.append(workflowNav, planScreen, attendScreen, reviewScreen);
 
     const actions = document.createElement("div");
     actions.className = "meeting-actions";
@@ -664,9 +728,7 @@ export function renderWorkMeetingsModule({
             ownerId: state.draft.chairId
           };
         });
-        if (!updateFields.classList.contains("hidden")) {
-          renderLinkedUpdateRows();
-        }
+        renderLinkedUpdateRows();
       }
       state.draft.projectId = projectSelect.value;
       state.draft.allowPostStatusEdits = toggle.checked;
@@ -703,10 +765,7 @@ export function renderWorkMeetingsModule({
       event.preventDefault();
       syncDraft();
 
-      const shouldCreateUpdate = !updateFields.classList.contains("hidden");
-      const linkedUpdateRows = shouldCreateUpdate
-        ? normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId)
-        : [];
+      const linkedUpdateRows = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId);
 
       const validationErrors = [];
       const rowsToPersist = [];
@@ -722,8 +781,14 @@ export function renderWorkMeetingsModule({
         if (!row.recipientIds.length) {
           validationErrors.push(`Linked update ${index + 1}: select at least one recipient.`);
         }
-        if (row.ownerId && !activeOwnerIds.has(row.ownerId)) {
-          validationErrors.push(`Linked update ${index + 1}: choose an owner from active people or No owner.`);
+        if (row.ownerId && row.ownerId !== "me" && !activeOwnerIds.has(row.ownerId)) {
+          validationErrors.push(`Linked update ${index + 1}: choose an owner from active people, Me, or No owner.`);
+        }
+        if (row.entityType === "action" && !row.ownerId) {
+          validationErrors.push(`Linked update ${index + 1}: actions require an owner.`);
+        }
+        if (row.entityType === "action" && !row.dueDate) {
+          validationErrors.push(`Linked update ${index + 1}: actions require a due date.`);
         }
 
         rowsToPersist.push({ rowIndex: index, row });
@@ -747,7 +812,7 @@ export function renderWorkMeetingsModule({
       }
 
       let message = result.message;
-      if (shouldCreateUpdate && rowsToPersist.length) {
+      if (rowsToPersist.length) {
         const updateErrors = [];
         let createdCount = 0;
 
@@ -756,7 +821,9 @@ export function renderWorkMeetingsModule({
             mode,
             {
               text: row.text,
+              entityType: row.entityType || "update",
               ownerId: row.ownerId,
+              dueDate: row.dueDate || "",
               toUpdate: row.recipientIds.map((personId) => ({ personId, status: "pending", required: true, updatedAt: "" })),
               meetingId: result.meetingId
             },
@@ -805,26 +872,6 @@ export function renderWorkMeetingsModule({
       syncDraft();
     });
 
-    updateToggleButton.addEventListener("click", () => {
-      const isCurrentlyHidden = updateFields.classList.contains("hidden");
-      updateFields.classList.toggle("hidden", !isCurrentlyHidden);
-      updateToggleButton.setAttribute("aria-expanded", String(isCurrentlyHidden));
-      updateToggleButton.textContent = isCurrentlyHidden
-        ? "Hide updates"
-        : "Add update";
-
-      if (isCurrentlyHidden) {
-        if (!state.draft.draftLinkedUpdates.length) {
-          // Initialise with a blank row so the user can type a custom summary
-          // instead of inheriting any content from meeting notes.
-          state.draft.draftLinkedUpdates = [buildDefaultLinkedUpdateDraft(state.draft.chairId)];
-        }
-        // Intentionally do not prefill linked update text; users should always
-        // start with an empty field and write their own summary.
-        renderLinkedUpdateRows();
-      }
-    });
-
     renderLinkedUpdateRows();
     renderOneOnOneUpdatesPanel();
   }
@@ -857,7 +904,8 @@ function createMeetingsUiState(mode, initialPrefill) {
     draftSource: "",
     feedback: "",
     lastAutoSaveAt: "",
-    showOneOnOneCompletedHistory: false
+    showOneOnOneCompletedHistory: false,
+    workflowStep: "plan"
   };
 
   const autosavedDraft = loadDraft(mode);
@@ -1255,7 +1303,9 @@ export function normaliseMeeting(meeting) {
 function buildDefaultLinkedUpdateDraft(ownerId = "") {
   return {
     text: "",
+    entityType: "update",
     ownerId,
+    dueDate: "",
     recipientIds: []
   };
 }
@@ -1272,7 +1322,9 @@ function normaliseDraftLinkedUpdates(value, fallbackOwnerId = "") {
       }
       return {
         text: typeof row.text === "string" ? row.text.trim() : "",
+        entityType: row.entityType === "action" ? "action" : "update",
         ownerId: typeof row.ownerId === "string" ? row.ownerId : fallbackOwnerId,
+        dueDate: typeof row.dueDate === "string" ? row.dueDate : "",
         recipientIds: parseEntityIdList(row.recipientIds)
       };
     })
