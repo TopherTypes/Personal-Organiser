@@ -716,7 +716,9 @@ export function renderWorkMeetingsModule({
     const reviewScreen = document.createElement("section");
 
     planScreen.append(nameInput.wrapper, scheduleRow, metadataRow, participantsRow);
-    attendScreen.append(notesWrap);
+    // 1:1 pending update context is most useful while taking notes in-meeting,
+    // so we place this panel in Attend rather than Review.
+    attendScreen.append(notesWrap, oneOnOneUpdatesPanel);
     const reviewLayout = document.createElement("div");
     reviewLayout.className = "meeting-review-layout";
     reviewLayout.append(updateComposerWrap, reviewNotesPanel);
@@ -895,7 +897,7 @@ export function renderWorkMeetingsModule({
       attachedUpdatesList
     );
 
-    reviewScreen.append(oneOnOneUpdatesPanel, reviewLayout, attachedUpdatesSection);
+    reviewScreen.append(reviewLayout, attachedUpdatesSection);
 
     const syncWorkflowScreen = () => {
       const activeStep = state.workflowStep || "plan";
