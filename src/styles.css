@@ -1228,6 +1228,78 @@ textarea:focus-visible,
   min-height: 0;
 }
 
+
+.overview-trends {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.overview-trends-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.trend-range-controls {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.trend-range-button {
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+}
+
+.trend-range-button.active {
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--bg-elevated));
+  border-color: var(--border-strong);
+}
+
+.overview-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.trend-card {
+  gap: var(--space-2);
+}
+
+.trend-bars {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.trend-bar-row {
+  display: grid;
+  grid-template-columns: minmax(4.2rem, auto) 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.trend-bar-label,
+.trend-bar-value {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.trend-bar-rail {
+  height: 0.55rem;
+  background: var(--bg-muted);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.trend-bar-fill {
+  height: 100%;
+  min-width: 0.25rem;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, white));
+}
+
 .overview-card {
   display: grid;
   gap: var(--space-2);
@@ -1668,7 +1740,8 @@ body[data-density="compact"] .footer {
   .week-grid,
   .month-grid,
   .overview-grid,
-  .overview-metrics {
+  .overview-metrics,
+  .overview-trend-grid {
     grid-template-columns: 1fr;
   }
 
