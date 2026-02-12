@@ -68,8 +68,11 @@ function renderSyncStatus(syncState, onSyncAction) {
       ? syncState?.authSession?.email || "Connected to Drive"
       : "Drive not connected";
 
-  const footer = document.createElement("div");
-  footer.className = "sync-status-footer";
+  const summaryRow = document.createElement("div");
+  summaryRow.className = "sync-status-summary-row";
+
+  const summaryText = document.createElement("div");
+  summaryText.className = "sync-status-summary-text";
 
   const tags = document.createElement("div");
   tags.className = "sync-status-tags";
@@ -95,6 +98,12 @@ function renderSyncStatus(syncState, onSyncAction) {
     tags.appendChild(resolveButton);
   }
 
+  // Keep action controls on the same row as status copy so the box does not
+  // reserve a large empty footer strip in the common non-conflict state.
+  if (!tags.childElementCount) {
+    tags.classList.add("hidden");
+  }
+
   const action = document.createElement("button");
   action.type = "button";
   action.className = "button button-secondary sync-action-button";
@@ -111,12 +120,16 @@ function renderSyncStatus(syncState, onSyncAction) {
     action.addEventListener("click", () => onSyncAction("sign-in"));
   }
 
-  footer.append(tags, action);
+  const actionCluster = document.createElement("div");
+  actionCluster.className = "sync-status-actions";
+  actionCluster.append(tags, action);
 
-  // Keep the sync card to two rows in the common path (status + details/actions)
-  // so top-bar height remains compact and doesn't consume vertical working space.
+  // Merge account identity into the detail line to keep key sync diagnostics
+  // visible without adding another dedicated text row.
   detailLine.textContent = `${detailLine.textContent} · ${accountSummary}`;
-  wrap.append(statusLine, detailLine, footer);
+  summaryText.append(statusLine, detailLine);
+  summaryRow.append(summaryText, actionCluster);
+  wrap.append(summaryRow);
 
   if (syncState?.infoMessage) {
     const info = document.createElement("small");

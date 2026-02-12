@@ -6,6 +6,7 @@ import {
   saveProject,
   upsertProjectPersonLink
 } from "./projects-store.js";
+import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
 
 /**
  * Renders Work Projects module with card list, slide-over create/edit and full details view.
@@ -84,7 +85,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     });
 
     const sortInfo = document.createElement("p");
-    sortInfo.className = "archive-note";
+    sortInfo.className = "module-intro projects-sort-note";
     sortInfo.textContent =
       "Cards are sorted alphabetically by project name for faster scanning.";
 
@@ -274,11 +275,16 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
 }
 
 function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
-  const panel = document.createElement("aside");
-  panel.className = "meeting-slideover";
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onClose();
+    }
+  });
 
   const form = document.createElement("form");
-  form.className = "people-form";
+  form.className = "meeting-modal meeting-form entity-editor-modal";
 
   const heading = document.createElement("h2");
   heading.textContent = project ? "Edit project" : "New project";
@@ -386,13 +392,13 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
     });
   });
 
-  panel.appendChild(form);
-  return panel;
+  overlay.appendChild(form);
+  return overlay;
 }
 
 function buildProjectCard(project, people, meetings, handlers) {
   const card = document.createElement("article");
-  card.className = "person-card";
+  card.className = "person-card project-list-card";
 
   const top = document.createElement("div");
   top.className = "person-card-top";
@@ -591,46 +597,57 @@ function buildPersonRoleControls(people, existingLinks) {
   const wrap = document.createElement("div");
   wrap.className = "project-people-role-grid";
 
-  const controls = people.map((person) => {
+  const activePeople = people
+    .filter((person) => !person.archived)
+    .map((person) => ({ value: person.id, label: person.name || person.id }));
+
+  const roleControls = PROJECT_PERSON_ROLES.map((role) => {
     const row = document.createElement("div");
     row.className = "project-person-role-row";
 
-    const name = document.createElement("strong");
-    name.textContent = person.name;
+    const roleHeading = document.createElement("strong");
+    roleHeading.textContent = role;
 
-    const saved = existingLinks.find((entry) => entry.personId === person.id);
+    const preselectedPersonIds = existingLinks
+      .filter((entry) => entry.roles.includes(role))
+      .map((entry) => entry.personId);
 
-    const roleSelect = document.createElement("select");
-    roleSelect.className = "field-input";
-    roleSelect.multiple = true;
-    roleSelect.size = 3;
-
-    PROJECT_PERSON_ROLES.forEach((role) => {
-      const option = document.createElement("option");
-      option.value = role;
-      option.textContent = role;
-      option.selected = Boolean(saved?.roles.includes(role));
-      roleSelect.appendChild(option);
+    const peopleField = buildEntityTokenMultiSelectField({
+      label: "People",
+      className: "field-label project-role-people-field",
+      options: activePeople,
+      values: preselectedPersonIds,
+      inputPlaceholder: `Type to add ${role.toLowerCase()}s`
     });
 
-    row.append(name, roleSelect);
+    row.append(roleHeading, peopleField.wrapper);
     wrap.appendChild(row);
 
     return {
-      personId: person.id,
-      roleSelect
+      role,
+      hiddenInput: peopleField.hiddenInput
     };
   });
 
   return {
     wrap,
     read() {
-      return controls
-        .map((entry) => ({
-          personId: entry.personId,
-          roles: Array.from(entry.roleSelect.selectedOptions).map((option) => option.value)
-        }))
-        .filter((entry) => entry.roles.length > 0);
+      const roleMap = new Map();
+
+      roleControls.forEach((entry) => {
+        const selectedIds = readEntityTokenHiddenValues(entry.hiddenInput);
+        selectedIds.forEach((personId) => {
+          if (!roleMap.has(personId)) {
+            roleMap.set(personId, new Set());
+          }
+          roleMap.get(personId).add(entry.role);
+        });
+      });
+
+      return [...roleMap.entries()].map(([personId, roles]) => ({
+        personId,
+        roles: [...roles]
+      }));
     }
   };
 }

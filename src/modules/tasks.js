@@ -94,8 +94,9 @@ export function renderWorkTasksModule({ mode = "work" } = {}) {
   const list = document.createElement("div");
   list.className = "tasks-list";
 
+  // Editor overlays are mounted in this dedicated host to keep module layout stable
+  // while toggling create/edit state.
   const panelWrap = document.createElement("div");
-  panelWrap.className = "people-form-wrap";
 
   section.append(header, feedback, controls, list, panelWrap);
 
@@ -336,8 +337,16 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 }
 
 function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onCancel();
+    }
+  });
+
   const form = document.createElement("form");
-  form.className = "meeting-slideover";
+  form.className = "meeting-modal meeting-form entity-editor-modal";
 
   const heading = document.createElement("h2");
   heading.textContent = task ? "Edit task" : "New task";
@@ -472,7 +481,8 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     });
   });
 
-  return form;
+  overlay.appendChild(form);
+  return overlay;
 }
 
 function createSelectFilter(labelText, selected, options, onChange) {
