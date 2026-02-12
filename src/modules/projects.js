@@ -6,6 +6,7 @@ import {
   saveProject,
   upsertProjectPersonLink
 } from "./projects-store.js";
+import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
 
 /**
  * Renders Work Projects module with card list, slide-over create/edit and full details view.
@@ -591,46 +592,57 @@ function buildPersonRoleControls(people, existingLinks) {
   const wrap = document.createElement("div");
   wrap.className = "project-people-role-grid";
 
-  const controls = people.map((person) => {
+  const activePeople = people
+    .filter((person) => !person.archived)
+    .map((person) => ({ value: person.id, label: person.name || person.id }));
+
+  const roleControls = PROJECT_PERSON_ROLES.map((role) => {
     const row = document.createElement("div");
     row.className = "project-person-role-row";
 
-    const name = document.createElement("strong");
-    name.textContent = person.name;
+    const roleHeading = document.createElement("strong");
+    roleHeading.textContent = role;
 
-    const saved = existingLinks.find((entry) => entry.personId === person.id);
+    const preselectedPersonIds = existingLinks
+      .filter((entry) => entry.roles.includes(role))
+      .map((entry) => entry.personId);
 
-    const roleSelect = document.createElement("select");
-    roleSelect.className = "field-input";
-    roleSelect.multiple = true;
-    roleSelect.size = 3;
-
-    PROJECT_PERSON_ROLES.forEach((role) => {
-      const option = document.createElement("option");
-      option.value = role;
-      option.textContent = role;
-      option.selected = Boolean(saved?.roles.includes(role));
-      roleSelect.appendChild(option);
+    const peopleField = buildEntityTokenMultiSelectField({
+      label: "People",
+      className: "field-label project-role-people-field",
+      options: activePeople,
+      values: preselectedPersonIds,
+      inputPlaceholder: `Type to add ${role.toLowerCase()}s`
     });
 
-    row.append(name, roleSelect);
+    row.append(roleHeading, peopleField.wrapper);
     wrap.appendChild(row);
 
     return {
-      personId: person.id,
-      roleSelect
+      role,
+      hiddenInput: peopleField.hiddenInput
     };
   });
 
   return {
     wrap,
     read() {
-      return controls
-        .map((entry) => ({
-          personId: entry.personId,
-          roles: Array.from(entry.roleSelect.selectedOptions).map((option) => option.value)
-        }))
-        .filter((entry) => entry.roles.length > 0);
+      const roleMap = new Map();
+
+      roleControls.forEach((entry) => {
+        const selectedIds = readEntityTokenHiddenValues(entry.hiddenInput);
+        selectedIds.forEach((personId) => {
+          if (!roleMap.has(personId)) {
+            roleMap.set(personId, new Set());
+          }
+          roleMap.get(personId).add(entry.role);
+        });
+      });
+
+      return [...roleMap.entries()].map(([personId, roles]) => ({
+        personId,
+        roles: [...roles]
+      }));
     }
   };
 }
