@@ -163,14 +163,14 @@ textarea:focus-visible,
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated);
-  padding: 0.34rem 0.58rem;
+  padding: 0.28rem 0.52rem;
   display: grid;
-  gap: 0.02rem;
+  gap: 0;
 }
 
 .sync-status-line {
   font-weight: 650;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .sync-status-line,
@@ -197,13 +197,13 @@ textarea:focus-visible,
 .sync-status-detail,
 .sync-account-label {
   color: var(--text-muted);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
 }
 
 .sync-status-info,
 .sync-status-error {
   color: var(--text-muted);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
 }
 
 .sync-status-error {
@@ -215,7 +215,16 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: 0.35rem;
+  margin-top: 0.12rem;
+}
+
+/*
+ * Compact footer variant used when there are no status tags so the action button
+ * sits flush right without reserving extra horizontal space for an empty region.
+ */
+.sync-status-footer-actions-only {
+  justify-content: flex-end;
 }
 
 .sync-status-tags {
@@ -232,6 +241,9 @@ textarea:focus-visible,
 
 .sync-action-button {
   white-space: nowrap;
+  min-height: 1.9rem;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.82rem;
 }
 
 .sync-retry-indicator,
@@ -821,21 +833,11 @@ textarea:focus-visible,
 }
 
 /*
- * Shared slideover shell for create/edit forms in tasks, sprints, and projects.
- * Standardising this keeps all editors in a predictable right-side panel pattern.
+ * Shared width contract for create/edit lightbox dialogs outside meetings.
+ * Keeping this in one class makes modal sizing consistent across modules.
  */
-.meeting-slideover {
-  position: fixed;
-  right: var(--space-4);
-  top: var(--space-4);
-  width: min(480px, calc(100vw - var(--space-6)));
-  max-height: calc(100dvh - var(--space-8));
-  padding: var(--space-4);
-  display: grid;
-  gap: var(--space-3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  z-index: 20;
+.entity-editor-modal {
+  width: min(760px, 100%);
 }
 
 .people-form-wrap {
@@ -1033,21 +1035,6 @@ textarea:focus-visible,
 
 .updates-table tbody tr:last-child td {
   border-bottom: none;
-}
-
-.updates-slideover {
-  position: fixed;
-  right: var(--space-4);
-  top: var(--space-4);
-  width: min(420px, calc(100vw - var(--space-6)));
-  max-height: calc(100dvh - var(--space-8));
-  padding: var(--space-4);
-  display: grid;
-  gap: var(--space-3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* Raise above module content while staying below full-screen modals. */
-  z-index: 20;
 }
 
 .tasks-table-row {

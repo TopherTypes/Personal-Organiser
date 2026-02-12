@@ -10,7 +10,7 @@ const SPRINT_STATUSES = ["planning", "active", "completed", "archived"];
  * Renders the Work Sprints module.
  *
  * UX notes:
- * - Create and edit share a slide-over form.
+ * - Create and edit share a lightbox modal form.
  * - Sprint details open as a full-screen view within the module region.
  * - Archive is soft-delete only and always asks for confirmation.
  */
@@ -67,8 +67,8 @@ export function renderWorkSprintsModule({ mode = "work" } = {}) {
   const body = document.createElement("div");
   body.className = "sprints-content";
 
+  // Dedicated modal host keeps overlays separate from normal list/detail rendering.
   const panelWrap = document.createElement("div");
-  panelWrap.className = "people-form-wrap";
 
   section.append(header, notice, feedback, controls, body, panelWrap);
 
@@ -353,11 +353,19 @@ function createSprintDetailView({ sprint, tasks, onBack, onRemoveTask, onAddTask
 }
 
 /**
- * Slide-over sprint editor. Create and edit use the same form.
+ * Lightbox sprint editor. Create and edit use the same form.
  */
 function createSprintForm({ sprint, tasks, onSave, onCancel }) {
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onCancel();
+    }
+  });
+
   const form = document.createElement("form");
-  form.className = "meeting-slideover";
+  form.className = "meeting-modal meeting-form entity-editor-modal";
 
   const title = document.createElement("h2");
   title.textContent = sprint ? "Edit sprint" : "New sprint";
@@ -425,7 +433,8 @@ function createSprintForm({ sprint, tasks, onSave, onCancel }) {
     });
   });
 
-  return form;
+  overlay.appendChild(form);
+  return overlay;
 }
 
 /**

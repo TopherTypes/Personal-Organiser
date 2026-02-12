@@ -275,11 +275,16 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
 }
 
 function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
-  const panel = document.createElement("aside");
-  panel.className = "meeting-slideover";
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onClose();
+    }
+  });
 
   const form = document.createElement("form");
-  form.className = "people-form";
+  form.className = "meeting-modal meeting-form entity-editor-modal";
 
   const heading = document.createElement("h2");
   heading.textContent = project ? "Edit project" : "New project";
@@ -387,8 +392,8 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
     });
   });
 
-  panel.appendChild(form);
-  return panel;
+  overlay.appendChild(form);
+  return overlay;
 }
 
 function buildProjectCard(project, people, meetings, handlers) {

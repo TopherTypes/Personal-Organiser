@@ -222,8 +222,16 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 }
 
 function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
-  const panel = document.createElement("aside");
-  panel.className = "meeting-slideover updates-slideover card";
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onClose();
+    }
+  });
+
+  const panel = document.createElement("section");
+  panel.className = "meeting-modal entity-editor-modal";
 
   const heading = document.createElement("h2");
   heading.textContent = update ? "Edit update" : "Update not found";
@@ -240,7 +248,8 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
     closeButton.addEventListener("click", onClose);
 
     panel.append(heading, message, closeButton);
-    return panel;
+    overlay.appendChild(panel);
+    return overlay;
   }
 
   const activePeople = selectActivePeople(people);
@@ -332,7 +341,8 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   });
 
   panel.append(heading, form);
-  return panel;
+  overlay.appendChild(panel);
+  return overlay;
 }
 
 /**
