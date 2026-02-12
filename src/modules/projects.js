@@ -85,7 +85,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     });
 
     const sortInfo = document.createElement("p");
-    sortInfo.className = "archive-note";
+    sortInfo.className = "module-intro projects-sort-note";
     sortInfo.textContent =
       "Cards are sorted alphabetically by project name for faster scanning.";
 
@@ -398,7 +398,7 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
 
 function buildProjectCard(project, people, meetings, handlers) {
   const card = document.createElement("article");
-  card.className = "person-card";
+  card.className = "person-card project-list-card";
 
   const top = document.createElement("div");
   top.className = "person-card-top";

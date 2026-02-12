@@ -165,7 +165,24 @@ textarea:focus-visible,
   background: var(--bg-elevated);
   padding: 0.28rem 0.52rem;
   display: grid;
-  gap: 0;
+  gap: 0.18rem;
+}
+
+/*
+ * Primary sync row keeps status copy left and controls right to avoid a large
+ * empty footer strip when no conflict badges are visible.
+ */
+.sync-status-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sync-status-summary-text {
+  min-width: 0;
+  display: grid;
+  gap: 0.02rem;
 }
 
 .sync-status-line {
@@ -211,20 +228,11 @@ textarea:focus-visible,
 }
 
 
-.sync-status-footer {
+.sync-status-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
-  margin-top: 0.12rem;
-}
-
-/*
- * Compact footer variant used when there are no status tags so the action button
- * sits flush right without reserving extra horizontal space for an empty region.
- */
-.sync-status-footer-actions-only {
   justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .sync-status-tags {
@@ -703,7 +711,40 @@ textarea:focus-visible,
   gap: var(--space-3);
   flex: 1 1 auto;
   min-height: 0;
-  max-height: none;
+  max-height: min(62vh, calc(100vh - 250px));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.projects-sort-note {
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+
+/*
+ * Project list cards need stronger visual separation than generic text groups,
+ * so we add a subtle gradient, inset rail, and stronger border contrast.
+ */
+.project-list-card {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent-soft) 22%, var(--bg-elevated)) 0%,
+    var(--bg-elevated) 72%
+  );
+  box-shadow: var(--elevation-1), inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.project-list-card::before {
+  content: "";
+  display: block;
+  width: 2.2rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+  margin-bottom: var(--space-2);
 }
 
 .people-selection-list {
@@ -1476,7 +1517,7 @@ body[data-density="compact"] .footer {
     width: 100%;
   }
 
-  .sync-status-footer {
+  .sync-status-actions {
     flex-wrap: wrap;
   }
 
