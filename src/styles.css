@@ -687,6 +687,17 @@ textarea:focus-visible,
   color: var(--text-muted);
 }
 
+.settings-code-block {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-muted) 85%, transparent);
+  font: 500 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Tighten intro-to-content rhythm to reduce wasted vertical whitespace in modules. */
 .tasks-module .module-intro,
 .meetings-module .module-intro,
