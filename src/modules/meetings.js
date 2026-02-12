@@ -476,7 +476,10 @@ export function renderWorkMeetingsModule({
     const updateToggleButton = document.createElement("button");
     updateToggleButton.type = "button";
     updateToggleButton.className = "module-button-secondary";
-    updateToggleButton.textContent = "Create update from this meeting";
+    // Keep a direct "Add update" action visible in the modal so users do not
+    // need to discover the linked-update composer via alternate wording.
+    updateToggleButton.textContent = "Add update";
+    updateToggleButton.setAttribute("aria-expanded", "false");
 
     const updateFields = document.createElement("div");
     updateFields.className = "meeting-update-fields hidden";
@@ -804,9 +807,10 @@ export function renderWorkMeetingsModule({
     updateToggleButton.addEventListener("click", () => {
       const isCurrentlyHidden = updateFields.classList.contains("hidden");
       updateFields.classList.toggle("hidden", !isCurrentlyHidden);
+      updateToggleButton.setAttribute("aria-expanded", String(isCurrentlyHidden));
       updateToggleButton.textContent = isCurrentlyHidden
-        ? "Hide linked updates"
-        : "Create update from this meeting";
+        ? "Hide updates"
+        : "Add update";
 
       if (isCurrentlyHidden) {
         if (!state.draft.draftLinkedUpdates.length) {
