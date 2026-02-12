@@ -121,15 +121,22 @@ export function renderWorkMeetingsModule({
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "meeting-modal-overlay hidden";
   modalOverlay.setAttribute("aria-live", "polite");
+
+  // Centralised close flow keeps click/Escape/button dismissals consistent.
+  const requestEditorClose = () => {
+    if (state.dirtyDraft && !window.confirm("Discard unsaved meeting changes?")) {
+      return false;
+    }
+    closeEditor();
+    renderModule();
+    return true;
+  };
+
   modalOverlay.addEventListener("click", (event) => {
     if (event.target !== modalOverlay) {
       return;
     }
-    if (state.dirtyDraft && !window.confirm("Discard unsaved meeting changes?")) {
-      return;
-    }
-    closeEditor();
-    renderModule();
+    requestEditorClose();
   });
 
   section.append(header, controls, split, modalOverlay);
@@ -194,6 +201,12 @@ export function renderWorkMeetingsModule({
   }
 
   function openEditor(meeting, { source }) {
+    // Preserve trigger focus so keyboard users return to their previous context
+    // when the modal closes.
+    state.returnFocusElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
     state.draft = {
       ...meeting,
       draftLinkedUpdates: normaliseDraftLinkedUpdates(meeting.draftLinkedUpdates, meeting.chairId)
@@ -216,6 +229,15 @@ export function renderWorkMeetingsModule({
     state.draftSource = "";
     modalOverlay.classList.add("hidden");
     modalOverlay.innerHTML = "";
+
+    // Restore focus to the element that launched the modal when it still
+    // exists; fallback is the first meeting action button for resiliency.
+    if (state.returnFocusElement && state.returnFocusElement.isConnected) {
+      state.returnFocusElement.focus();
+    } else {
+      section.querySelector(".enter-mode-button, .module-button-secondary, button")?.focus();
+    }
+    state.returnFocusElement = null;
     setUnsavedChangesGuard(false);
   }
 
@@ -227,6 +249,7 @@ export function renderWorkMeetingsModule({
     modal.className = "meeting-modal";
     modal.setAttribute("role", "dialog");
     modal.setAttribute("aria-modal", "true");
+    modal.tabIndex = -1;
 
     const heading = document.createElement("h2");
     heading.textContent = state.draft.id ? "Edit meeting" : "Create meeting";
@@ -974,17 +997,59 @@ export function renderWorkMeetingsModule({
     closeButton.className = "module-button-secondary";
     closeButton.textContent = "Close";
     closeButton.addEventListener("click", () => {
-      if (state.dirtyDraft && !window.confirm("Discard unsaved meeting changes?")) {
-        return;
-      }
-      closeEditor();
-      renderModule();
+      requestEditorClose();
     });
 
     actions.append(saveButton, closeButton);
     form.append(heading, fields, autoSaveText, actions);
     modal.appendChild(form);
     modalOverlay.appendChild(modal);
+
+    const handleModalKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        requestEditorClose();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusableSelectors = [
+        "button:not([disabled])",
+        "[href]",
+        "input:not([disabled])",
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "[tabindex]:not([tabindex='-1'])"
+      ].join(",");
+      const focusableElements = Array.from(modal.querySelectorAll(focusableSelectors)).filter(
+        (element) => !element.hasAttribute("disabled")
+      );
+
+      if (!focusableElements.length) {
+        event.preventDefault();
+        modal.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    modal.addEventListener("keydown", handleModalKeydown);
+
+    // Explicit initial focus supports predictable screen-reader and keyboard
+    // entry points each time the meeting dialog opens.
+    nameInput.input.focus();
 
     const syncDraft = () => {
       state.draft.name = nameInput.input.value.trim();
@@ -1204,7 +1269,8 @@ function createMeetingsUiState(mode, initialPrefill) {
     workflowStep: "plan",
     attachedUpdateEditingId: "",
     attachedUpdateFeedback: "",
-    reviewComposerDraft: buildDefaultLinkedUpdateDraft("")
+    reviewComposerDraft: buildDefaultLinkedUpdateDraft(""),
+    returnFocusElement: null
   };
 
   const autosavedDraft = loadDraft(mode);
