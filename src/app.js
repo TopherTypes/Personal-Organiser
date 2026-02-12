@@ -45,6 +45,9 @@ const state = {
   },
   // Tracks whether we are still in the very first app-level sync experience.
   isInitialSyncPending: true,
+  // Prevents repeated GIS popup loops if automatic re-auth fails during the
+  // first-sync blocking experience.
+  hasAttemptedInitialReauth: false,
   // Keeps the progress bar monotonic during the initial sync so repeated
   // pull/merge passes never appear to jump backwards in the UI.
   initialSyncProgressPeak: 0
@@ -63,6 +66,7 @@ if (!appRoot) {
 const syncSubsystem = createSyncSubsystem({
   onStateChange: (syncState) => {
     state.sync = syncState;
+    maybeAutoOpenInitialSyncReauth();
     syncInitialSyncExperienceState();
     syncInitialSyncProgressTracker();
     syncInitialSyncProgressTracker();
@@ -78,6 +82,38 @@ const syncSubsystem = createSyncSubsystem({
     }
   }
 });
+
+/**
+ * Automatically launches the Google account picker when first-sync is blocked
+ * by an expired Drive session.
+ *
+ * Rationale:
+ * - The initial-sync modal intentionally blocks UI interaction until the first
+ *   successful sync to avoid edits against stale data.
+ * - If auth expires during that flow, users cannot click the reconnect button
+ *   behind the modal, so we proactively trigger the same interactive sign-in.
+ */
+function maybeAutoOpenInitialSyncReauth() {
+  if (!state.isInitialSyncPending) {
+    return;
+  }
+
+  if (state.sync.authStatus === "signed-in") {
+    state.hasAttemptedInitialReauth = false;
+    return;
+  }
+
+  if (state.hasAttemptedInitialReauth || state.sync.authStatus === "checking") {
+    return;
+  }
+
+  if (state.sync.errorReason !== "auth-expired") {
+    return;
+  }
+
+  state.hasAttemptedInitialReauth = true;
+  void syncSubsystem.signIn();
+}
 
 
 /**
