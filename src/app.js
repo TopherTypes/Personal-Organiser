@@ -7,6 +7,7 @@ import { createSyncSubsystem } from "./modules/sync.js";
 import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
 import { restoreDatasetBackup } from "./modules/dataset-backups.js";
 import { loadUpdates, selectUpdatesForPerson } from "./modules/updates.js";
+import { renderCommandPalette, searchCommandPalette } from "./modules/command-palette.js";
 
 /**
  * In-memory app state for the shell.
@@ -50,7 +51,12 @@ const state = {
   hasAttemptedInitialReauth: false,
   // Keeps the progress bar monotonic during the initial sync so repeated
   // pull/merge passes never appear to jump backwards in the UI.
-  initialSyncProgressPeak: 0
+  initialSyncProgressPeak: 0,
+  commandPalette: {
+    isOpen: false,
+    query: "",
+    selectedIndex: 0
+  }
 };
 
 /**
@@ -133,7 +139,8 @@ function renderTopBarInPlace() {
     isModeSwitchDisabled: !state.hasEnteredMode,
     onModeChange: handleModeChange,
     syncState: state.sync,
-    onSyncAction: handleSyncAction
+    onSyncAction: handleSyncAction,
+    onOpenCommandPalette: openCommandPalette
   });
 
   existingTopBar.replaceWith(nextTopBar);
@@ -154,7 +161,8 @@ function renderApp() {
     isModeSwitchDisabled: !state.hasEnteredMode,
     onModeChange: handleModeChange,
     syncState: state.sync,
-    onSyncAction: handleSyncAction
+    onSyncAction: handleSyncAction,
+    onOpenCommandPalette: openCommandPalette
   });
 
   const content = document.createElement("div");
@@ -202,12 +210,33 @@ function renderApp() {
 
   const footer = renderFooter();
   const initialSyncModal = renderInitialSyncModal();
+  const commandPalette = renderCommandPaletteLayer();
 
-  shell.append(topBar, content, footer, initialSyncModal);
+  shell.append(topBar, content, footer, initialSyncModal, commandPalette);
   appRoot.appendChild(shell);
 
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = "";
+}
+
+/**
+ * Builds command palette with up-to-date index snapshots from local datasets.
+ */
+function renderCommandPaletteLayer() {
+  const results = searchCommandPalette(state.commandPalette.query);
+  const boundedSelectedIndex = Math.max(0, Math.min(state.commandPalette.selectedIndex, Math.max(results.length - 1, 0)));
+  state.commandPalette.selectedIndex = boundedSelectedIndex;
+
+  return renderCommandPalette({
+    isOpen: state.commandPalette.isOpen,
+    query: state.commandPalette.query,
+    results,
+    selectedIndex: boundedSelectedIndex,
+    onClose: closeCommandPalette,
+    onQueryChange: updateCommandPaletteQuery,
+    onSelect: handleCommandPaletteSelect,
+    onMoveSelection: moveCommandPaletteSelection
+  });
 }
 
 /**
@@ -440,6 +469,76 @@ function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
 }
 
 /**
+ * Opens the command palette and resets selection to the first result.
+ */
+function openCommandPalette() {
+  state.commandPalette.isOpen = true;
+  state.commandPalette.selectedIndex = 0;
+  renderApp();
+}
+
+/**
+ * Closes the command palette while preserving the current query string.
+ */
+function closeCommandPalette() {
+  if (!state.commandPalette.isOpen) {
+    return;
+  }
+
+  state.commandPalette.isOpen = false;
+  renderApp();
+}
+
+/**
+ * Keeps query state in app memory so top-level re-renders stay deterministic.
+ */
+function updateCommandPaletteQuery(query) {
+  state.commandPalette.query = query;
+  state.commandPalette.selectedIndex = 0;
+  renderApp();
+}
+
+/**
+ * Moves highlighted command palette result by an offset while staying in bounds.
+ */
+function moveCommandPaletteSelection(offset) {
+  const results = searchCommandPalette(state.commandPalette.query);
+  if (!results.length) {
+    state.commandPalette.selectedIndex = 0;
+    renderApp();
+    return;
+  }
+
+  const maxIndex = results.length - 1;
+  const nextIndex = Math.max(0, Math.min(maxIndex, state.commandPalette.selectedIndex + offset));
+  if (nextIndex === state.commandPalette.selectedIndex) {
+    return;
+  }
+
+  state.commandPalette.selectedIndex = nextIndex;
+  renderApp();
+}
+
+/**
+ * Applies selection by switching mode (if needed) and reusing dashboard-style deep-link hooks.
+ */
+function handleCommandPaletteSelect(result) {
+  if (!result || !confirmNavigation()) {
+    return;
+  }
+
+  state.activeMode = result.mode;
+  state.hasEnteredMode = true;
+  state.activeModuleByMode[result.mode] = result.moduleKey;
+  state.meetingPrefillByMode[result.mode] = null;
+  state.meetingFocusByMode[result.mode] = result.focus?.meetingId || "";
+  state.commandPalette.isOpen = false;
+  state.commandPalette.selectedIndex = 0;
+
+  renderApp();
+}
+
+/**
  * Receives a person record and pre-fills a new 1:1 meeting draft.
  */
 function handleScheduleOneOnOne(person) {
@@ -615,6 +714,26 @@ function renderFooter() {
   footer.append(version, note);
   return footer;
 }
+
+
+/**
+ * Supports global keyboard shortcut access to the command palette (Ctrl/Cmd+K).
+ */
+function handleGlobalKeydown(event) {
+  const isPaletteShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+  if (isPaletteShortcut) {
+    event.preventDefault();
+    openCommandPalette();
+    return;
+  }
+
+  if (event.key === "Escape" && state.commandPalette.isOpen) {
+    event.preventDefault();
+    closeCommandPalette();
+  }
+}
+
+window.addEventListener("keydown", handleGlobalKeydown);
 
 applyUserSettings(state.settings);
 syncSubsystem.start();
