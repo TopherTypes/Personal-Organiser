@@ -1853,6 +1853,16 @@ body[data-density="compact"] .footer {
   padding: 12vh var(--space-4) var(--space-4);
 }
 
+/*
+ * `.hidden` is defined earlier in this file with the same selector specificity
+ * as `.command-palette-overlay`. Without this override, the later overlay rule
+ * can win the cascade and keep an "invisible" full-screen click blocker active.
+ */
+.command-palette-overlay.hidden {
+  display: none;
+  pointer-events: none;
+}
+
 .command-palette {
   width: min(760px, 100%);
   max-height: min(70vh, 640px);
