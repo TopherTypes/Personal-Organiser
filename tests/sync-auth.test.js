@@ -263,3 +263,36 @@ test("token-unavailable sync failure signs out and surfaces diagnostic error cod
   assert.equal(state.syncStatus, "error");
   assert.match(state.errorMessage, /code: token-unavailable/);
 });
+
+test("sync lifecycle emits isSyncing=false when a cycle fails", async () => {
+  localStorage.clear();
+
+  const syncSnapshots = [];
+  const fakeAuthClient = {
+    ensureValidSession: async () => ({ status: "signed-in", session: { email: "dev@example.com" } }),
+    signInInteractive: async () => ({ status: "signed-in", session: { email: "dev@example.com" } }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const driveClient = {
+    async pullDocument() {
+      throw new Error("drive read failed");
+    },
+    async pushDocument() {}
+  };
+
+  const sync = createSyncSubsystem({
+    onStateChange: (nextState) => syncSnapshots.push(nextState),
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => driveClient
+  });
+
+  sync.start();
+  await flushTasks();
+
+  assert.ok(syncSnapshots.some((snapshot) => snapshot.isSyncing === true));
+  assert.ok(syncSnapshots.some((snapshot) => snapshot.isSyncing === false));
+  assert.equal(sync.getState().isSyncing, false);
+});
