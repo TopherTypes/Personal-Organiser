@@ -322,8 +322,9 @@ export function createSyncSubsystem({
       return;
     }
 
-    state.isSyncing = true;
-    setPartialState({ syncStatus: "pulling", errorMessage: "", errorReason: "" });
+    // Keep `isSyncing` in the emitted snapshot so app-shell overlays that depend
+    // on active sync state can hide/show reliably after each cycle.
+    setPartialState({ isSyncing: true, syncStatus: "pulling", errorMessage: "", errorReason: "" });
 
     try {
       const result = await withRetry(
@@ -368,7 +369,10 @@ export function createSyncSubsystem({
         errorMessage: `${syncFailureMessage(failure.reason)} (${reason}; code: ${errorCode})`
       });
     } finally {
-      state.isSyncing = false;
+      // Emitting this transition is essential for the initial sync modal. If we
+      // only mutate internal state without notifying listeners, the UI can remain
+      // visually blocked even after sync has already ended.
+      setPartialState({ isSyncing: false });
       recalculatePendingChanges();
     }
   }
