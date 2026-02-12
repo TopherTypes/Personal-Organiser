@@ -215,6 +215,18 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     createMetricCard("Active sprints", String(activeSprintCount), "sprints", uiContext)
   );
 
+  // Lightweight trend charts stay fully local by deriving series from already
+  // persisted entities (tasks/meetings) without any server dependency.
+  const trends = createDashboardTrendsSection({
+    title: "Execution trends",
+    description: "7/30/90-day patterns for completion throughput, overdue pressure, and meetings rhythm.",
+    buildCards: ({ rangeDays }) => [
+      createTaskCompletionTrendCard(tasks, today, rangeDays),
+      createOverdueDriftTrendCard(tasks, today, rangeDays),
+      createMeetingsByWeekTrendCard(meetings, today, rangeDays)
+    ]
+  });
+
   const grid = document.createElement("div");
   grid.className = "overview-grid";
 
@@ -265,7 +277,7 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     })
   );
 
-  section.append(title, intro, metrics, grid);
+  section.append(title, intro, metrics, trends, grid);
   return section;
 }
 
@@ -309,6 +321,19 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
     createMetricCard("Exercise entries (7d)", String(thisWeekExercise.length), "exercise-log", uiContext),
     createMetricCard("Latest mood", String(latestMood), "daily-log", uiContext)
   );
+
+  // Personal trends intentionally reuse the same chart primitives as work mode
+  // so the UI stays consistent while metrics remain mode-specific.
+  const trends = createDashboardTrendsSection({
+    title: "Personal consistency trends",
+    description: "7/30/90-day signals across tasks, overdue drift, calendar cadence, and routines.",
+    buildCards: ({ rangeDays }) => [
+      createTaskCompletionTrendCard(tasks, today, rangeDays),
+      createOverdueDriftTrendCard(tasks, today, rangeDays),
+      createMeetingsByWeekTrendCard(events, today, rangeDays, { dateKey: "date", heading: "Calendar meetings by week" }),
+      createHabitConsistencyTrendCard(dailyLogs, exerciseEntries, today, rangeDays)
+    ]
+  });
 
   const grid = document.createElement("div");
   grid.className = "overview-grid";
@@ -357,7 +382,7 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
     })
   );
 
-  section.append(title, intro, metrics, grid);
+  section.append(title, intro, metrics, trends, grid);
   return section;
 }
 
@@ -443,6 +468,275 @@ function createFooterAction(label, onClick) {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+/**
+ * Renders reusable dashboard trend controls and chart cards with local state.
+ */
+function createDashboardTrendsSection({ title, description, buildCards }) {
+  const section = document.createElement("section");
+  section.className = "overview-trends";
+
+  const header = document.createElement("div");
+  header.className = "overview-trends-header";
+
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+
+  const copy = document.createElement("p");
+  copy.className = "overview-card-description";
+  copy.textContent = description;
+
+  const controls = document.createElement("div");
+  controls.className = "trend-range-controls";
+
+  const body = document.createElement("div");
+  body.className = "overview-trend-grid";
+
+  let rangeDays = 30;
+  const options = [7, 30, 90];
+
+  function render() {
+    controls.innerHTML = "";
+    body.innerHTML = "";
+
+    for (const option of options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `trend-range-button${option === rangeDays ? " active" : ""}`;
+      button.textContent = `${option}d`;
+      button.addEventListener("click", () => {
+        rangeDays = option;
+        render();
+      });
+      controls.appendChild(button);
+    }
+
+    const cards = buildCards({ rangeDays }) || [];
+    for (const card of cards) {
+      body.appendChild(card);
+    }
+  }
+
+  header.append(heading, copy, controls);
+  section.append(header, body);
+  render();
+  return section;
+}
+
+/**
+ * Shows daily count of tasks completed in the selected date window.
+ */
+function createTaskCompletionTrendCard(tasks, todayIso, rangeDays) {
+  const dates = buildDateWindow(todayIso, rangeDays);
+  const countsByDate = new Map(dates.map((date) => [date, 0]));
+
+  for (const task of tasks) {
+    if (!String(task.status || "").toLowerCase().includes("done")) {
+      continue;
+    }
+    const completedDate = toIsoDate(task.updatedAt || task.createdAt || "");
+    if (completedDate && countsByDate.has(completedDate)) {
+      countsByDate.set(completedDate, countsByDate.get(completedDate) + 1);
+    }
+  }
+
+  return createTrendBarCard({
+    title: "Task completion over time",
+    description: "Completed tasks per day.",
+    rows: compressDailySeriesToBuckets(dates, countsByDate, 8),
+    valueSuffix: " done"
+  });
+}
+
+/**
+ * Shows how many tasks are overdue per day to reveal backlog drift.
+ */
+function createOverdueDriftTrendCard(tasks, todayIso, rangeDays) {
+  const dates = buildDateWindow(todayIso, rangeDays);
+  const rows = dates.map((date) => {
+    const overdueCount = tasks.reduce((count, task) => {
+      if (!task.dueDate || task.dueDate >= date) {
+        return count;
+      }
+
+      const done = String(task.status || "").toLowerCase().includes("done");
+      const completedDate = toIsoDate(task.updatedAt || "");
+      const resolvedByDate = done && completedDate && completedDate <= date;
+      return resolvedByDate ? count : count + 1;
+    }, 0);
+
+    return { label: compactDateLabel(date), value: overdueCount };
+  });
+
+  return createTrendBarCard({
+    title: "Overdue drift",
+    description: "Open overdue task load by day.",
+    rows: compressRows(rows, 8),
+    valueSuffix: " overdue"
+  });
+}
+
+/**
+ * Aggregates dated records into weekly counts (e.g., meetings/calendar events).
+ */
+function createMeetingsByWeekTrendCard(records, todayIso, rangeDays, { dateKey = "date", heading = "Meetings by week" } = {}) {
+  const minDate = shiftIsoDate(todayIso, -(rangeDays - 1));
+  const weekMap = new Map();
+
+  for (const record of records) {
+    const iso = record?.[dateKey];
+    if (!iso || iso < minDate || iso > todayIso) {
+      continue;
+    }
+    const weekStart = startOfIsoWeek(iso);
+    weekMap.set(weekStart, (weekMap.get(weekStart) || 0) + 1);
+  }
+
+  const rows = Array.from(weekMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([weekStart, count]) => ({ label: `Wk ${compactDateLabel(weekStart)}`, value: count }));
+
+  return createTrendBarCard({
+    title: heading,
+    description: "Weekly count in selected range.",
+    rows,
+    valueSuffix: " meetings"
+  });
+}
+
+/**
+ * Tracks routine consistency using daily log and exercise entry coverage.
+ */
+function createHabitConsistencyTrendCard(dailyLogs, exerciseEntries, todayIso, rangeDays) {
+  const minDate = shiftIsoDate(todayIso, -(rangeDays - 1));
+  const dailyDates = new Set(dailyLogs.map((entry) => entry.date).filter((date) => date && date >= minDate && date <= todayIso));
+  const exerciseDates = new Set(exerciseEntries.map((entry) => entry.date).filter((date) => date && date >= minDate && date <= todayIso));
+
+  const weekStarts = new Set([...dailyDates, ...exerciseDates].map((date) => startOfIsoWeek(date)));
+  const rows = Array.from(weekStarts)
+    .sort((a, b) => a.localeCompare(b))
+    .map((weekStart) => {
+      let score = 0;
+      for (let index = 0; index < 7; index += 1) {
+        const day = shiftIsoDate(weekStart, index);
+        if (day < minDate || day > todayIso) {
+          continue;
+        }
+        if (dailyDates.has(day) || exerciseDates.has(day)) {
+          score += 1;
+        }
+      }
+      return { label: `Wk ${compactDateLabel(weekStart)}`, value: score };
+    });
+
+  return createTrendBarCard({
+    title: "Habit/log consistency",
+    description: "Days per week with either daily log or exercise entry.",
+    rows,
+    maxValue: 7,
+    valueSuffix: "/7 days"
+  });
+}
+
+/**
+ * Shared presentational card for dependency-free chart-like bars.
+ */
+function createTrendBarCard({ title, description, rows, maxValue = null, valueSuffix = "" }) {
+  const card = document.createElement("article");
+  card.className = "overview-card trend-card";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+
+  const copy = document.createElement("p");
+  copy.className = "overview-card-description";
+  copy.textContent = description;
+
+  const bars = document.createElement("div");
+  bars.className = "trend-bars";
+
+  const safeRows = rows.length ? rows : [{ label: "No data", value: 0 }];
+  const peak = Number.isFinite(maxValue) ? maxValue : Math.max(1, ...safeRows.map((row) => row.value || 0));
+
+  for (const row of safeRows) {
+    const track = document.createElement("div");
+    track.className = "trend-bar-row";
+
+    const label = document.createElement("span");
+    label.className = "trend-bar-label";
+    label.textContent = row.label;
+
+    const rail = document.createElement("div");
+    rail.className = "trend-bar-rail";
+
+    const fill = document.createElement("div");
+    fill.className = "trend-bar-fill";
+    fill.style.width = `${Math.max(4, Math.round(((row.value || 0) / peak) * 100))}%`;
+
+    const value = document.createElement("span");
+    value.className = "trend-bar-value";
+    value.textContent = `${row.value || 0}${valueSuffix}`;
+
+    rail.appendChild(fill);
+    track.append(label, rail, value);
+    bars.appendChild(track);
+  }
+
+  card.append(heading, copy, bars);
+  return card;
+}
+
+function buildDateWindow(todayIso, rangeDays) {
+  const dates = [];
+  for (let offset = rangeDays - 1; offset >= 0; offset -= 1) {
+    dates.push(shiftIsoDate(todayIso, -offset));
+  }
+  return dates;
+}
+
+function compressDailySeriesToBuckets(dates, countsByDate, maxBuckets) {
+  const rows = dates.map((date) => ({ label: compactDateLabel(date), value: countsByDate.get(date) || 0 }));
+  return compressRows(rows, maxBuckets);
+}
+
+function compressRows(rows, maxBuckets) {
+  if (rows.length <= maxBuckets) {
+    return rows;
+  }
+  const bucketSize = Math.ceil(rows.length / maxBuckets);
+  const compressed = [];
+  for (let index = 0; index < rows.length; index += bucketSize) {
+    const slice = rows.slice(index, index + bucketSize);
+    const total = slice.reduce((sum, row) => sum + row.value, 0);
+    compressed.push({ label: `${slice[0].label}-${slice[slice.length - 1].label}`, value: total });
+  }
+  return compressed;
+}
+
+function shiftIsoDate(isoDate, dayDelta) {
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + dayDelta);
+  return date.toISOString().slice(0, 10);
+}
+
+function toIsoDate(value) {
+  if (!value) {
+    return "";
+  }
+  return String(value).slice(0, 10);
+}
+
+function compactDateLabel(isoDate) {
+  return isoDate.slice(5);
+}
+
+function startOfIsoWeek(isoDate) {
+  const date = new Date(`${isoDate}T00:00:00`);
+  const day = date.getDay();
+  const offsetFromMonday = (day + 6) % 7;
+  date.setDate(date.getDate() - offsetFromMonday);
+  return date.toISOString().slice(0, 10);
 }
 
 /**
