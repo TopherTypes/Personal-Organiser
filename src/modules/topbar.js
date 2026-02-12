@@ -21,6 +21,7 @@ export function renderTopBar({
 
   const modeSwitch = document.createElement("div");
   modeSwitch.className = "mode-switch";
+  modeSwitch.setAttribute("role", "radiogroup");
   modeSwitch.setAttribute("aria-label", "Mode switch");
 
   const workButton = createModeButton("Work", "work", activeMode, isModeSwitchDisabled, onModeChange);
@@ -33,6 +34,7 @@ export function renderTopBar({
   );
 
   modeSwitch.append(workButton, personalButton);
+  wireModeSwitchKeyboard(modeSwitch, onModeChange);
   const commandPaletteButton = document.createElement("button");
   commandPaletteButton.type = "button";
   commandPaletteButton.className = "button button-secondary command-palette-button";
@@ -171,7 +173,12 @@ function createModeButton(label, mode, activeMode, isDisabled, onModeChange) {
   button.className = "mode-button";
   button.textContent = label;
   button.disabled = isDisabled;
-  button.setAttribute("aria-pressed", String(activeMode === mode));
+  button.dataset.mode = mode;
+  button.setAttribute("role", "radio");
+  button.setAttribute("aria-checked", String(activeMode === mode));
+  // Roving tabindex keeps keyboard focus on the active mode while preserving
+  // full tab-order discoverability for the mode switch as a whole.
+  button.tabIndex = activeMode === mode ? 0 : -1;
 
   if (activeMode === mode) {
     button.classList.add("active");
@@ -179,6 +186,66 @@ function createModeButton(label, mode, activeMode, isDisabled, onModeChange) {
 
   button.addEventListener("click", () => onModeChange(mode));
   return button;
+}
+
+/**
+ * Adds radio-group keyboard behavior so left/right arrows cycle modes and
+ * Enter/Space activate the focused option.
+ */
+function wireModeSwitchKeyboard(modeSwitch, onModeChange) {
+  const buttons = Array.from(modeSwitch.querySelectorAll(".mode-button"));
+  if (!buttons.length) {
+    return;
+  }
+
+  const focusButtonAt = (index) => {
+    buttons.forEach((button, buttonIndex) => {
+      button.tabIndex = buttonIndex === index ? 0 : -1;
+    });
+    buttons[index].focus();
+  };
+
+  modeSwitch.addEventListener("keydown", (event) => {
+    const currentIndex = buttons.indexOf(document.activeElement);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    if (["ArrowRight", "ArrowDown"].includes(event.key)) {
+      event.preventDefault();
+      const nextIndex = (currentIndex + 1) % buttons.length;
+      focusButtonAt(nextIndex);
+      onModeChange(buttons[nextIndex].dataset.mode);
+      return;
+    }
+
+    if (["ArrowLeft", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const previousIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+      focusButtonAt(previousIndex);
+      onModeChange(buttons[previousIndex].dataset.mode);
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      focusButtonAt(0);
+      onModeChange(buttons[0].dataset.mode);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      focusButtonAt(buttons.length - 1);
+      onModeChange(buttons[buttons.length - 1].dataset.mode);
+      return;
+    }
+
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      onModeChange(buttons[currentIndex].dataset.mode);
+    }
+  });
 }
 
 function stateLabel(state) {
