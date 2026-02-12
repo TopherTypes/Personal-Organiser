@@ -535,10 +535,47 @@ textarea:focus-visible,
   margin: 0;
 }
 
+.meeting-one-on-one-summary {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.meeting-one-on-one-summary-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .meeting-one-on-one-actions {
   display: flex;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+/*
+ * Type pill appears across updates tables and meeting review contexts so users
+ * can quickly differentiate communication updates from owned actions.
+ */
+.update-type-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.update-type-pill.is-update {
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--accent) 68%, #000);
+}
+
+.update-type-pill.is-action {
+  background: color-mix(in srgb, var(--danger-soft) 65%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--danger) 72%, #000);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
 }
 
 .project-card {
@@ -942,6 +979,9 @@ textarea:focus-visible,
 }
 
 .entity-token-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid transparent;
   border-radius: 999px;
   min-width: 1.3rem;
@@ -949,6 +989,12 @@ textarea:focus-visible,
   cursor: pointer;
   background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
   color: var(--text-muted);
+}
+
+.entity-token-remove-icon {
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: auto;
 }
 
 .entity-token-remove:hover {

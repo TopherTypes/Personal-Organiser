@@ -395,7 +395,13 @@ export function renderWorkMeetingsModule({
       oneOnOneUpdatesDescription.textContent =
         `Review pending updates for ${attendee?.name || attendeeId}. Toggle history to include completed items.`;
 
-      const personUpdates = selectUpdatesForPerson(loadUpdates(mode), attendeeId, { includeCompleted: true });
+      const updatesSnapshot = loadUpdates(mode);
+      const meetingsById = new Map(
+        loadMeetings(mode)
+          .filter((meeting) => !meeting.archived)
+          .map((meeting) => [meeting.id, meeting])
+      );
+      const personUpdates = selectUpdatesForPerson(updatesSnapshot, attendeeId, { includeCompleted: true });
       const visibleUpdates = personUpdates.filter(({ entry }) => state.showOneOnOneCompletedHistory || entry.status === "pending");
 
       if (!visibleUpdates.length) {
@@ -410,13 +416,38 @@ export function renderWorkMeetingsModule({
       visibleUpdates.forEach(({ update, entry }) => {
         const row = document.createElement("li");
 
-        const summary = document.createElement("span");
+        const summary = document.createElement("div");
+        summary.className = "meeting-one-on-one-summary";
+        const topLine = document.createElement("div");
+        topLine.className = "meeting-one-on-one-summary-top";
+        topLine.append(buildUpdateTypePill(update.entityType));
+
+        const text = document.createElement("span");
+        text.textContent = update.text;
+        topLine.appendChild(text);
+
+        const metaLine = document.createElement("small");
+        metaLine.className = "module-intro";
+        const linkedMeeting = update.meetingId ? meetingsById.get(update.meetingId) : null;
+        const metaParts = [];
+
+        if (update.ownerId) {
+          metaParts.push(`Owner: ${resolveUpdateOwnerLabel(update.ownerId, people)}`);
+        }
+        if (update.dueDate) {
+          metaParts.push(`Due: ${formatDate(update.dueDate)}`);
+        }
+        if (linkedMeeting) {
+          metaParts.push(`Meeting: ${linkedMeeting.name} (${formatDate(linkedMeeting.date)})`);
+        }
+
         if (entry.status === "updated") {
           const completedDate = entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : "recently";
-          summary.textContent = `${update.text} · Completed ${completedDate}`;
-        } else {
-          summary.textContent = update.text;
+          metaParts.push(`Completed: ${completedDate}`);
         }
+
+        metaLine.textContent = metaParts.length ? metaParts.join(" · ") : "No additional details.";
+        summary.append(topLine, metaLine);
 
         const quickActions = document.createElement("div");
         quickActions.className = "meeting-one-on-one-actions";
@@ -774,7 +805,7 @@ export function renderWorkMeetingsModule({
 
         const title = document.createElement("p");
         title.className = "module-intro";
-        title.textContent = `${attachedUpdate.entityType === "action" ? "Action" : "Update"} · ${attachedUpdate.text}`;
+        title.append(buildUpdateTypePill(attachedUpdate.entityType), document.createTextNode(` ${attachedUpdate.text}`));
 
         const meta = document.createElement("p");
         meta.className = "module-intro";
@@ -1816,6 +1847,17 @@ function resolveUpdateOwnerLabel(ownerId, people = []) {
 
   const owner = people.find((person) => person.id === ownerId && !person.archived);
   return owner?.name || ownerId;
+}
+
+/**
+ * Shared visual token for update/action type labels.
+ */
+function buildUpdateTypePill(entityType) {
+  const pill = document.createElement("span");
+  const isAction = entityType === "action";
+  pill.className = `update-type-pill ${isAction ? "is-action" : "is-update"}`;
+  pill.textContent = isAction ? "Action" : "Update";
+  return pill;
 }
 
 function buildId() {

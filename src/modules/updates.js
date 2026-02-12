@@ -176,7 +176,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       const row = document.createElement("tr");
 
       const typeCell = document.createElement("td");
-      typeCell.textContent = update.entityType === UPDATE_ENTITY_TYPES.ACTION ? "Action" : "Update";
+      typeCell.appendChild(buildUpdateTypePill(update.entityType));
 
       const textCell = document.createElement("td");
       textCell.textContent = update.text;
@@ -565,6 +565,17 @@ function addOption(select, value, label) {
   option.value = value;
   option.textContent = label;
   select.appendChild(option);
+}
+
+/**
+ * Shared visual token for update/action type labels.
+ */
+function buildUpdateTypePill(entityType) {
+  const pill = document.createElement("span");
+  const isAction = entityType === UPDATE_ENTITY_TYPES.ACTION;
+  pill.className = `update-type-pill ${isAction ? "is-action" : "is-update"}`;
+  pill.textContent = isAction ? "Action" : "Update";
+  return pill;
 }
 
 /**
