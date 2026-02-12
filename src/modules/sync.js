@@ -762,7 +762,7 @@ function countDocumentDifferences(left, right) {
 
   for (const entity of leftEntityArray.entities) {
     const other = rightById.get(entity.id);
-    if (!other || JSON.stringify(entity) !== JSON.stringify(other)) {
+    if (!other || stableStringify(entity) !== stableStringify(other)) {
       delta += 1;
     }
   }
@@ -787,8 +787,8 @@ function pickLatestValue(leftValue, rightValue, leftTimestamp, rightTimestamp) {
   }
 
   // Deterministic tie-break: stable lexical comparison of serialized values.
-  const leftString = JSON.stringify(leftValue);
-  const rightString = JSON.stringify(rightValue);
+  const leftString = stableStringify(leftValue);
+  const rightString = stableStringify(rightValue);
   return leftString <= rightString
     ? { value: leftValue, timestamp: leftTimestamp || rightTimestamp || "" }
     : { value: rightValue, timestamp: rightTimestamp || leftTimestamp || "" };
@@ -839,7 +839,26 @@ function extractObjectTimestamp(value) {
 }
 
 function isEqualValue(leftValue, rightValue) {
-  return JSON.stringify(leftValue) === JSON.stringify(rightValue);
+  return stableStringify(leftValue) === stableStringify(rightValue);
+}
+
+/**
+ * Produces deterministic JSON-like output by sorting object keys recursively.
+ *
+ * This prevents false-positive conflicts when payloads are semantically equal but
+ * differ only by object key insertion order (for example toUpdate recipients).
+ */
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (isObject(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+
+  return JSON.stringify(value);
 }
 
 function loadJson(key, fallback) {
@@ -944,5 +963,6 @@ export const __TESTING__ = {
   performSyncCycle,
   classifySyncFailure,
   SYNC_ERROR_REASON,
-  removeAllAppLocalStorageEntries
+  removeAllAppLocalStorageEntries,
+  stableStringify
 };

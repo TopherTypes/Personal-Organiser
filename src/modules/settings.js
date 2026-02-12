@@ -162,20 +162,35 @@ function createSyncConflictSection({ syncState, onResolveSyncConflicts }) {
     heading.className = "settings-label";
     heading.textContent = `${conflict.documentId} → ${conflict.entityId} → ${conflict.field}`;
 
-    const values = document.createElement("small");
+    const values = document.createElement("div");
     values.className = "settings-hint";
-    values.textContent = `Local: ${stringifyConflictValue(conflict.localValue)} | Remote: ${stringifyConflictValue(conflict.remoteValue)}`;
+
+    // Presenting values on separate lines keeps long JSON payloads readable and makes
+    // manual conflict choices significantly less error-prone.
+    const localPreview = document.createElement("pre");
+    localPreview.className = "settings-code-block";
+    localPreview.textContent = `Local\n${stringifyConflictValue(conflict.localValue)}`;
+
+    const remotePreview = document.createElement("pre");
+    remotePreview.className = "settings-code-block";
+    remotePreview.textContent = `Remote\n${stringifyConflictValue(conflict.remoteValue)}`;
+
+    values.append(localPreview, remotePreview);
 
     const choice = document.createElement("select");
     choice.className = "field-input";
     choice.append(
-      buildOption("suggested", `Suggested (${stringifyConflictValue(conflict.suggestedValue)})`),
+      buildOption("suggested", "Use suggested merge value"),
       buildOption("local", "Keep local value"),
       buildOption("remote", "Keep remote value")
     );
 
+    const suggestedPreview = document.createElement("pre");
+    suggestedPreview.className = "settings-code-block";
+    suggestedPreview.textContent = `Suggested\n${stringifyConflictValue(conflict.suggestedValue)}`;
+
     selectsByConflictId.set(conflict.conflictId, choice);
-    item.append(heading, values, choice);
+    item.append(heading, values, suggestedPreview, choice);
     list.appendChild(item);
   }
 
@@ -554,7 +569,8 @@ function stringifyConflictValue(value) {
     return value;
   }
 
-  return JSON.stringify(value);
+  // Pretty formatting improves legibility for nested arrays/objects such as update recipient states.
+  return JSON.stringify(value, null, 2);
 }
 
 function createToggleSetting({ label, hint, checked, onChange }) {

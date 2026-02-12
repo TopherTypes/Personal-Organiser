@@ -8,7 +8,8 @@ const {
   countDocumentDifferences,
   shouldQueueManualConflict,
   withRetry,
-  removeAllAppLocalStorageEntries
+  removeAllAppLocalStorageEntries,
+  stableStringify
 } = __TESTING__;
 
 
@@ -203,6 +204,45 @@ test("shouldQueueManualConflict only returns true for important fields in tight 
       remoteTimestamp: "2026-02-10T10:04:00.000Z"
     }),
     false
+  );
+});
+
+
+
+test("mergeDocument does not raise manual conflict for equal objects with different key order", () => {
+  const local = {
+    items: [
+      {
+        id: "update-1",
+        toUpdate: [{ personId: "person-a", status: "updated", required: true, updatedAt: "2026-02-12T12:00:00.000Z", note: "" }],
+        updatedAt: "2026-02-12T12:01:00.000Z",
+        lastUpdatedByField: {
+          toUpdate: "2026-02-12T12:01:00.000Z"
+        }
+      }
+    ]
+  };
+
+  const remote = {
+    items: [
+      {
+        id: "update-1",
+        toUpdate: [{ note: "", personId: "person-a", required: true, status: "updated", updatedAt: "2026-02-12T12:00:00.000Z" }],
+        updatedAt: "2026-02-12T12:01:00.000Z",
+        lastUpdatedByField: {
+          toUpdate: "2026-02-12T12:01:00.000Z"
+        }
+      }
+    ]
+  };
+
+  const result = mergeDocument(local, remote, "work.updates");
+
+  assert.equal(result.conflictCount, 0);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(
+    stableStringify(result.document.items[0].toUpdate),
+    stableStringify(local.items[0].toUpdate)
   );
 });
 
