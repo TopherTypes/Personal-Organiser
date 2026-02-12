@@ -17,11 +17,7 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 -
 
 ### Changed
-- Updated Work Tasks canonical statuses to match product spec §7.2 (`Backlog`, `Ready`, `In Progress`, `Blocked`, `Waiting On`, `Done`, `Cancelled`) with automatic migration of legacy status values during load.
-- Extended Work Task data model and UI to support dependency references (`blockedByTaskIds`, `blockingTaskIds`) and surfaced dependency state directly in task table rows.
-- Hardened task normalization, validation, and priority scoring so legacy localStorage records remain compatible while new canonical statuses and dependency states are handled consistently.
-- Expanded sync lifecycle states to expose `auth-check`, `pulling`, `merging`, and `pushing` phases, with topbar labels and action-button locking while a sync stage is active.
-- Added sync failure reason codes (`auth-expired`, `quota`, `network-timeout`, `schema-mismatch`) with concise user-facing status details in the topbar.
+-
 
 ### Deprecated
 -
@@ -30,11 +26,38 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 -
 
 ### Fixed
+-
+
+### Security
+-
+
+---
+
+## [0.9.0] - 2026-02-12
+
+### Added
+- N/A.
+
+### Changed
+- Updated Work Tasks canonical statuses to match product spec §7.2 (`Backlog`, `Ready`, `In Progress`, `Blocked`, `Waiting On`, `Done`, `Cancelled`) with automatic migration of legacy status values during load.
+- Extended Work Task data model and UI to support dependency references (`blockedByTaskIds`, `blockingTaskIds`) and surfaced dependency state directly in task table rows.
+- Hardened task normalization, validation, and priority scoring so legacy localStorage records remain compatible while new canonical statuses and dependency states are handled consistently.
+- Expanded sync lifecycle states to expose `auth-check`, `pulling`, `merging`, and `pushing` phases, with topbar labels and action-button locking while a sync stage is active.
+- Added sync failure reason codes (`auth-expired`, `quota`, `network-timeout`, `schema-mismatch`) with concise user-facing status details in the topbar.
+- Version increased to `0.9.0` due to user-facing behaviour updates and persisted Work Task model/schema changes.
+
+### Deprecated
+- N/A.
+
+### Removed
+- N/A.
+
+### Fixed
 - Added migration note: existing localStorage task records are auto-migrated in-place to canonical statuses and normalized dependency arrays on first load.
 - Documented and enforced sync shadow invariant so shadow snapshots only advance after successful remote push completion.
 
 ### Security
--
+- N/A.
 
 ---
 
