@@ -1,5 +1,11 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 
+/**
+ * Personal modules use versioned localStorage keys so schema upgrades can roll forward safely.
+ *
+ * Tasks stay in a Personal-only namespace to prevent accidental overlap with Work planning data
+ * and to keep sync/import behavior mode-scoped.
+ */
 const PERSONAL_TASKS_KEY = buildPersonalStorageKey("tasks", 1);
 
 /**
@@ -47,11 +53,13 @@ export function renderPersonalTasksModule() {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    // Reuse the same due-date ordering used by render so newly added items land in stable priority order.
     const tasks = loadPersonalTasks().sort((first, second) => {
       const firstDue = first.dueDate || "9999-12-31";
       const secondDue = second.dueDate || "9999-12-31";
       return firstDue.localeCompare(secondDue);
     });
+    // Mutate the in-memory snapshot first, then persist once, to avoid partial writes.
     tasks.push({
       id: `ptask_${Math.random().toString(36).slice(2, 10)}`,
       title: taskInput.input.value.trim(),
@@ -66,6 +74,7 @@ export function renderPersonalTasksModule() {
 
   function renderList() {
     list.innerHTML = "";
+    // Keep soonest due tasks at the top; empty due dates are intentionally treated as lowest urgency.
     const tasks = loadPersonalTasks().sort((first, second) => {
       const firstDue = first.dueDate || "9999-12-31";
       const secondDue = second.dueDate || "9999-12-31";
@@ -95,6 +104,7 @@ export function renderPersonalTasksModule() {
       remove.className = "module-button-secondary";
       remove.textContent = "Delete";
       remove.addEventListener("click", () => {
+        // Rebuild without the selected task so delete is idempotent even if the button is clicked twice.
         persistPersonalTasks(tasks.filter((entry) => entry.id !== task.id));
         renderList();
       });
@@ -109,6 +119,10 @@ export function renderPersonalTasksModule() {
   return section;
 }
 
+/**
+ * Loads persisted personal tasks and falls back to an empty array when localStorage is empty,
+ * non-array, or contains malformed JSON.
+ */
 function loadPersonalTasks() {
   const raw = localStorage.getItem(PERSONAL_TASKS_KEY);
   if (!raw) {
@@ -123,6 +137,10 @@ function loadPersonalTasks() {
   }
 }
 
+/**
+ * Persists the full personal task collection as canonical JSON under the versioned key;
+ * malformed JSON fallback remains in loadPersonalTasks for corrupted/external payloads.
+ */
 function persistPersonalTasks(tasks) {
   localStorage.setItem(PERSONAL_TASKS_KEY, JSON.stringify(tasks));
 }

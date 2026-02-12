@@ -1,5 +1,10 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 
+/**
+ * Personal calendar entries are stored under a versioned key to support safe future schema changes.
+ *
+ * The key is Personal-mode scoped so private schedule notes never collide with Work calendar data.
+ */
 const PERSONAL_CALENDAR_KEY = buildPersonalStorageKey("calendar", 1);
 
 /**
@@ -42,19 +47,21 @@ export function renderPersonalCalendarModule() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const events = loadEvents();
+    // Append to the loaded snapshot and persist once so each submit produces one atomic collection write.
     events.push({
       id: `pcal_${Math.random().toString(36).slice(2, 10)}`,
       title: name.input.value.trim(),
       date: date.input.value,
       notes: notes.value.trim()
     });
-    localStorage.setItem(PERSONAL_CALENDAR_KEY, JSON.stringify(events));
+    persistEvents(events);
     form.reset();
     renderList();
   });
 
   function renderList() {
     list.innerHTML = "";
+    // Chronological sort keeps planning scans consistent regardless of insertion order.
     const events = loadEvents().sort((a, b) => a.date.localeCompare(b.date));
     if (!events.length) {
       const empty = document.createElement("p");
@@ -85,6 +92,10 @@ export function renderPersonalCalendarModule() {
   return section;
 }
 
+/**
+ * Loads calendar entries defensively and returns an empty array when localStorage contains
+ * no value, malformed JSON, or a non-array payload.
+ */
 function loadEvents() {
   const raw = localStorage.getItem(PERSONAL_CALENDAR_KEY);
   if (!raw) {
@@ -97,6 +108,14 @@ function loadEvents() {
   } catch {
     return [];
   }
+}
+
+/**
+ * Persists the complete event collection as JSON; malformed JSON fallback is handled by loadEvents
+ * for corrupted or externally written payloads.
+ */
+function persistEvents(events) {
+  localStorage.setItem(PERSONAL_CALENDAR_KEY, JSON.stringify(events));
 }
 
 function buildInput(labelText, type, required) {
