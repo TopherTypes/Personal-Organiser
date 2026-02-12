@@ -67,7 +67,15 @@ export function renderPersonalCalendarModule() {
     events.forEach((entry) => {
       const row = document.createElement("article");
       row.className = "meeting-row";
-      row.innerHTML = `<strong>${entry.date} · ${entry.title}</strong><p>${entry.notes || "No notes"}</p>`;
+
+      // Use textContent for persisted user input so literal text is rendered without HTML/script injection.
+      const summary = document.createElement("strong");
+      summary.textContent = `${entry.date} · ${entry.title}`;
+
+      const details = document.createElement("p");
+      details.textContent = entry.notes || "No notes";
+
+      row.append(summary, details);
       list.appendChild(row);
     });
   }
