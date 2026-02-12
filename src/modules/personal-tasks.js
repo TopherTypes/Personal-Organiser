@@ -8,6 +8,7 @@ import { generateId } from "./id.js";
  * and to keep sync/import behavior mode-scoped.
  */
 const PERSONAL_TASKS_KEY = buildPersonalStorageKey("tasks", 1);
+const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "Done", "Cancelled"];
 
 /**
  * Renders the Personal Tasks module (spec 5.2) with lightweight CRUD support.
@@ -37,7 +38,7 @@ export function renderPersonalTasksModule() {
   statusWrap.textContent = "Status";
   const status = document.createElement("select");
   status.className = "field-input";
-  ["Backlog", "Ready", "In Progress", "Done", "Cancelled"].forEach((value) => {
+  TASK_STATUSES.forEach((value) => {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = value;
@@ -100,6 +101,14 @@ export function renderPersonalTasksModule() {
       meta.className = "meeting-meta";
       meta.textContent = `Status: ${task.status} · Due: ${task.dueDate || "Not set"}`;
 
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "module-button-secondary";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        renderEditState(row, task, tasks);
+      });
+
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "module-button-secondary";
@@ -110,9 +119,79 @@ export function renderPersonalTasksModule() {
         renderList();
       });
 
-      row.append(heading, meta, remove);
+      row.append(heading, meta, edit, remove);
       list.appendChild(row);
     }
+  }
+
+  /**
+   * Swaps a list row into edit mode. Changes stay local to this row until Save is clicked,
+   * so Cancel can safely return to read mode without touching persisted storage.
+   */
+  function renderEditState(row, task, tasks) {
+    row.innerHTML = "";
+
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "field-input";
+    titleInput.value = task.title;
+    titleInput.required = true;
+
+    const dueInput = document.createElement("input");
+    dueInput.type = "date";
+    dueInput.className = "field-input";
+    dueInput.value = task.dueDate || "";
+
+    const statusSelect = document.createElement("select");
+    statusSelect.className = "field-input";
+    TASK_STATUSES.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      option.selected = task.status === value;
+      statusSelect.appendChild(option);
+    });
+
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "enter-mode-button";
+    save.textContent = "Save";
+    save.addEventListener("click", () => {
+      const nextTitle = titleInput.value.trim();
+      if (!nextTitle) {
+        titleInput.reportValidity();
+        return;
+      }
+
+      // Update in memory first and persist once so save remains atomic.
+      const updatedTasks = tasks.map((entry) => {
+        if (entry.id !== task.id) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          title: nextTitle,
+          dueDate: dueInput.value,
+          status: statusSelect.value,
+          updatedAt: new Date().toISOString()
+        };
+      });
+
+      persistPersonalTasks(updatedTasks);
+      renderList();
+    });
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "module-button-secondary";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+      // Re-render from persisted state only; no write is performed when abandoning edits.
+      renderList();
+    });
+
+    row.append(titleInput, dueInput, statusSelect, save, cancel);
   }
 
   section.append(title, intro, form, list);
