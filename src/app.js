@@ -332,7 +332,12 @@ function renderInitialSyncModalInPlace() {
 }
 
 function shouldShowInitialSyncModal() {
-  return state.isInitialSyncPending && state.sync.isSyncing;
+  // The blocking first-sync overlay is only useful while a user is actively
+  // authenticated. If Drive auth has dropped to signed-out, keeping the overlay
+  // visible prevents access to the top-bar reconnect control and can trap users
+  // in a greyed-out screen with no recovery path.
+  const isActivelyAuthenticated = state.sync.authStatus === "signed-in";
+  return state.isInitialSyncPending && state.sync.isSyncing && isActivelyAuthenticated;
 }
 
 /**
