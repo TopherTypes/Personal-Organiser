@@ -1,5 +1,6 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 
 /**
  * Personal calendar entries are stored under a versioned key to support safe future schema changes.
@@ -7,6 +8,27 @@ import { generateId } from "./id.js";
  * The key is Personal-mode scoped so private schedule notes never collide with Work calendar data.
  */
 const PERSONAL_CALENDAR_KEY = buildPersonalStorageKey("calendar", 1);
+const PERSONAL_CALENDAR_COLLECTION_FIELD = "events";
+const PERSONAL_CALENDAR_SCHEMA_VERSION = 1;
+
+/**
+ * Normalises calendar entries from both legacy array payloads and versioned envelopes.
+ *
+ * The normaliser enforces predictable string fields and injects safe defaults so rendering,
+ * sorting, and update workflows keep working even when old or malformed payloads are loaded.
+ */
+function normaliseCalendarEvent(event) {
+  return {
+    id: typeof event?.id === "string" && event.id.trim() ? event.id : generateId("pcal_"),
+    title: typeof event?.title === "string" ? event.title.trim() : "",
+    date: typeof event?.date === "string" ? event.date : "",
+    notes: typeof event?.notes === "string" ? event.notes : "",
+    updatedAt:
+      typeof event?.updatedAt === "string" && event.updatedAt.trim()
+        ? event.updatedAt
+        : new Date().toISOString()
+  };
+}
 
 /**
  * Lightweight personal calendar module (meeting-like log) aligned to spec 10.3.
@@ -139,17 +161,13 @@ export function renderPersonalCalendarModule() {
  * no value, malformed JSON, or a non-array payload.
  */
 function loadEvents() {
-  const raw = localStorage.getItem(PERSONAL_CALENDAR_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey: PERSONAL_CALENDAR_KEY,
+    collectionKey: PERSONAL_CALENDAR_COLLECTION_FIELD,
+    schemaVersion: PERSONAL_CALENDAR_SCHEMA_VERSION,
+    normaliseItem: normaliseCalendarEvent,
+    fallback: []
+  });
 }
 
 /**
@@ -157,7 +175,12 @@ function loadEvents() {
  * for corrupted or externally written payloads.
  */
 function persistEvents(events) {
-  localStorage.setItem(PERSONAL_CALENDAR_KEY, JSON.stringify(events));
+  persistVersionedCollection({
+    storageKey: PERSONAL_CALENDAR_KEY,
+    collectionKey: PERSONAL_CALENDAR_COLLECTION_FIELD,
+    schemaVersion: PERSONAL_CALENDAR_SCHEMA_VERSION,
+    records: events.map(normaliseCalendarEvent)
+  });
 }
 
 /**

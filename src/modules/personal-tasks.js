@@ -1,5 +1,6 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 
 /**
  * Personal modules use versioned localStorage keys so schema upgrades can roll forward safely.
@@ -8,7 +9,31 @@ import { generateId } from "./id.js";
  * and to keep sync/import behavior mode-scoped.
  */
 const PERSONAL_TASKS_KEY = buildPersonalStorageKey("tasks", 1);
+const PERSONAL_TASKS_COLLECTION_FIELD = "tasks";
+const PERSONAL_TASKS_SCHEMA_VERSION = 1;
 const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "Done", "Cancelled"];
+
+/**
+ * Normalises a task payload from either legacy-array records or versioned envelopes.
+ *
+ * This keeps load behavior stable across schema revisions by validating expected field shapes,
+ * adding safe defaults, and constraining statuses to the supported enum.
+ */
+function normalisePersonalTask(task) {
+  const resolvedStatus = TASK_STATUSES.includes(task?.status) ? task.status : TASK_STATUSES[0];
+
+  return {
+    id: typeof task?.id === "string" && task.id.trim() ? task.id : generateId("ptask_"),
+    title: typeof task?.title === "string" ? task.title.trim() : "",
+    dueDate: typeof task?.dueDate === "string" ? task.dueDate : "",
+    status: resolvedStatus,
+    createdAt:
+      typeof task?.createdAt === "string" && task.createdAt.trim()
+        ? task.createdAt
+        : new Date().toISOString(),
+    updatedAt: typeof task?.updatedAt === "string" ? task.updatedAt : undefined
+  };
+}
 
 /**
  * Renders the Personal Tasks module (spec 5.2) with lightweight CRUD support.
@@ -204,17 +229,13 @@ export function renderPersonalTasksModule() {
  * non-array, or contains malformed JSON.
  */
 function loadPersonalTasks() {
-  const raw = localStorage.getItem(PERSONAL_TASKS_KEY);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return loadVersionedCollection({
+    storageKey: PERSONAL_TASKS_KEY,
+    collectionKey: PERSONAL_TASKS_COLLECTION_FIELD,
+    schemaVersion: PERSONAL_TASKS_SCHEMA_VERSION,
+    normaliseItem: normalisePersonalTask,
+    fallback: []
+  });
 }
 
 /**
@@ -222,7 +243,12 @@ function loadPersonalTasks() {
  * malformed JSON fallback remains in loadPersonalTasks for corrupted/external payloads.
  */
 function persistPersonalTasks(tasks) {
-  localStorage.setItem(PERSONAL_TASKS_KEY, JSON.stringify(tasks));
+  persistVersionedCollection({
+    storageKey: PERSONAL_TASKS_KEY,
+    collectionKey: PERSONAL_TASKS_COLLECTION_FIELD,
+    schemaVersion: PERSONAL_TASKS_SCHEMA_VERSION,
+    records: tasks.map(normalisePersonalTask)
+  });
 }
 
 function buildInput(labelText, type, required) {
