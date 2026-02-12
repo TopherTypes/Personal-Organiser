@@ -1393,7 +1393,7 @@ textarea:focus-visible,
 }
 
 .meeting-modal {
-  width: min(1200px, 100%);
+  width: min(1400px, 100%);
   max-height: calc(100vh - 4rem);
   overflow: auto;
   background: var(--bg-elevated);
@@ -1456,6 +1456,17 @@ textarea:focus-visible,
   border-radius: var(--radius-sm);
   padding: var(--space-3);
   white-space: pre-wrap;
+}
+
+/*
+ * Attend mode mirrors review mode with a split layout so live notes and
+ * 1:1 follow-up actions can be read side-by-side.
+ */
+.meeting-attend-layout {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  align-items: start;
 }
 
 /*
@@ -1717,6 +1728,7 @@ body[data-density="compact"] .footer {
     grid-template-columns: 1fr;
   }
 
+  .meeting-attend-layout,
   .meeting-review-layout,
   .meeting-update-row-metadata {
     grid-template-columns: 1fr;
