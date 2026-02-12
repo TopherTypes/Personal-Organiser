@@ -4,6 +4,11 @@ import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from ".
 const UPDATES_SCHEMA_VERSION = 1;
 const UPDATES_COLLECTION_KEY = "updates";
 const WORK_UPDATES_STORAGE_KEY = "second-brain.work.updates.work.v1";
+const UPDATE_ENTITY_TYPES = {
+  UPDATE: "update",
+  ACTION: "action"
+};
+const ACTION_OWNER_ME = "me";
 
 /**
  * Renders the work updates module and keeps data dependencies explicit.
@@ -32,7 +37,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     const intro = document.createElement("p");
     intro.className = "module-intro";
     intro.textContent =
-      "Capture stakeholder update drafts with owner, due date, and meeting context while keeping storage isolated per mode.";
+      "Capture meeting follow-ups as either updates or actions with owner/due-date controls and meeting context.";
 
     const updates = loadUpdates(mode);
     const activeUpdates = updates.filter((update) => !update.archived);
@@ -47,6 +52,23 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     textInput.placeholder = "What update do you need to send?";
     textInput.required = true;
 
+    const typeLabel = document.createElement("label");
+    typeLabel.className = "field-label";
+    typeLabel.textContent = "Entity type";
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "field-input";
+    addOption(typeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
+    addOption(typeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
+    typeLabel.appendChild(typeSelect);
+
+    const dueDateLabel = document.createElement("label");
+    dueDateLabel.className = "field-label";
+    dueDateLabel.textContent = "Due date (required for actions)";
+    const dueDateInput = document.createElement("input");
+    dueDateInput.type = "date";
+    dueDateInput.className = "field-input";
+    dueDateLabel.appendChild(dueDateInput);
+
     const toUpdateField = buildEntityTokenMultiSelectField({
       label: "People to update",
       options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
@@ -57,7 +79,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
     const ownerLabel = document.createElement("label");
     ownerLabel.className = "field-label";
-    ownerLabel.textContent = "Owner (optional)";
+    ownerLabel.textContent = "Owner (required for actions)";
 
     const ownerSelect = document.createElement("select");
     ownerSelect.className = "field-input";
@@ -68,12 +90,23 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     }
     ownerLabel.appendChild(ownerSelect);
 
+    const syncCreateFormRequirements = () => {
+      const isAction = typeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
+      ownerSelect.required = isAction;
+      dueDateInput.required = isAction;
+      if (!isAction) {
+        dueDateInput.value = "";
+      }
+    };
+    typeSelect.addEventListener("change", syncCreateFormRequirements);
+    syncCreateFormRequirements();
+
     const createButton = document.createElement("button");
     createButton.type = "submit";
     createButton.className = "enter-mode-button";
     createButton.textContent = "Add update";
 
-    form.append(textInput, toUpdateField.wrapper, ownerLabel, createButton);
+    form.append(typeLabel, textInput, toUpdateField.wrapper, ownerLabel, dueDateLabel, createButton);
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -82,8 +115,10 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       const result = saveUpdate(
         mode,
         {
+          entityType: typeSelect.value,
           text: textInput.value,
           ownerId: ownerSelect.value,
+          dueDate: dueDateInput.value,
           toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
         },
         "",
@@ -115,7 +150,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     table.className = "updates-table";
 
     const headerRow = document.createElement("tr");
-    ["Update", "Owner", "Meeting", "Due date", "Pending", "Updated", "Actions"].forEach((label) => {
+    ["Type", "Update", "Owner", "Meeting", "Due date", "Pending", "Updated", "Actions"].forEach((label) => {
       const cell = document.createElement("th");
       cell.scope = "col";
       cell.textContent = label;
@@ -130,7 +165,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     if (!activeUpdates.length) {
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
-      emptyCell.colSpan = 7;
+      emptyCell.colSpan = 8;
       emptyCell.className = "empty-state";
       emptyCell.textContent = "No active updates yet. Add one from the updates workflow.";
       emptyRow.appendChild(emptyCell);
@@ -139,6 +174,9 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
     for (const update of activeUpdates) {
       const row = document.createElement("tr");
+
+      const typeCell = document.createElement("td");
+      typeCell.appendChild(buildUpdateTypePill(update.entityType));
 
       const textCell = document.createElement("td");
       textCell.textContent = update.text;
@@ -170,7 +208,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       });
       actionCell.appendChild(editButton);
 
-      row.append(textCell, ownerCell, meetingCell, dueDateCell, pendingCell, completedCell, actionCell);
+      row.append(typeCell, textCell, ownerCell, meetingCell, dueDateCell, pendingCell, completedCell, actionCell);
       body.appendChild(row);
     }
 
@@ -261,9 +299,20 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   textLabel.textContent = "Update";
   const textInput = document.createElement("textarea");
   textInput.className = "field-input field-textarea";
-  textInput.required = true;
+  // Clearing text during edit is interpreted as a quiet delete in `saveUpdate`.
+  textInput.required = false;
   textInput.value = update.text;
   textLabel.appendChild(textInput);
+
+  const entityTypeLabel = document.createElement("label");
+  entityTypeLabel.className = "field-label";
+  entityTypeLabel.textContent = "Entity type";
+  const entityTypeSelect = document.createElement("select");
+  entityTypeSelect.className = "field-input";
+  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
+  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
+  entityTypeSelect.value = update.entityType;
+  entityTypeLabel.appendChild(entityTypeSelect);
 
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
@@ -277,7 +326,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
 
   const ownerLabel = document.createElement("label");
   ownerLabel.className = "field-label";
-  ownerLabel.textContent = "Owner (optional)";
+  ownerLabel.textContent = "Owner (required for actions)";
   const ownerSelect = document.createElement("select");
   ownerSelect.className = "field-input";
   for (const option of buildUpdateOwnerOptions(activePeople)) {
@@ -300,12 +349,23 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
 
   const dueDateLabel = document.createElement("label");
   dueDateLabel.className = "field-label";
-  dueDateLabel.textContent = "Due date (optional)";
+  dueDateLabel.textContent = "Due date (required for actions)";
   const dueDateInput = document.createElement("input");
   dueDateInput.type = "date";
   dueDateInput.className = "field-input";
   dueDateInput.value = update.dueDate;
   dueDateLabel.appendChild(dueDateInput);
+
+  const syncEditorRequirements = () => {
+    const isAction = entityTypeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
+    ownerSelect.required = isAction;
+    dueDateInput.required = isAction;
+    if (!isAction) {
+      dueDateInput.value = "";
+    }
+  };
+  entityTypeSelect.addEventListener("change", syncEditorRequirements);
+  syncEditorRequirements();
 
   const actions = document.createElement("div");
   actions.className = "tasks-row-actions";
@@ -322,7 +382,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   saveButton.textContent = "Save update";
 
   actions.append(cancelButton, saveButton);
-  form.append(textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel, actions);
+  form.append(entityTypeLabel, textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel, actions);
 
   // Always submit normalised recipient records so persistence retains canonical shape.
   form.addEventListener("submit", (event) => {
@@ -331,6 +391,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
     onSave(
       {
         text: textInput.value,
+        entityType: entityTypeSelect.value,
         ownerId: ownerSelect.value,
         meetingId: meetingSelect.value,
         dueDate: dueDateInput.value,
@@ -371,21 +432,48 @@ export function saveUpdate(mode, draft, editingId = "", people = null) {
   }
 
   const normalisedDraft = normaliseUpdate(draft);
+  const isAction = normalisedDraft.entityType === UPDATE_ENTITY_TYPES.ACTION;
+
+  // Quiet-delete semantics:
+  // - Editing with empty text removes the existing record.
+  // - Creating with empty text no-ops so accidental blank submits do not create noise.
   if (!normalisedDraft.text) {
-    return { ok: false, error: "Update text is required." };
+    if (editingId) {
+      const updates = loadUpdates(mode);
+      const next = updates.filter((update) => update.id !== editingId);
+      if (next.length === updates.length) {
+        return { ok: false, error: "Update no longer exists." };
+      }
+      persistUpdates(mode, next);
+      return { ok: true, message: "Update deleted." };
+    }
+
+    return { ok: true, message: "Skipped empty update." };
   }
-  if (!normalisedDraft.toUpdate.length) {
-    return { ok: false, error: "At least one person to update is required." };
+
+  // Recipient requirements:
+  // - Updates are communication items and require at least one recipient.
+  // - Actions represent owned work and can exist without recipients.
+  if (!isAction && !normalisedDraft.toUpdate.length) {
+    return { ok: false, error: "At least one person to update is required for update items." };
   }
+
+  if (isAction && !normalisedDraft.ownerId) {
+    return { ok: false, error: "Actions require an owner." };
+  }
+  if (isAction && !normalisedDraft.dueDate) {
+    return { ok: false, error: "Actions require a due date." };
+  }
+
   // Referential integrity: `ownerId` is a soft foreign key to People.
-  // We allow empty owner values, but non-empty ids must resolve in current active People.
+  // We allow empty owner values for updates, but actions must have either an active person or "Me".
   if (Array.isArray(people)) {
     const validOwnerIds = new Set(
       people
         .filter((person) => person && !person.archived && typeof person.id === "string")
         .map((person) => person.id)
     );
-    if (normalisedDraft.ownerId && !validOwnerIds.has(normalisedDraft.ownerId)) {
+    if (normalisedDraft.ownerId && normalisedDraft.ownerId !== ACTION_OWNER_ME && !validOwnerIds.has(normalisedDraft.ownerId)) {
       return { ok: false, error: "Selected owner no longer exists in active people." };
     }
   }
@@ -451,6 +539,7 @@ export function buildUpdateOwnerOptions(people = []) {
   const activePeople = selectActivePeople(people);
   return [
     { value: "", label: "No owner" },
+    { value: ACTION_OWNER_ME, label: "Me (create linked task)" },
     ...activePeople.map((person) => ({ value: person.id, label: person.name || person.id }))
   ];
 }
@@ -458,6 +547,9 @@ export function buildUpdateOwnerOptions(people = []) {
 function resolveOwnerDisplayName(update, people) {
   if (!update.ownerId) {
     return "No owner";
+  }
+  if (update.ownerId === ACTION_OWNER_ME) {
+    return "Me";
   }
 
   const owner = people.find((person) => person.id === update.ownerId);
@@ -473,6 +565,17 @@ function addOption(select, value, label) {
   option.value = value;
   option.textContent = label;
   select.appendChild(option);
+}
+
+/**
+ * Shared visual token for update/action type labels.
+ */
+function buildUpdateTypePill(entityType) {
+  const pill = document.createElement("span");
+  const isAction = entityType === UPDATE_ENTITY_TYPES.ACTION;
+  pill.className = `update-type-pill ${isAction ? "is-action" : "is-update"}`;
+  pill.textContent = isAction ? "Action" : "Update";
+  return pill;
 }
 
 /**
@@ -572,6 +675,7 @@ export function normaliseUpdate(update) {
   return {
     id: typeof source.id === "string" ? source.id : "",
     text: typeof source.text === "string" ? source.text.trim() : "",
+    entityType: source.entityType === UPDATE_ENTITY_TYPES.ACTION ? UPDATE_ENTITY_TYPES.ACTION : UPDATE_ENTITY_TYPES.UPDATE,
     ownerId: typeof source.ownerId === "string" ? source.ownerId : "",
     toUpdate: normaliseToUpdateList(source.toUpdate),
     meetingId: typeof source.meetingId === "string" ? source.meetingId : "",

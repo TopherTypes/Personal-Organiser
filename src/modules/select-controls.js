@@ -222,9 +222,25 @@ export function buildEntityTokenMultiSelectField({
       const removeButton = document.createElement("button");
       removeButton.type = "button";
       removeButton.className = "entity-token-remove";
-      removeButton.textContent = "×";
       removeButton.setAttribute("aria-label", `Remove ${option.label}`);
-      removeButton.addEventListener("click", () => removeSelectedId(id));
+
+      const removeIcon = document.createElement("span");
+      removeIcon.className = "entity-token-remove-icon";
+      removeIcon.textContent = "×";
+      removeButton.appendChild(removeIcon);
+
+      // Intentional precision guard:
+      // only clicking the explicit × glyph should remove a token. Clicks on the
+      // surrounding button padding are treated as non-destructive focus events.
+      removeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const clickedRemoveIcon = event.target instanceof Element && event.target.closest(".entity-token-remove-icon");
+        if (!clickedRemoveIcon) {
+          input.focus();
+          return;
+        }
+        removeSelectedId(id);
+      });
 
       token.append(tokenLabel, removeButton);
       tokenList.appendChild(token);
