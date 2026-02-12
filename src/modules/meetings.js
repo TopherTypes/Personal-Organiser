@@ -202,6 +202,8 @@ export function renderWorkMeetingsModule({
     state.showOneOnOneCompletedHistory = false;
     state.lastAutoSaveAt = "";
     state.workflowStep = "plan";
+    state.attachedUpdateEditingId = "";
+    state.attachedUpdateFeedback = "";
     renderMeetingModal();
     setUnsavedChangesGuard(true);
   }
@@ -485,6 +487,25 @@ export function renderWorkMeetingsModule({
 
     notesWrap.append(notesInput, lockInfo, toggleLabel, notesPreview);
 
+    // Review-step reference panel keeps notes visible while converting raw notes
+    // into structured update/action rows.
+    const reviewNotesPanel = document.createElement("section");
+    reviewNotesPanel.className = "meeting-review-notes";
+
+    const reviewNotesHeading = document.createElement("h3");
+    reviewNotesHeading.textContent = "Rendered meeting notes";
+
+    const reviewNotesRendered = document.createElement("div");
+    reviewNotesRendered.className = "meeting-review-notes-rendered";
+
+    const syncRenderedReviewNotes = () => {
+      reviewNotesRendered.innerHTML = "";
+      reviewNotesRendered.appendChild(renderSimpleMarkdown(state.draft.notes || "No notes yet."));
+    };
+    syncRenderedReviewNotes();
+
+    reviewNotesPanel.append(reviewNotesHeading, reviewNotesRendered);
+
     const autoSaveText = document.createElement("small");
     autoSaveText.className = "module-intro";
     autoSaveText.textContent = state.lastAutoSaveAt
@@ -621,12 +642,15 @@ export function renderWorkMeetingsModule({
           renderLinkedUpdateRows();
         });
 
+        const metadataRow = document.createElement("div");
+        metadataRow.className = "meeting-update-row-metadata";
+        metadataRow.append(entityTypeField.wrapper, dueDateField.wrapper, updateOwnerField.wrapper);
+
         rowWrap.append(
           rowTitle,
           entityTypeField.wrapper,
           updateTextWrap,
-          updateOwnerField.wrapper,
-          dueDateField.wrapper,
+          metadataRow,
           updateRecipientField.wrapper,
           removeUpdateRowButton
         );
@@ -649,7 +673,184 @@ export function renderWorkMeetingsModule({
 
     planScreen.append(nameInput.wrapper, scheduleRow, metadataRow, participantsRow);
     attendScreen.append(notesWrap);
-    reviewScreen.append(oneOnOneUpdatesPanel, updateComposerWrap);
+    const reviewLayout = document.createElement("div");
+    reviewLayout.className = "meeting-review-layout";
+    reviewLayout.append(updateComposerWrap, reviewNotesPanel);
+
+    const attachedUpdatesSection = document.createElement("section");
+    attachedUpdatesSection.className = "meeting-attached-updates";
+
+    const attachedUpdatesHeading = document.createElement("h3");
+    attachedUpdatesHeading.textContent = "Attached updates/actions";
+
+    const attachedUpdatesDescription = document.createElement("p");
+    attachedUpdatesDescription.className = "module-intro";
+    attachedUpdatesDescription.textContent =
+      "Review and edit updates already linked to this meeting without leaving the modal.";
+
+    const attachedUpdatesList = document.createElement("div");
+    attachedUpdatesList.className = "meeting-attached-updates-list";
+
+    const attachedUpdatesFeedback = document.createElement("p");
+    attachedUpdatesFeedback.className = "module-intro";
+
+    const renderAttachedUpdatesSection = () => {
+      attachedUpdatesList.innerHTML = "";
+      attachedUpdatesFeedback.textContent = state.attachedUpdateFeedback || "";
+
+      // Existing meeting-linked follow-ups are discoverable here so users can
+      // confirm and adjust previous review output while editing meeting details.
+      const attachedUpdates = state.draft.id
+        ? loadUpdates(mode)
+            .filter((update) => !update.archived)
+            .filter((update) => update.meetingId === state.draft.id)
+        : [];
+
+      if (!state.draft.id) {
+        const guidance = document.createElement("p");
+        guidance.className = "empty-state";
+        guidance.textContent = "Save this meeting first to view and edit attached updates/actions.";
+        attachedUpdatesList.appendChild(guidance);
+        return;
+      }
+
+      if (!attachedUpdates.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No updates/actions are attached to this meeting yet.";
+        attachedUpdatesList.appendChild(empty);
+        return;
+      }
+
+      attachedUpdates.forEach((attachedUpdate) => {
+        const card = document.createElement("article");
+        card.className = "meeting-attached-update-card";
+
+        const title = document.createElement("p");
+        title.className = "module-intro";
+        title.textContent = `${attachedUpdate.entityType === "action" ? "Action" : "Update"} · ${attachedUpdate.text}`;
+
+        const meta = document.createElement("p");
+        meta.className = "module-intro";
+        meta.textContent = [
+          `Owner: ${resolveUpdateOwnerLabel(attachedUpdate.ownerId, people)}`,
+          `Due: ${attachedUpdate.dueDate || "Not set"}`,
+          `Recipients: ${normaliseToUpdateList(attachedUpdate.toUpdate).length}`
+        ].join(" · ");
+
+        card.append(title, meta);
+
+        const isEditing = state.attachedUpdateEditingId === attachedUpdate.id;
+        if (!isEditing) {
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "module-button-secondary";
+          editButton.textContent = "Edit attached update";
+          editButton.addEventListener("click", () => {
+            state.attachedUpdateEditingId = attachedUpdate.id;
+            state.attachedUpdateFeedback = "";
+            renderAttachedUpdatesSection();
+          });
+          card.appendChild(editButton);
+          attachedUpdatesList.appendChild(card);
+          return;
+        }
+
+        const editForm = document.createElement("form");
+        editForm.className = "meeting-attached-update-form";
+
+        const typeField = buildSingleSelectField({
+          label: "Type",
+          options: [
+            { value: "update", label: "Update" },
+            { value: "action", label: "Action" }
+          ],
+          value: attachedUpdate.entityType || "update"
+        });
+
+        const textField = document.createElement("label");
+        textField.className = "field-label";
+        textField.textContent = "Text";
+        const textInput = document.createElement("textarea");
+        textInput.className = "field-input field-textarea";
+        textInput.required = true;
+        textInput.value = attachedUpdate.text;
+        textField.appendChild(textInput);
+
+        const ownerField = buildSingleSelectField({
+          label: "Owner",
+          options: updateOwnerOptions,
+          value: attachedUpdate.ownerId,
+          emptyMessage: "Add people first to select an owner."
+        });
+
+        const dueDateField = buildLabeledInput("Due date", "date", attachedUpdate.dueDate || "");
+
+        const metadataFields = document.createElement("div");
+        metadataFields.className = "meeting-update-row-metadata";
+        metadataFields.append(typeField.wrapper, dueDateField.wrapper, ownerField.wrapper);
+
+        const formActions = document.createElement("div");
+        formActions.className = "tasks-row-actions";
+
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "module-button-secondary";
+        cancelButton.textContent = "Cancel";
+        cancelButton.addEventListener("click", () => {
+          state.attachedUpdateEditingId = "";
+          state.attachedUpdateFeedback = "";
+          renderAttachedUpdatesSection();
+        });
+
+        const saveButton = document.createElement("button");
+        saveButton.type = "submit";
+        saveButton.className = "enter-mode-button";
+        saveButton.textContent = "Save attached update";
+
+        formActions.append(cancelButton, saveButton);
+        editForm.append(textField, metadataFields, formActions);
+
+        editForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+
+          const result = saveUpdate(
+            mode,
+            {
+              ...attachedUpdate,
+              text: textInput.value,
+              entityType: typeField.select.value,
+              ownerId: ownerField.select.value,
+              dueDate: dueDateField.input.value
+            },
+            attachedUpdate.id,
+            activePeople
+          );
+
+          if (!result.ok) {
+            state.attachedUpdateFeedback = result.error || "Unable to save attached update.";
+            renderAttachedUpdatesSection();
+            return;
+          }
+
+          state.attachedUpdateEditingId = "";
+          state.attachedUpdateFeedback = "Attached update saved.";
+          renderAttachedUpdatesSection();
+        });
+
+        card.appendChild(editForm);
+        attachedUpdatesList.appendChild(card);
+      });
+    };
+
+    attachedUpdatesSection.append(
+      attachedUpdatesHeading,
+      attachedUpdatesDescription,
+      attachedUpdatesFeedback,
+      attachedUpdatesList
+    );
+
+    reviewScreen.append(oneOnOneUpdatesPanel, reviewLayout, attachedUpdatesSection);
 
     const syncWorkflowScreen = () => {
       const activeStep = state.workflowStep || "plan";
@@ -676,6 +877,7 @@ export function renderWorkMeetingsModule({
 
     syncWorkflowScreen();
     fields.append(workflowNav, planScreen, attendScreen, reviewScreen);
+    renderAttachedUpdatesSection();
 
     const actions = document.createElement("div");
     actions.className = "meeting-actions";
@@ -736,6 +938,7 @@ export function renderWorkMeetingsModule({
         state.draft.notes = notesInput.value;
       }
       notesPreview.textContent = state.draft.notes || "No notes yet.";
+      syncRenderedReviewNotes();
       renderOneOnOneUpdatesPanel();
       state.dirtyDraft = true;
       setUnsavedChangesGuard(true);
@@ -905,7 +1108,9 @@ function createMeetingsUiState(mode, initialPrefill) {
     feedback: "",
     lastAutoSaveAt: "",
     showOneOnOneCompletedHistory: false,
-    workflowStep: "plan"
+    workflowStep: "plan",
+    attachedUpdateEditingId: "",
+    attachedUpdateFeedback: ""
   };
 
   const autosavedDraft = loadDraft(mode);
@@ -1441,6 +1646,117 @@ function toTitleCase(input) {
     .split("-")
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+/**
+ * Lightweight markdown renderer for meeting-note side-by-side review.
+ *
+ * Scope intentionally stays small (headers, bullets, emphasis, code, links)
+ * so we avoid new dependencies while still making notes readable in review mode.
+ */
+function renderSimpleMarkdown(markdownText) {
+  const container = document.createElement("div");
+  const source = String(markdownText || "").replace(/\r\n/g, "\n");
+  const lines = source.split("\n");
+
+  let currentList = null;
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (!line.trim()) {
+      currentList = null;
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      currentList = null;
+      const level = Math.min(headingMatch[1].length, 6);
+      const heading = document.createElement(`h${level}`);
+      heading.innerHTML = renderInlineMarkdown(headingMatch[2]);
+      container.appendChild(heading);
+      continue;
+    }
+
+    const listMatch = line.match(/^[-*]\s+(.*)$/);
+    if (listMatch) {
+      if (!currentList) {
+        currentList = document.createElement("ul");
+        container.appendChild(currentList);
+      }
+      const item = document.createElement("li");
+      item.innerHTML = renderInlineMarkdown(listMatch[1]);
+      currentList.appendChild(item);
+      continue;
+    }
+
+    currentList = null;
+    const paragraph = document.createElement("p");
+    paragraph.innerHTML = renderInlineMarkdown(line);
+    container.appendChild(paragraph);
+  }
+
+  return container;
+}
+
+function renderInlineMarkdown(text) {
+  const escaped = escapeHtml(text);
+  return escaped
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/**
+ * Mirrors the update-recipient cardinality logic used in updates module so
+ * meeting-attached review cards can display stable recipient counts.
+ */
+function normaliseToUpdateList(toUpdate) {
+  if (!Array.isArray(toUpdate)) {
+    return [];
+  }
+
+  return toUpdate
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const personId = entry.trim();
+        return personId ? { personId } : null;
+      }
+
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const personId = typeof entry.personId === "string" ? entry.personId.trim() : "";
+      const note = typeof entry.note === "string" ? entry.note.trim() : "";
+      if (!personId && !note) {
+        return null;
+      }
+
+      return { personId, note };
+    })
+    .filter(Boolean);
+}
+
+function resolveUpdateOwnerLabel(ownerId, people = []) {
+  if (!ownerId) {
+    return "No owner";
+  }
+  if (ownerId === "me") {
+    return "Me";
+  }
+
+  const owner = people.find((person) => person.id === ownerId && !person.archived);
+  return owner?.name || ownerId;
 }
 
 function buildId() {
