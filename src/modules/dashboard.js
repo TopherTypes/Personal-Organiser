@@ -291,7 +291,9 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
   const exerciseEntries = loadPersonalCollection("exercise-log");
 
   const todayTasks = tasks.filter((task) => task.dueDate === today && !["Done", "Cancelled"].includes(task.status)).slice(0, 5);
+  const recurringTasks = tasks.filter((task) => task.recurrenceMeta && task.recurrenceMeta.frequency !== "none");
   const upcomingEvents = events.filter((entry) => entry.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  const recurringEvents = events.filter((entry) => entry.recurrenceMeta && entry.recurrenceMeta.frequency !== "none");
   const activeProjects = projects.filter((project) => !project.targetDate || project.targetDate >= today).slice(0, 4);
   const thisWeekExercise = exerciseEntries.filter((entry) => entry.date && daysBetween(entry.date, today) <= 7 && daysBetween(entry.date, today) >= 0);
   const latestMood = dailyLogs.find((entry) => entry.date)?.mood || "-";
@@ -301,6 +303,8 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
   metrics.append(
     createMetricCard("Tasks due today", String(todayTasks.length), "tasks", uiContext),
     createMetricCard("Upcoming events", String(upcomingEvents.length), "calendar", uiContext),
+    createMetricCard("Recurring tasks", String(recurringTasks.length), "tasks", uiContext),
+    createMetricCard("Recurring events", String(recurringEvents.length), "calendar", uiContext),
     createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
     createMetricCard("Exercise entries (7d)", String(thisWeekExercise.length), "exercise-log", uiContext),
     createMetricCard("Latest mood", String(latestMood), "daily-log", uiContext)
@@ -314,7 +318,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Personal tasks requiring attention today.",
       emptyText: "No personal tasks due today.",
       items: todayTasks,
-      getLabel: (task) => `${task.title || "Untitled task"} · ${task.status}`,
+      getLabel: (task) =>
+        `${task.title || "Untitled task"} · ${task.status}${
+          task.recurrenceMeta ? ` · repeats ${task.recurrenceMeta.frequency}/${task.recurrenceMeta.interval}` : ""
+        }`,
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
       footerAction: createFooterAction("Open tasks", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
     }),
@@ -323,7 +330,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Next personal events.",
       emptyText: "No upcoming calendar entries.",
       items: upcomingEvents,
-      getLabel: (event) => `${event.date} · ${event.title || "Untitled event"}`,
+      getLabel: (event) =>
+        `${event.date} · ${event.title || "Untitled event"}${
+          event.recurrenceMeta ? ` · repeats ${event.recurrenceMeta.frequency}/${event.recurrenceMeta.interval}` : ""
+        }`,
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }),
       footerAction: createFooterAction("Open calendar", () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }))
     }),
@@ -447,7 +457,20 @@ function loadPersonalCollection(moduleName, version = 1) {
 
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      if (moduleName === "calendar" && Array.isArray(parsed.events)) {
+        return parsed.events;
+      }
+      if (Array.isArray(parsed[moduleName])) {
+        return parsed[moduleName];
+      }
+    }
+
+    return [];
   } catch {
     return [];
   }
