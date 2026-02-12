@@ -69,7 +69,6 @@ const syncSubsystem = createSyncSubsystem({
     maybeAutoOpenInitialSyncReauth();
     syncInitialSyncExperienceState();
     syncInitialSyncProgressTracker();
-    syncInitialSyncProgressTracker();
 
     // Sync updates change only top-bar information. Patching the header in place
     // avoids remounting module content, which would otherwise close transient UI
