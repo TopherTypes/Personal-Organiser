@@ -11,7 +11,7 @@ import {
 } from "./updates.js";
 import {
   buildEntityTokenMultiSelectField,
-  buildSingleSelectField,
+  buildEntityTokenSingleSelectField,
   readEntityTokenHiddenValues
 } from "./select-controls.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
@@ -257,15 +257,17 @@ export function renderWorkMeetingsModule({
     statusSelect.value = state.draft.status || "scheduled";
     statusWrap.appendChild(statusSelect);
 
-    const peopleOptions = [
-      { value: "", label: "No chair selected" },
-      ...people.filter((person) => !person.archived).map((person) => ({ value: person.id, label: person.name || person.id }))
-    ];
-    const chairField = buildSingleSelectField({
+    const peopleOptions = people
+      .filter((person) => !person.archived)
+      .map((person) => ({ value: person.id, label: person.name || person.id }));
+    // Keep chair selection aligned with attendee chips so every person picker
+    // across meeting forms uses a consistent typeahead interaction pattern.
+    const chairField = buildEntityTokenSingleSelectField({
       label: "Chair",
       options: peopleOptions,
-      value: state.draft.chairId || "",
-      emptyMessage: "Add people first to select a meeting chair."
+      values: state.draft.chairId ? [state.draft.chairId] : [],
+      emptyMessage: "Add people first to select a meeting chair.",
+      inputPlaceholder: "Search chair"
     });
     // Person-entity selection benefits from token-based autocomplete because it scales better than
     // native <select multiple> for long directories while still constraining IDs to canonical people.
@@ -642,7 +644,7 @@ export function renderWorkMeetingsModule({
       // UX intentionally constrains selection to canonical entities so free-typed IDs cannot silently
       // create broken references; this improves both data integrity and in-form discoverability.
       const previousChairId = state.draft.chairId;
-      state.draft.chairId = chairField.select.value;
+      state.draft.chairId = readEntityTokenHiddenValues(chairField.hiddenInput)[0] || "";
       const selectedAttendeeIds = readEntityTokenHiddenValues(attendeeField.hiddenInput);
       // Persist attendees in stable insertion order with deduplication so autosave and submit payloads
       // remain deterministic even after repeated add/remove cycles inside the token control.
@@ -680,7 +682,7 @@ export function renderWorkMeetingsModule({
       endInput.input,
       typeSelect,
       statusSelect,
-      chairField.select,
+      chairField.hiddenInput,
       attendeeField.hiddenInput,
       projectSelect,
       toggle
