@@ -648,6 +648,7 @@ export function renderWorkMeetingsModule({
 
         rowWrap.append(
           rowTitle,
+          entityTypeField.wrapper,
           updateTextWrap,
           metadataRow,
           updateRecipientField.wrapper,
