@@ -22,7 +22,8 @@ const ACTION_OWNER_ME = "me";
  */
 export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [], focusCreateForm = false } = {}) {
   const state = {
-    isEditorOpen: false,
+    // Opening in create mode preserves keyboard shortcut behaviour from the old inline form.
+    modalMode: focusCreateForm ? "create" : "",
     editingId: "",
     feedback: ""
   };
@@ -33,8 +34,22 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   const renderModule = () => {
     section.innerHTML = "";
 
+    const header = document.createElement("div");
+    header.className = "meetings-header";
+
     const title = document.createElement("h1");
     title.textContent = "Work Updates";
+
+    const newUpdateButton = document.createElement("button");
+    newUpdateButton.type = "button";
+    newUpdateButton.className = "enter-mode-button";
+    newUpdateButton.textContent = "New update";
+    newUpdateButton.addEventListener("click", () => {
+      state.modalMode = "create";
+      state.editingId = "";
+      renderModule();
+    });
+    header.append(title, newUpdateButton);
 
     const intro = document.createElement("p");
     intro.className = "module-intro";
@@ -44,105 +59,6 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     const updates = loadUpdates(mode);
     const activeUpdates = updates.filter((update) => !update.archived);
     const activePeople = selectActivePeople(people);
-
-    const form = document.createElement("form");
-    form.className = "updates-form card";
-
-    const textInput = document.createElement("input");
-    textInput.type = "text";
-    textInput.className = "field-input";
-    textInput.placeholder = "What update do you need to send?";
-    textInput.required = true;
-
-    const typeLabel = document.createElement("label");
-    typeLabel.className = "field-label";
-    typeLabel.textContent = "Entity type";
-    const typeSelect = document.createElement("select");
-    typeSelect.className = "field-input";
-    addOption(typeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
-    addOption(typeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
-    typeLabel.appendChild(typeSelect);
-
-    const dueDateLabel = document.createElement("label");
-    dueDateLabel.className = "field-label";
-    dueDateLabel.textContent = "Due date (required for actions)";
-    const dueDateInput = document.createElement("input");
-    dueDateInput.type = "date";
-    dueDateInput.className = "field-input";
-    dueDateLabel.appendChild(dueDateInput);
-
-    const toUpdateField = buildEntityTokenMultiSelectField({
-      label: "People to update",
-      options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
-      values: [],
-      emptyMessage: "Add people first to select update recipients.",
-      inputPlaceholder: "Search people to update"
-    });
-
-    const ownerLabel = document.createElement("label");
-    ownerLabel.className = "field-label";
-    ownerLabel.textContent = "Owner (required for actions)";
-
-    const ownerSelect = document.createElement("select");
-    ownerSelect.className = "field-input";
-    // Use the same canonical option builder as meetings so every update-entry point
-    // enforces active-people ownership constraints identically.
-    for (const option of buildUpdateOwnerOptions(activePeople)) {
-      addOption(ownerSelect, option.value, option.label);
-    }
-    ownerLabel.appendChild(ownerSelect);
-
-    const syncCreateFormRequirements = () => {
-      const isAction = typeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
-      ownerSelect.required = isAction;
-      dueDateInput.required = isAction;
-      if (!isAction) {
-        dueDateInput.value = "";
-      }
-    };
-    typeSelect.addEventListener("change", syncCreateFormRequirements);
-    syncCreateFormRequirements();
-
-    // Focus guidance ensures quick-action keyboard users land directly in the create workflow.
-    if (focusCreateForm) {
-      window.requestAnimationFrame(() => {
-        textInput.focus();
-      });
-    }
-
-    const createButton = document.createElement("button");
-    createButton.type = "submit";
-    createButton.className = "enter-mode-button";
-    createButton.textContent = "Add update";
-
-    form.append(typeLabel, textInput, toUpdateField.wrapper, ownerLabel, dueDateLabel, createButton);
-
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-
-      const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
-      const result = saveUpdate(
-        mode,
-        {
-          entityType: typeSelect.value,
-          text: textInput.value,
-          ownerId: ownerSelect.value,
-          dueDate: dueDateInput.value,
-          toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
-        },
-        "",
-        activePeople
-      );
-
-      if (!result.ok) {
-        state.feedback = result.error || "Unable to save update.";
-        renderModule();
-        return;
-      }
-
-      state.feedback = "Update created.";
-      renderModule();
-    });
 
     const summary = document.createElement("p");
     summary.className = "module-intro";
@@ -212,7 +128,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       editButton.textContent = "Edit";
       editButton.addEventListener("click", () => {
         state.editingId = update.id;
-        state.isEditorOpen = true;
+        state.modalMode = "edit";
         renderModule();
       });
       actionCell.appendChild(editButton);
@@ -232,17 +148,18 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       state.feedback = "";
     }
 
-    section.append(title, intro, summary, form, tableWrap);
+    section.append(header, intro, summary, tableWrap);
 
-    if (state.isEditorOpen) {
+    if (state.modalMode) {
       const editing = updates.find((update) => update.id === state.editingId);
       section.appendChild(
         renderUpdateEditor({
-          update: editing,
+          update: state.modalMode === "edit" ? editing : null,
+          focusTextInput: state.modalMode === "create",
           people,
           meetings,
           onClose: () => {
-            state.isEditorOpen = false;
+            state.modalMode = "";
             state.editingId = "";
             renderModule();
           },
@@ -254,8 +171,8 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
               return;
             }
 
-            state.feedback = "Update saved.";
-            state.isEditorOpen = false;
+            state.feedback = editingId ? "Update saved." : "Update created.";
+            state.modalMode = "";
             state.editingId = "";
             renderModule();
           }
@@ -268,7 +185,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   return section;
 }
 
-function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
+function renderUpdateEditor({ update, people, meetings, onClose, onSave, focusTextInput = false }) {
   const overlay = document.createElement("div");
   overlay.className = "meeting-modal-overlay";
   overlay.tabIndex = -1;
@@ -291,10 +208,13 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   const panel = document.createElement("section");
   panel.className = "meeting-modal entity-editor-modal";
 
+  const isEditMode = Boolean(update);
   const heading = document.createElement("h2");
-  heading.textContent = update ? "Edit update" : "Update not found";
+  heading.textContent = isEditMode ? "Edit update" : "New update";
 
-  if (!update) {
+  // Edit mode can receive a stale ID if the row was removed before the modal rendered.
+  // Keep this fallback explicit so dismissal behaviour remains predictable.
+  if (!isEditMode && update !== null) {
     const message = document.createElement("p");
     message.className = "empty-state";
     message.textContent = "The selected update could not be found. It may have been deleted.";
@@ -311,6 +231,15 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   }
 
   const activePeople = selectActivePeople(people);
+  const seed = update || {
+    text: "",
+    entityType: UPDATE_ENTITY_TYPES.UPDATE,
+    ownerId: "",
+    meetingId: "",
+    dueDate: "",
+    toUpdate: []
+  };
+
   const form = document.createElement("form");
   form.className = "updates-editor-form";
 
@@ -321,7 +250,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   textInput.className = "field-input field-textarea";
   // Clearing text during edit is interpreted as a quiet delete in `saveUpdate`.
   textInput.required = false;
-  textInput.value = update.text;
+  textInput.value = seed.text;
   textLabel.appendChild(textInput);
 
   const entityTypeLabel = document.createElement("label");
@@ -331,13 +260,13 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   entityTypeSelect.className = "field-input";
   addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
   addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
-  entityTypeSelect.value = update.entityType;
+  entityTypeSelect.value = seed.entityType;
   entityTypeLabel.appendChild(entityTypeSelect);
 
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
     options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
-    values: normaliseToUpdateList(update.toUpdate)
+    values: normaliseToUpdateList(seed.toUpdate)
       .map((entry) => entry.personId)
       .filter(Boolean),
     emptyMessage: "Add people first to select update recipients.",
@@ -352,7 +281,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   for (const option of buildUpdateOwnerOptions(activePeople)) {
     addOption(ownerSelect, option.value, option.label);
   }
-  ownerSelect.value = update.ownerId;
+  ownerSelect.value = seed.ownerId;
   ownerLabel.appendChild(ownerSelect);
 
   const meetingLabel = document.createElement("label");
@@ -362,8 +291,8 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   meetingSelect.className = "field-input";
   addOption(meetingSelect, "", "No linked meeting");
   meetings.filter((meeting) => !meeting.archived).forEach((meeting) => addOption(meetingSelect, meeting.id, meeting.name));
-  if (Array.from(meetingSelect.options).some((option) => option.value === update.meetingId)) {
-    meetingSelect.value = update.meetingId;
+  if (Array.from(meetingSelect.options).some((option) => option.value === seed.meetingId)) {
+    meetingSelect.value = seed.meetingId;
   }
   meetingLabel.appendChild(meetingSelect);
 
@@ -373,9 +302,11 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   const dueDateInput = document.createElement("input");
   dueDateInput.type = "date";
   dueDateInput.className = "field-input";
-  dueDateInput.value = update.dueDate;
+  dueDateInput.value = seed.dueDate;
   dueDateLabel.appendChild(dueDateInput);
 
+  // Create and edit share the same save path, so action-specific requirements
+  // are toggled from one helper to avoid workflow drift.
   const syncEditorRequirements = () => {
     const isAction = entityTypeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
     ownerSelect.required = isAction;
@@ -399,7 +330,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
   saveButton.className = "enter-mode-button";
-  saveButton.textContent = "Save update";
+  saveButton.textContent = isEditMode ? "Save update" : "Create update";
 
   actions.append(cancelButton, saveButton);
   form.append(entityTypeLabel, textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel, actions);
@@ -417,7 +348,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
         dueDate: dueDateInput.value,
         toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
       },
-      update.id
+      isEditMode ? seed.id : ""
     );
   });
 
@@ -426,6 +357,13 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
 
   panel.append(heading, form);
   overlay.appendChild(panel);
+
+  if (focusTextInput) {
+    window.requestAnimationFrame(() => {
+      textInput.focus();
+    });
+  }
+
   return overlay;
 }
 
