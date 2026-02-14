@@ -511,6 +511,42 @@ textarea:focus-visible,
 }
 
 /*
+ * Task editor sections keep dense data grouped and scannable inside a single modal.
+ */
+.task-form {
+  gap: var(--space-4);
+}
+
+.task-form-section {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
+}
+
+.task-form-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.task-form-section-description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.task-form-grid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.task-form-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/*
  * 1:1 follow-up panel stays visually compact so it supplements the modal
  * without competing with notes and update-composer sections.
  */
@@ -1809,6 +1845,10 @@ body[data-density="compact"] .footer {
 
   .meeting-inline-row-triple,
   .meeting-inline-row-double {
+    grid-template-columns: 1fr;
+  }
+
+  .task-form-grid-2 {
     grid-template-columns: 1fr;
   }
 

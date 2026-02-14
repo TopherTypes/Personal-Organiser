@@ -366,7 +366,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   });
 
   const form = document.createElement("form");
-  form.className = "meeting-modal meeting-form entity-editor-modal";
+  form.className = "meeting-modal meeting-form entity-editor-modal task-form";
 
   const heading = document.createElement("h2");
   heading.textContent = task ? "Edit task" : "New task";
@@ -475,21 +475,85 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   actions.className = "meeting-actions";
   actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", requestClose));
 
+  /**
+   * Builds a semantically grouped section in the task editor to improve scanability
+   * while preserving the original field nodes and submission mapping.
+   */
+  const createFormSection = (titleText, descriptionText, ...content) => {
+    const section = document.createElement("section");
+    section.className = "task-form-section";
+
+    const sectionHeading = document.createElement("h3");
+    sectionHeading.className = "task-form-section-title";
+    sectionHeading.textContent = titleText;
+
+    section.appendChild(sectionHeading);
+
+    if (descriptionText) {
+      const sectionDescription = document.createElement("p");
+      sectionDescription.className = "task-form-section-description";
+      sectionDescription.textContent = descriptionText;
+      section.appendChild(sectionDescription);
+    }
+
+    section.append(...content);
+    return section;
+  };
+
+  // Core keeps the mandatory identifying fields first for intuitive keyboard flow.
+  const coreRow = document.createElement("div");
+  coreRow.className = "task-form-grid task-form-grid-2";
+  coreRow.append(title.wrap, statusWrap);
+
+  // Planning groups time-related fields together to reduce vertical sprawl.
+  const planningPrimaryRow = document.createElement("div");
+  planningPrimaryRow.className = "task-form-grid task-form-grid-2";
+  planningPrimaryRow.append(dueDate.wrap, recurrenceWrap);
+
+  const planningSecondaryRow = document.createElement("div");
+  planningSecondaryRow.className = "task-form-grid task-form-grid-2";
+  planningSecondaryRow.append(customRecurrence.wrap, recurrenceInterval.wrap);
+
+  const ownershipRow = document.createElement("div");
+  ownershipRow.className = "task-form-grid task-form-grid-2";
+  ownershipRow.append(assigneeWrap, projectWrap);
+
+  const effortPriorityRow = document.createElement("div");
+  effortPriorityRow.className = "task-form-grid task-form-grid-2";
+  effortPriorityRow.append(effort.wrap, impact.wrap);
+
+  const dependencyRow = document.createElement("div");
+  dependencyRow.className = "task-form-grid task-form-grid-2";
+  dependencyRow.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
+
+  const coreSection = createFormSection("Core", "Capture what the task is and where it currently stands.", coreRow);
+  const planningSection = createFormSection(
+    "Planning",
+    "Manage timeline and recurrence settings in one place.",
+    planningPrimaryRow,
+    planningSecondaryRow
+  );
+  const ownershipSection = createFormSection("Ownership", "Assign accountability and project context.", ownershipRow);
+  const effortPrioritySection = createFormSection(
+    "Effort / Priority",
+    "Score implementation effort and expected impact.",
+    effortPriorityRow
+  );
+  const dependenciesSection = createFormSection(
+    "Dependencies",
+    "Track task relationships that block or unblock execution.",
+    dependencyRow
+  );
+  const notesSection = createFormSection("Notes", "Capture additional implementation details.", notes.wrap);
+
   form.append(
     heading,
-    title.wrap,
-    effort.wrap,
-    impact.wrap,
-    statusWrap,
-    assigneeWrap,
-    projectWrap,
-    dueDate.wrap,
-    recurrenceWrap,
-    customRecurrence.wrap,
-    recurrenceInterval.wrap,
-    blockedByTaskIds.wrapper,
-    blockingTaskIds.wrapper,
-    notes.wrap,
+    coreSection,
+    planningSection,
+    ownershipSection,
+    effortPrioritySection,
+    dependenciesSection,
+    notesSection,
     actions
   );
 
