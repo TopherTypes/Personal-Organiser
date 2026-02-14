@@ -589,6 +589,19 @@ textarea:focus-visible,
 }
 
 /*
+ * Task editor uses a tighter width and per-field max widths so short numeric/date values
+ * stop stretching the layout and forcing unnecessary modal scrolling.
+ */
+.meeting-modal.entity-editor-modal.task-form {
+  width: min(700px, 100%);
+}
+
+.task-form input[type="number"],
+.task-form input[type="date"] {
+  max-width: 12ch;
+}
+
+/*
  * 1:1 follow-up panel stays visually compact so it supplements the modal
  * without competing with notes and update-composer sections.
  */
