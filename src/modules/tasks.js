@@ -391,11 +391,11 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   heading.textContent = task ? "Edit task" : "New task";
 
   const title = createField("Title", "text", task?.title || "", true);
-  const effort = createField("Effort (1-10)", "number", String(task?.effort || 5), true, {
+  const effort = createField("Effort", "number", String(task?.effort || 5), true, {
     min: "1",
     max: "10"
   });
-  const impact = createField("Impact (1-10)", "number", String(task?.impact || 5), true, {
+  const impact = createField("Impact", "number", String(task?.impact || 5), true, {
     min: "1",
     max: "10"
   });
@@ -499,10 +499,10 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", requestClose));
 
   /**
-   * Builds a semantically grouped section in the task editor to improve scanability
-   * while preserving the original field nodes and submission mapping.
+   * Builds a small, title-only section so the editor stays scanable without
+   * adding explanatory copy that increases modal height.
    */
-  const createFormSection = (titleText, descriptionText, ...content) => {
+  const createFormSection = (titleText, ...content) => {
     const section = document.createElement("section");
     section.className = "task-form-section";
 
@@ -511,13 +511,6 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     sectionHeading.textContent = titleText;
 
     section.appendChild(sectionHeading);
-
-    if (descriptionText) {
-      const sectionDescription = document.createElement("p");
-      sectionDescription.className = "task-form-section-description";
-      sectionDescription.textContent = descriptionText;
-      section.appendChild(sectionDescription);
-    }
 
     section.append(...content);
     return section;
@@ -553,26 +546,12 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   dependencyRow.className = "task-form-grid task-form-grid-2";
   dependencyRow.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
 
-  const coreSection = createFormSection("Core", "Capture what the task is and where it currently stands.", coreRow);
-  const planningSection = createFormSection(
-    "Planning",
-    "Manage timeline and recurrence settings in one place.",
-    planningPrimaryRow,
-    planningTertiaryRow,
-    planningSecondaryRow
-  );
-  const ownershipSection = createFormSection("Ownership", "Assign accountability and project context.", ownershipRow);
-  const effortPrioritySection = createFormSection(
-    "Effort / Priority",
-    "Score implementation effort and expected impact.",
-    effortPriorityRow
-  );
-  const dependenciesSection = createFormSection(
-    "Dependencies",
-    "Track task relationships that block or unblock execution.",
-    dependencyRow
-  );
-  const notesSection = createFormSection("Notes", "Capture additional implementation details.", notes.wrap);
+  const coreSection = createFormSection("Core", coreRow);
+  const planningSection = createFormSection("Planning", planningPrimaryRow, planningTertiaryRow, planningSecondaryRow);
+  const ownershipSection = createFormSection("Ownership", ownershipRow);
+  const effortPrioritySection = createFormSection("Effort / Priority", effortPriorityRow);
+  const dependenciesSection = createFormSection("Dependencies", dependencyRow);
+  const notesSection = createFormSection("Notes", notes.wrap);
 
   form.append(
     heading,

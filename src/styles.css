@@ -514,13 +514,13 @@ textarea:focus-visible,
  * Task editor sections keep dense data grouped and scannable inside a single modal.
  */
 .task-form {
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .task-form-section {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: var(--space-2);
+  padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
@@ -531,12 +531,6 @@ textarea:focus-visible,
   font-size: 0.95rem;
 }
 
-.task-form-section-description {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
-
 .task-form-grid {
   display: grid;
   gap: var(--space-2);
@@ -544,6 +538,19 @@ textarea:focus-visible,
 
 .task-form-grid-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/*
+ * Task editor uses a tighter width and per-field max widths so short numeric/date values
+ * stop stretching the layout and forcing unnecessary modal scrolling.
+ */
+.meeting-modal.entity-editor-modal.task-form {
+  width: min(700px, 100%);
+}
+
+.task-form input[type="number"],
+.task-form input[type="date"] {
+  max-width: 12ch;
 }
 
 /*
