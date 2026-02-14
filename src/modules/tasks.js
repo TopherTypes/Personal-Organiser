@@ -391,11 +391,11 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   heading.textContent = task ? "Edit task" : "New task";
 
   const title = createField("Title", "text", task?.title || "", true);
-  const effort = createField("Effort (1-10)", "number", String(task?.effort || 5), true, {
+  const effort = createField("Effort", "number", String(task?.effort || 5), true, {
     min: "1",
     max: "10"
   });
-  const impact = createField("Impact (1-10)", "number", String(task?.impact || 5), true, {
+  const impact = createField("Impact", "number", String(task?.impact || 5), true, {
     min: "1",
     max: "10"
   });
@@ -499,10 +499,10 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", requestClose));
 
   /**
-   * Builds a semantically grouped section in the task editor to improve scanability
-   * while preserving the original field nodes and submission mapping.
+   * Builds a small, title-only section so the editor stays scanable without
+   * adding explanatory copy that increases modal height.
    */
-  const createFormSection = (titleText, descriptionText, ...content) => {
+  const createFormSection = (titleText, ...content) => {
     const section = document.createElement("section");
     section.className = "task-form-section";
 
@@ -512,74 +512,58 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
 
     section.appendChild(sectionHeading);
 
-    if (descriptionText) {
-      const sectionDescription = document.createElement("p");
-      sectionDescription.className = "task-form-section-description";
-      sectionDescription.textContent = descriptionText;
-      section.appendChild(sectionDescription);
-    }
-
     section.append(...content);
     return section;
   };
 
-  // Core keeps the mandatory identifying fields first for intuitive keyboard flow.
-  const coreRow = document.createElement("div");
-  coreRow.className = "task-form-grid task-form-grid-2";
-  coreRow.append(title.wrap, statusWrap);
+  /**
+   * Uses native <details> semantics for lower-priority fields so power users still get
+   * full control without forcing every edit session to scroll through bulky sections.
+   */
+  const createCollapsibleFormSection = (titleText, isOpen, ...content) => {
+    const section = document.createElement("details");
+    section.className = "task-form-collapsible";
+    section.open = isOpen;
 
-  // Planning groups time-related fields together to reduce vertical sprawl.
-  const planningPrimaryRow = document.createElement("div");
-  planningPrimaryRow.className = "task-form-grid task-form-grid-2";
-  planningPrimaryRow.append(scheduleDate.wrap, dueDate.wrap);
+    const summary = document.createElement("summary");
+    summary.className = "task-form-collapsible-title";
+    summary.textContent = titleText;
+    section.appendChild(summary);
 
-  const planningTertiaryRow = document.createElement("div");
-  planningTertiaryRow.className = "task-form-grid task-form-grid-2";
-  planningTertiaryRow.append(recurrenceWrap);
+    const sectionBody = document.createElement("div");
+    sectionBody.className = "task-form-collapsible-body";
+    sectionBody.append(...content);
+    section.appendChild(sectionBody);
+    return section;
+  };
 
-  const planningSecondaryRow = document.createElement("div");
-  planningSecondaryRow.className = "task-form-grid task-form-grid-2";
-  planningSecondaryRow.append(customRecurrence.wrap, recurrenceInterval.wrap);
+  // Keep high-frequency task planning controls grouped at the top of the modal.
+  const primaryDetailsRow = document.createElement("div");
+  primaryDetailsRow.className = "task-form-grid task-form-grid-4";
+  primaryDetailsRow.append(title.wrap, statusWrap, assigneeWrap, projectWrap);
 
-  const ownershipRow = document.createElement("div");
-  ownershipRow.className = "task-form-grid task-form-grid-2";
-  ownershipRow.append(assigneeWrap, projectWrap);
+  const timelineRow = document.createElement("div");
+  timelineRow.className = "task-form-grid task-form-grid-4";
+  timelineRow.append(scheduleDate.wrap, dueDate.wrap, effort.wrap, impact.wrap);
 
-  const effortPriorityRow = document.createElement("div");
-  effortPriorityRow.className = "task-form-grid task-form-grid-2";
-  effortPriorityRow.append(effort.wrap, impact.wrap);
+  const recurrenceRow = document.createElement("div");
+  recurrenceRow.className = "task-form-grid task-form-grid-3";
+  recurrenceRow.append(recurrenceWrap, customRecurrence.wrap, recurrenceInterval.wrap);
 
   const dependencyRow = document.createElement("div");
   dependencyRow.className = "task-form-grid task-form-grid-2";
   dependencyRow.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
 
-  const coreSection = createFormSection("Core", "Capture what the task is and where it currently stands.", coreRow);
-  const planningSection = createFormSection(
-    "Planning",
-    "Manage timeline and recurrence settings in one place.",
-    planningPrimaryRow,
-    planningTertiaryRow,
-    planningSecondaryRow
-  );
-  const ownershipSection = createFormSection("Ownership", "Assign accountability and project context.", ownershipRow);
-  const effortPrioritySection = createFormSection(
-    "Effort / Priority",
-    "Score implementation effort and expected impact.",
-    effortPriorityRow
-  );
-  const dependenciesSection = createFormSection(
-    "Dependencies",
-    "Track task relationships that block or unblock execution.",
-    dependencyRow
-  );
-  const notesSection = createFormSection("Notes", "Capture additional implementation details.", notes.wrap);
+  const primarySection = createFormSection("Task", primaryDetailsRow, timelineRow);
+  const recurrenceSection = createFormSection("Recurrence", recurrenceRow);
+  const hasDependencies = blockedByTaskIds.hiddenInput.value || blockingTaskIds.hiddenInput.value;
+  const dependenciesSection = createCollapsibleFormSection("Dependencies", Boolean(hasDependencies), dependencyRow);
+  const notesSection = createCollapsibleFormSection("Notes", Boolean((task?.notes || "").trim()), notes.wrap);
 
   form.append(
     heading,
-    coreSection,
-    planningSection,
-    ownershipSection,
-    effortPrioritySection,
+    primarySection,
+    recurrenceSection,
     dependenciesSection,
     notesSection,
     actions
