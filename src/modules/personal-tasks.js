@@ -43,7 +43,7 @@ function normalisePersonalTask(task) {
 /**
  * Renders the Personal Tasks module (spec 5.2) with lightweight CRUD support.
  */
-export function renderPersonalTasksModule() {
+export function renderPersonalTasksModule({ focusCreateForm = false } = {}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard";
 
@@ -100,6 +100,11 @@ export function renderPersonalTasksModule() {
   submit.textContent = "Add task";
 
   form.append(taskInput.wrap, dueInput.wrap, statusWrap, recurrenceWrap, recurrenceIntervalInput.wrap, submit);
+  if (focusCreateForm) {
+    // RequestAnimationFrame waits until the module is painted before moving focus.
+    window.requestAnimationFrame(() => taskInput.input.focus());
+  }
+
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();

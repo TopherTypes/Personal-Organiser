@@ -38,7 +38,7 @@ function normaliseCalendarEvent(event) {
 /**
  * Lightweight personal calendar module (meeting-like log) aligned to spec 10.3.
  */
-export function renderPersonalCalendarModule() {
+export function renderPersonalCalendarModule({ focusCreateForm = false } = {}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard";
 
@@ -89,6 +89,11 @@ export function renderPersonalCalendarModule() {
   recurrenceInterval.input.value = "1";
 
   form.append(name.wrap, date.wrap, recurrenceWrap, recurrenceInterval.wrap, notesWrap, save);
+  if (focusCreateForm) {
+    // Autofocus aligns floating quick action intent with the first editable field.
+    window.requestAnimationFrame(() => name.input.focus());
+  }
+
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();

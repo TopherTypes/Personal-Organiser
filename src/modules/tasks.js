@@ -51,14 +51,15 @@ const MAX_RECURRENCE_GENERATIONS_PER_LOAD = 24;
 /**
  * Renders the work task module with CRUD, archive, filtering, and score-based ordering.
  */
-export function renderWorkTasksModule({ mode = "work" } = {}) {
+export function renderWorkTasksModule({ mode = "work", openComposer = false } = {}) {
   const state = {
     mode,
     statusFilter: "all",
     assigneeFilter: "all",
     projectFilter: "all",
     includeArchived: false,
-    isPanelOpen: false,
+    // Allows app-shell quick actions to deep-link directly into create mode.
+    isPanelOpen: openComposer,
     editingId: "",
     feedback: ""
   };

@@ -1934,3 +1934,90 @@ body[data-density="compact"] .footer {
   padding: 0.6rem 0.7rem;
   color: var(--text-muted);
 }
+
+/*
+ * Global floating quick-action control
+ * - Uses safe-area aware positioning for mobile browsers with gesture bars.
+ * - Menu is rendered above trigger and remains keyboard-focusable.
+ */
+.quick-actions {
+  position: fixed;
+  right: max(var(--space-5), env(safe-area-inset-right));
+  bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  z-index: 40;
+  display: grid;
+  justify-items: end;
+  gap: var(--space-3);
+}
+
+.quick-actions-trigger {
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+  border-radius: 999px;
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--accent-contrast);
+  background: linear-gradient(160deg, var(--accent), color-mix(in srgb, var(--accent) 80%, #6a8cff));
+  box-shadow: var(--elevation-2);
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.quick-actions-trigger:hover {
+  transform: translateY(-1px) scale(1.01);
+  filter: saturate(1.05);
+}
+
+.quick-actions-trigger:focus-visible {
+  box-shadow: var(--ring), var(--elevation-2);
+}
+
+.quick-actions-menu {
+  min-width: min(17rem, calc(100vw - (2 * var(--space-5))));
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  box-shadow: var(--elevation-2);
+  backdrop-filter: blur(7px);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.quick-actions-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.62rem 0.72rem;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.quick-actions-item:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.quick-actions-item:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+@media (max-width: 640px) {
+  .quick-actions {
+    right: max(var(--space-4), env(safe-area-inset-right));
+    bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  }
+
+  .quick-actions-trigger {
+    width: 3rem;
+    height: 3rem;
+    font-size: 1.6rem;
+  }
+
+  .quick-actions-menu {
+    min-width: min(15.5rem, calc(100vw - (2 * var(--space-4))));
+  }
+}

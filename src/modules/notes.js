@@ -10,14 +10,15 @@ const NOTES_SCHEMA_VERSION = 1;
 /**
  * Renders a first-class notes workspace with search, filtering, and modal CRUD editing.
  */
-export function renderNotesModule({ mode = "work" } = {}) {
+export function renderNotesModule({ mode = "work", openComposer = false } = {}) {
   const state = {
     mode,
     query: "",
     dateFilter: "",
     includeArchived: false,
     editingId: "",
-    isEditorOpen: false,
+    // Supports app-level quick-create handoff from the floating action control.
+    isEditorOpen: openComposer,
     feedback: ""
   };
 

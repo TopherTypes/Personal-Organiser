@@ -12,7 +12,7 @@ const PERSONAL_PROJECTS_KEY = buildPersonalStorageKey("projects", 1);
 /**
  * Personal Projects / Timeboxing module per spec 5.2.
  */
-export function renderPersonalProjectsModule() {
+export function renderPersonalProjectsModule({ focusCreateForm = false } = {}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard";
 
@@ -44,6 +44,11 @@ export function renderPersonalProjectsModule() {
   submit.textContent = "Save project";
 
   form.append(name.wrap, target.wrap, notesWrap, submit);
+  if (focusCreateForm) {
+    // Quick-action autofocus keeps create flow fast for keyboard and screen-reader users.
+    window.requestAnimationFrame(() => name.input.focus());
+  }
+
 
   const list = document.createElement("div");
   list.className = "entity-scroll-list projects-card-list";

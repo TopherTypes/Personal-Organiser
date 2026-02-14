@@ -12,11 +12,12 @@ import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 /**
  * Renders Work Projects module with card list, slide-over create/edit and full details view.
  */
-export function renderWorkProjectsModule({ mode = "work", people = [], meetings = [] } = {}) {
+export function renderWorkProjectsModule({ mode = "work", people = [], meetings = [], openComposer = false } = {}) {
   const state = {
     filter: "all",
     search: "",
-    isEditorOpen: false,
+    // Quick-action deep links can request the create editor at first module paint.
+    isEditorOpen: openComposer,
     editingId: "",
     viewingId: "",
     feedback: ""

@@ -20,7 +20,7 @@ const ACTION_OWNER_ME = "me";
  * - Updates are persisted only through `saveUpdate` / `archiveUpdate` in this module.
  * - Storage remains mode-scoped and versioned so migration boundaries stay local.
  */
-export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [] } = {}) {
+export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [], focusCreateForm = false } = {}) {
   const state = {
     isEditorOpen: false,
     editingId: "",
@@ -102,6 +102,13 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     };
     typeSelect.addEventListener("change", syncCreateFormRequirements);
     syncCreateFormRequirements();
+
+    // Focus guidance ensures quick-action keyboard users land directly in the create workflow.
+    if (focusCreateForm) {
+      window.requestAnimationFrame(() => {
+        textInput.focus();
+      });
+    }
 
     const createButton = document.createElement("button");
     createButton.type = "submit";
