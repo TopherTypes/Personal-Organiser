@@ -538,9 +538,15 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   };
 
   // Keep high-frequency task planning controls grouped at the top of the modal.
+  // Title gets a dedicated full-width row because it is the longest user-entered field
+  // and benefits from uninterrupted horizontal space.
+  const titleRow = document.createElement("div");
+  titleRow.className = "task-form-grid";
+  titleRow.append(title.wrap);
+
   const primaryDetailsRow = document.createElement("div");
-  primaryDetailsRow.className = "task-form-grid task-form-grid-4";
-  primaryDetailsRow.append(title.wrap, statusWrap, assigneeWrap, projectWrap);
+  primaryDetailsRow.className = "task-form-grid task-form-grid-3";
+  primaryDetailsRow.append(statusWrap, assigneeWrap, projectWrap);
 
   const timelineRow = document.createElement("div");
   timelineRow.className = "task-form-grid task-form-grid-4";
@@ -554,7 +560,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   dependencyRow.className = "task-form-grid task-form-grid-2";
   dependencyRow.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
 
-  const primarySection = createFormSection("Task", primaryDetailsRow, timelineRow);
+  const primarySection = createFormSection("Task", titleRow, primaryDetailsRow, timelineRow);
   const recurrenceSection = createFormSection("Recurrence", recurrenceRow);
   const hasDependencies = blockedByTaskIds.hiddenInput.value || blockingTaskIds.hiddenInput.value;
   const dependenciesSection = createCollapsibleFormSection("Dependencies", Boolean(hasDependencies), dependencyRow);

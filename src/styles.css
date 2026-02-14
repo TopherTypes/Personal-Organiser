@@ -561,9 +561,16 @@ textarea:focus-visible,
   max-height: min(80vh, 860px);
 }
 
-.task-form input[type="number"],
-.task-form input[type="date"] {
+/*
+ * Keep compact numeric scoring fields narrow, but allow extra width for date inputs
+ * so the native calendar icon and full date text fit without clipping.
+ */
+.task-form input[type="number"] {
   max-width: 12ch;
+}
+
+.task-form input[type="date"] {
+  max-width: 17ch;
 }
 
 /*
@@ -586,19 +593,6 @@ textarea:focus-visible,
   display: grid;
   gap: var(--space-2);
   padding: 0 var(--space-2) var(--space-2);
-}
-
-/*
- * Task editor uses a tighter width and per-field max widths so short numeric/date values
- * stop stretching the layout and forcing unnecessary modal scrolling.
- */
-.meeting-modal.entity-editor-modal.task-form {
-  width: min(700px, 100%);
-}
-
-.task-form input[type="number"],
-.task-form input[type="date"] {
-  max-width: 12ch;
 }
 
 /*
