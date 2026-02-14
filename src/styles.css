@@ -1072,6 +1072,23 @@ textarea:focus-visible,
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
 }
 
+/* Dependency pickers add lightweight helper controls above token suggestions. */
+.dependency-picker-controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.dependency-picker-quick-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dependency-picker-quick-chip {
+  font-size: 0.78rem;
+  padding: 0.22rem 0.52rem;
+}
+
 .project-people-role-grid {
   max-height: 52vh;
   overflow-y: auto;

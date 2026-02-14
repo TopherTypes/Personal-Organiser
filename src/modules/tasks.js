@@ -1,6 +1,6 @@
 import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } from "./storage-core.js";
-import { buildMultiSelectField, hydrateSelectOptions, readSelectedValues } from "./select-controls.js";
+import { hydrateSelectOptions } from "./select-controls.js";
 import { generateId } from "./id.js";
 import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
@@ -48,6 +48,7 @@ const RECURRENCE_OPTIONS = [
 const RECURRENCE_FREQUENCIES = ["none", "daily", "weekly", "monthly"];
 const MAX_RECURRENCE_GENERATIONS_PER_LOAD = 24;
 const TASK_DATE_FALLBACK = "9999-12-31";
+const TASK_DEPENDENCY_RECENT_LIMIT = 6;
 
 /**
  * Renders the work task module with CRUD, archive, filtering, and score-based ordering.
@@ -470,23 +471,26 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
 
   const notes = createField("Notes", "textarea", task?.notes || "", false);
 
-  const dependencyOptions = tasks
-    .filter((candidate) => candidate.id !== (task?.id || ""))
-    .map((candidate) => ({
-      value: candidate.id,
-      label: `${candidate.title} (${toTitleCase(candidate.status)})`
-    }));
-
-  const blockedByTaskIds = buildMultiSelectField({
+  const blockedByTaskIds = buildTaskDependencyPickerField({
     label: "Blocked by",
-    options: dependencyOptions,
-    values: parseTaskIdList(task?.blockedByTaskIds),
+    tasks,
+    people,
+    projects,
+    currentTaskId: task?.id || "",
+    selectedIds: parseTaskIdList(task?.blockedByTaskIds),
+    primaryAssigneeId: task?.assigneeId || "",
+    primaryProjectId: task?.projectId || "",
     emptyMessage: "Create another task first to link dependencies."
   });
-  const blockingTaskIds = buildMultiSelectField({
+  const blockingTaskIds = buildTaskDependencyPickerField({
     label: "Blocking",
-    options: dependencyOptions,
-    values: parseTaskIdList(task?.blockingTaskIds),
+    tasks,
+    people,
+    projects,
+    currentTaskId: task?.id || "",
+    selectedIds: parseTaskIdList(task?.blockingTaskIds),
+    primaryAssigneeId: task?.assigneeId || "",
+    primaryProjectId: task?.projectId || "",
     emptyMessage: "Create another task first to link dependencies."
   });
 
@@ -595,9 +599,9 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
       recurrenceInterval: Number(recurrenceInterval.input.value) || 1,
-      // Dependencies are selected from canonical task entities so users cannot type orphan IDs.
-      blockedByTaskIds: readSelectedValues(blockedByTaskIds.select),
-      blockingTaskIds: readSelectedValues(blockingTaskIds.select),
+      // Dependency IDs still flow through parseTaskIdList during save, preserving canonical validation.
+      blockedByTaskIds: readDependencyPickerHiddenValues(blockedByTaskIds.hiddenInput),
+      blockingTaskIds: readDependencyPickerHiddenValues(blockingTaskIds.hiddenInput),
       notes: notes.input.value.trim(),
       archived: Boolean(task?.archived)
     });
@@ -621,6 +625,307 @@ function createSelectFilter(labelText, selected, options, onChange) {
   select.addEventListener("change", () => onChange(select.value));
   wrap.appendChild(select);
   return wrap;
+}
+
+/**
+ * Creates a scalable tokenised dependency picker with built-in filters and recency quick-picks.
+ *
+ * The picker intentionally mirrors the entity token pattern so dependency selection remains
+ * discoverable even when a workspace has a large task corpus.
+ */
+function buildTaskDependencyPickerField({
+  label,
+  tasks,
+  people,
+  projects,
+  currentTaskId = "",
+  selectedIds = [],
+  primaryAssigneeId = "",
+  primaryProjectId = "",
+  emptyMessage = ""
+}) {
+  const wrapper = document.createElement("label");
+  wrapper.className = "field-label";
+  wrapper.textContent = label;
+
+  const picker = document.createElement("div");
+  picker.className = "field-input entity-token-field dependency-picker";
+
+  const filterRow = document.createElement("div");
+  filterRow.className = "dependency-picker-controls";
+
+  const filterSelect = document.createElement("select");
+  filterSelect.className = "field-input";
+
+  const tokenList = document.createElement("div");
+  tokenList.className = "token-multi-select-list";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "field-input";
+  input.placeholder = "Search tasks by title, status, assignee, or project";
+
+  const suggestions = document.createElement("ul");
+  suggestions.className = "token-multi-select-suggestions";
+
+  const quickPickRow = document.createElement("div");
+  quickPickRow.className = "dependency-picker-quick-picks";
+
+  const hiddenInput = document.createElement("input");
+  hiddenInput.type = "hidden";
+
+  const peopleById = new Map(people.map((person) => [person.id, person.name || "Unassigned"]));
+  const projectsById = new Map(projects.map((project) => [project.id, project.title || "No project"]));
+
+  const candidates = tasks
+    // Anti-self-linking starts in the UI so impossible choices are never offered.
+    .filter((entry) => entry.id && entry.id !== currentTaskId)
+    .map((entry) => ({
+      id: entry.id,
+      title: entry.title || "Untitled task",
+      status: normaliseTaskStatus(entry.status),
+      assigneeId: entry.assigneeId || "",
+      assigneeLabel: peopleById.get(entry.assigneeId) || "Unassigned",
+      projectId: entry.projectId || "",
+      projectLabel: projectsById.get(entry.projectId) || "No project",
+      updatedAt: entry.updatedAt || "",
+      searchBlob: `${entry.title || ""} ${normaliseTaskStatus(entry.status)} ${
+        peopleById.get(entry.assigneeId) || "Unassigned"
+      } ${projectsById.get(entry.projectId) || "No project"}`.toLowerCase()
+    }));
+
+  const selected = [];
+
+  const filterOptions = buildDependencyFilterOptions({
+    statuses: TASK_STATUSES,
+    primaryProjectId,
+    primaryAssigneeId
+  });
+  hydrateSelectOptions(filterSelect, filterOptions);
+  filterSelect.value = "open";
+
+  const quickPickIds = getRecentDependencyTaskIds(candidates, TASK_DEPENDENCY_RECENT_LIMIT);
+  const recentTaskIdSet = new Set(quickPickIds);
+
+  const syncHiddenInput = () => {
+    hiddenInput.value = selected.join(",");
+  };
+
+  const addDependency = (id) => {
+    if (!id || selected.includes(id) || !candidates.some((entry) => entry.id === id)) {
+      return;
+    }
+    selected.push(id);
+    input.value = "";
+    renderTokens();
+    renderSuggestions();
+    renderQuickPicks();
+    syncHiddenInput();
+  };
+
+  const removeDependency = (id) => {
+    const index = selected.indexOf(id);
+    if (index < 0) {
+      return;
+    }
+    selected.splice(index, 1);
+    renderTokens();
+    renderSuggestions();
+    renderQuickPicks();
+    syncHiddenInput();
+  };
+
+  const getVisibleCandidates = () => {
+    const filterText = input.value.trim().toLowerCase();
+    return candidates.filter((candidate) => {
+      if (selected.includes(candidate.id)) {
+        return false;
+      }
+
+      const activeFilter = filterSelect.value;
+      if (!matchesDependencyFilter(candidate, activeFilter, {
+        primaryProjectId,
+        primaryAssigneeId,
+        recentTaskIdSet
+      })) {
+        return false;
+      }
+
+      return !filterText || candidate.searchBlob.includes(filterText);
+    });
+  };
+
+  const renderTokens = () => {
+    tokenList.innerHTML = "";
+    selected.forEach((id) => {
+      const candidate = candidates.find((entry) => entry.id === id);
+      if (!candidate) {
+        return;
+      }
+
+      const token = document.createElement("span");
+      token.className = "entity-token";
+
+      const labelEl = document.createElement("span");
+      labelEl.className = "entity-token-label";
+      labelEl.textContent = `${candidate.title} · ${toTitleCase(candidate.status)}`;
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "entity-token-remove";
+      removeButton.setAttribute("aria-label", `Remove dependency ${candidate.title}`);
+      removeButton.textContent = "×";
+      removeButton.addEventListener("click", () => removeDependency(id));
+
+      token.append(labelEl, removeButton);
+      tokenList.appendChild(token);
+    });
+  };
+
+  const renderSuggestions = () => {
+    suggestions.innerHTML = "";
+    getVisibleCandidates().slice(0, 25).forEach((candidate) => {
+      const option = document.createElement("li");
+      option.className = "token-multi-select-option";
+      option.textContent = `${candidate.title} · ${toTitleCase(candidate.status)} · ${candidate.assigneeLabel}`;
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        addDependency(candidate.id);
+      });
+      suggestions.appendChild(option);
+    });
+  };
+
+  const renderQuickPicks = () => {
+    quickPickRow.innerHTML = "";
+    quickPickIds.forEach((id) => {
+      if (selected.includes(id)) {
+        return;
+      }
+      const candidate = candidates.find((entry) => entry.id === id);
+      if (!candidate) {
+        return;
+      }
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "ghost-button dependency-picker-quick-chip";
+      chip.textContent = candidate.title;
+      chip.addEventListener("click", () => addDependency(id));
+      quickPickRow.appendChild(chip);
+    });
+  };
+
+  filterSelect.addEventListener("change", renderSuggestions);
+  input.addEventListener("input", renderSuggestions);
+  input.addEventListener("focus", renderSuggestions);
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    const firstCandidate = getVisibleCandidates()[0];
+    if (!firstCandidate) {
+      return;
+    }
+    event.preventDefault();
+    addDependency(firstCandidate.id);
+  });
+  input.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      suggestions.innerHTML = "";
+    }, 100);
+  });
+
+  parseTaskIdList(selectedIds).forEach((id) => {
+    if (candidates.some((candidate) => candidate.id === id)) {
+      selected.push(id);
+    }
+  });
+
+  renderTokens();
+  renderQuickPicks();
+  syncHiddenInput();
+
+  picker.append(filterRow, tokenList, input, suggestions, quickPickRow);
+  filterRow.appendChild(filterSelect);
+  wrapper.append(picker, hiddenInput);
+
+  if (emptyMessage && candidates.length === 0) {
+    const note = document.createElement("small");
+    note.className = "module-intro";
+    note.textContent = emptyMessage;
+    wrapper.appendChild(note);
+    input.disabled = true;
+    filterSelect.disabled = true;
+  }
+
+  return { wrapper, hiddenInput };
+}
+
+/**
+ * Exposes a consistent filter contract for dependency lookups and quick narrowing.
+ */
+function buildDependencyFilterOptions({ statuses, primaryProjectId, primaryAssigneeId }) {
+  const options = [
+    { value: "open", label: "Open tasks" },
+    { value: "all", label: "All tasks" },
+    { value: "recent", label: "Recently edited" }
+  ];
+
+  if (primaryProjectId) {
+    options.push({ value: "same-project", label: "Same project" });
+  }
+  if (primaryAssigneeId) {
+    options.push({ value: "same-assignee", label: "Same assignee" });
+  }
+
+  statuses.forEach((status) => {
+    options.push({ value: `status:${status}`, label: `Status: ${toTitleCase(status)}` });
+  });
+  return options;
+}
+
+/**
+ * Centralises dependency filter semantics so form UI and future APIs stay in sync.
+ */
+function matchesDependencyFilter(candidate, filterValue, { primaryProjectId, primaryAssigneeId, recentTaskIdSet }) {
+  if (filterValue === "all") {
+    return true;
+  }
+  if (filterValue === "open") {
+    return !["Done", "Cancelled"].includes(candidate.status);
+  }
+  if (filterValue === "recent") {
+    return recentTaskIdSet?.has(candidate.id) || false;
+  }
+  if (filterValue === "same-project") {
+    return Boolean(primaryProjectId) && candidate.projectId === primaryProjectId;
+  }
+  if (filterValue === "same-assignee") {
+    return Boolean(primaryAssigneeId) && candidate.assigneeId === primaryAssigneeId;
+  }
+  if (filterValue.startsWith("status:")) {
+    return candidate.status === filterValue.slice("status:".length);
+  }
+  return true;
+}
+
+/**
+ * Produces a short list of recent open tasks for one-click dependency quick picks.
+ */
+function getRecentDependencyTaskIds(candidates, limit) {
+  return [...candidates]
+    .filter((candidate) => !["Done", "Cancelled"].includes(candidate.status))
+    .sort((first, second) => {
+      const firstTime = Date.parse(first.updatedAt || "") || 0;
+      const secondTime = Date.parse(second.updatedAt || "") || 0;
+      return secondTime - firstTime;
+    })
+    .slice(0, Math.max(0, limit))
+    .map((candidate) => candidate.id);
+}
+
+function readDependencyPickerHiddenValues(hiddenInput) {
+  return parseTaskIdList(hiddenInput?.value || "");
 }
 
 function createField(labelText, type, value, required, attributes = {}) {
