@@ -7,6 +7,7 @@ import {
   upsertProjectPersonLink
 } from "./projects-store.js";
 import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
+import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
 /**
  * Renders Work Projects module with card list, slide-over create/edit and full details view.
@@ -277,9 +278,20 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
 function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
   const overlay = document.createElement("div");
   overlay.className = "meeting-modal-overlay";
+  overlay.tabIndex = -1;
+
+  const dismissGuard = createModalDismissGuard({ onClose });
+  const requestClose = () => dismissGuard.requestClose();
+
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
-      onClose();
+      requestClose();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      requestClose();
     }
   });
 
@@ -353,7 +365,7 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
   cancel.type = "button";
   cancel.className = "module-button-secondary";
   cancel.textContent = "Close";
-  cancel.addEventListener("click", onClose);
+  cancel.addEventListener("click", requestClose);
 
   actions.append(saveButton, cancel);
 
@@ -391,6 +403,9 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
       meetingIds: selectedMeetingIds
     });
   });
+
+  // Once users mutate any form control, dismissing requires explicit confirmation.
+  dismissGuard.bindDirtyTracking(form);
 
   overlay.appendChild(form);
   return overlay;

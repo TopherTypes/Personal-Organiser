@@ -2,6 +2,7 @@ import { loadProjects } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } from "./storage-core.js";
 import { buildMultiSelectField, hydrateSelectOptions, readSelectedValues } from "./select-controls.js";
 import { generateId } from "./id.js";
+import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
 const TASK_STORAGE_KEY_PREFIX = "second-brain.work.tasks";
 const TASK_SCHEMA_VERSION = 1;
@@ -346,9 +347,20 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   const overlay = document.createElement("div");
   overlay.className = "meeting-modal-overlay";
+  overlay.tabIndex = -1;
+
+  const dismissGuard = createModalDismissGuard({ onClose: onCancel });
+  const requestClose = () => dismissGuard.requestClose();
+
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
-      onCancel();
+      requestClose();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      requestClose();
     }
   });
 
@@ -460,7 +472,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
 
   const actions = document.createElement("div");
   actions.className = "meeting-actions";
-  actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", onCancel));
+  actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", requestClose));
 
   form.append(
     heading,
@@ -500,6 +512,9 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
       archived: Boolean(task?.archived)
     });
   });
+
+  // Treat any field mutation as draft edits so dismiss guards prevent silent loss.
+  dismissGuard.bindDirtyTracking(form);
 
   overlay.appendChild(form);
   return overlay;
