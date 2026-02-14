@@ -48,6 +48,7 @@ const MANUAL_CONFLICT_FIELDS = new Set([
   "name",
   "status",
   "dueDate",
+  "scheduleDate",
   "date",
   "startTime",
   "endTime",

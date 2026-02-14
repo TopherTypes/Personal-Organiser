@@ -16,6 +16,7 @@ test("normaliseTask applies defensive defaults and canonical status migration", 
   assert.deepEqual(task.blockedByTaskIds, ["a", "b"]);
   assert.equal(task.recurrence, "none");
   assert.equal(task.recurrenceMeta, null);
+  assert.equal(task.scheduleDate, "");
 });
 
 test("loadTasks generates next recurring instance for completed recurring tasks", () => {

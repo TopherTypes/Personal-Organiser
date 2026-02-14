@@ -1,6 +1,6 @@
 import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
-import { loadTasks, renderWorkTasksModule } from "./tasks.js";
+import { getTaskTimelineSortDate, loadTasks, renderWorkTasksModule } from "./tasks.js";
 import { loadSprints, renderWorkSprintsModule } from "./sprints.js";
 import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
 import { loadUpdates, markPersonPending, markPersonUpdated, renderWorkUpdatesModule, selectUpdatesForPerson } from "./updates.js";
@@ -212,10 +212,10 @@ function renderWorkOverviewDashboard(uiContext = {}) {
   const focusTasks = tasks
     .filter((task) => !["Done", "Cancelled"].includes(task.status))
     .sort((first, second) => {
-      const dueA = first.dueDate || "9999-12-31";
-      const dueB = second.dueDate || "9999-12-31";
-      if (dueA !== dueB) {
-        return dueA.localeCompare(dueB);
+      const firstTimelineDate = getTaskTimelineSortDate(first);
+      const secondTimelineDate = getTaskTimelineSortDate(second);
+      if (firstTimelineDate !== secondTimelineDate) {
+        return firstTimelineDate.localeCompare(secondTimelineDate);
       }
       return (second.impact - second.effort) - (first.impact - first.effort);
     })
@@ -267,10 +267,17 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     }),
     createOverviewListCard({
       title: "Priority tasks",
-      description: "Sorted by nearest due date and impact.",
+      description: "Sorted by scheduled date first, then due date and impact.",
       emptyText: "No active tasks to triage.",
       items: focusTasks,
-      getLabel: (task) => `${task.title || "Untitled task"} · ${task.dueDate || "No due date"} · ${task.status}`,
+      getLabel: (task) => {
+        const timelineLabel = task.scheduleDate
+          ? `Scheduled ${task.scheduleDate}${task.dueDate ? ` · Due ${task.dueDate}` : ""}`
+          : task.dueDate
+            ? `Due ${task.dueDate}`
+            : "No dates";
+        return `${task.title || "Untitled task"} · ${timelineLabel} · ${task.status}`;
+      },
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
       footerAction: createFooterAction("Open task board", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
     }),

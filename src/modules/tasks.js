@@ -47,6 +47,7 @@ const RECURRENCE_OPTIONS = [
 
 const RECURRENCE_FREQUENCIES = ["none", "daily", "weekly", "monthly"];
 const MAX_RECURRENCE_GENERATIONS_PER_LOAD = 24;
+const TASK_DATE_FALLBACK = "9999-12-31";
 
 /**
  * Renders the work task module with CRUD, archive, filtering, and score-based ordering.
@@ -155,12 +156,13 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       .filter((task) => (state.assigneeFilter === "all" ? true : task.assigneeId === state.assigneeFilter))
       .filter((task) => (state.projectFilter === "all" ? true : task.projectId === state.projectFilter))
       .map((task) => ({ ...task, priorityScore: computePriorityScore(task) }))
-      // Task lists default to due-date ordering so upcoming deadlines surface first.
+      // Task lists prioritise scheduled execution date first, then due date, so teams can
+      // sequence planned work while still respecting hard deadlines.
       .sort((first, second) => {
-        const firstDue = first.dueDate || "9999-12-31";
-        const secondDue = second.dueDate || "9999-12-31";
-        if (firstDue !== secondDue) {
-          return firstDue.localeCompare(secondDue);
+        const firstTimelineDate = getTaskTimelineSortDate(first);
+        const secondTimelineDate = getTaskTimelineSortDate(second);
+        if (firstTimelineDate !== secondTimelineDate) {
+          return firstTimelineDate.localeCompare(secondTimelineDate);
         }
 
         if (second.priorityScore !== first.priorityScore) {
@@ -263,7 +265,7 @@ function createTaskTable() {
 
   const header = document.createElement("div");
   header.className = "tasks-table-row tasks-table-head";
-  ["Task", "Status", "Dependencies", "Assignee / Project", "Due", "Priority", "Actions"].forEach((label) => {
+  ["Task", "Status", "Dependencies", "Assignee / Project", "Schedule / Due", "Priority", "Actions"].forEach((label) => {
     const headCell = document.createElement("strong");
     headCell.className = "tasks-cell";
     headCell.textContent = label;
@@ -323,7 +325,23 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   const dueCell = document.createElement("div");
   dueCell.className = "tasks-cell";
-  dueCell.textContent = task.dueDate || "Not set";
+
+  const duePrimary = document.createElement("span");
+  duePrimary.textContent = task.scheduleDate
+    ? `Scheduled ${task.scheduleDate}`
+    : task.dueDate
+      ? `Due ${task.dueDate}`
+      : "Not set";
+  dueCell.appendChild(duePrimary);
+
+  // Keep due date visible as secondary metadata when schedule date is set so users can
+  // quickly compare intent (scheduled execution) versus obligation (deadline).
+  if (task.scheduleDate && task.dueDate) {
+    const dueSecondary = document.createElement("small");
+    dueSecondary.className = "person-meta";
+    dueSecondary.textContent = `Due ${task.dueDate}`;
+    dueCell.appendChild(dueSecondary);
+  }
 
   const priorityCell = document.createElement("div");
   priorityCell.className = "tasks-cell";
@@ -381,6 +399,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     max: "10"
   });
   const dueDate = createField("Due date", "date", task?.dueDate || "", false);
+  const scheduleDate = createField("Schedule date", "date", task?.scheduleDate || "", false);
 
   const statusWrap = document.createElement("label");
   statusWrap.className = "field-label";
@@ -508,7 +527,11 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   // Planning groups time-related fields together to reduce vertical sprawl.
   const planningPrimaryRow = document.createElement("div");
   planningPrimaryRow.className = "task-form-grid task-form-grid-2";
-  planningPrimaryRow.append(dueDate.wrap, recurrenceWrap);
+  planningPrimaryRow.append(scheduleDate.wrap, dueDate.wrap);
+
+  const planningTertiaryRow = document.createElement("div");
+  planningTertiaryRow.className = "task-form-grid task-form-grid-2";
+  planningTertiaryRow.append(recurrenceWrap);
 
   const planningSecondaryRow = document.createElement("div");
   planningSecondaryRow.className = "task-form-grid task-form-grid-2";
@@ -531,6 +554,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     "Planning",
     "Manage timeline and recurrence settings in one place.",
     planningPrimaryRow,
+    planningTertiaryRow,
     planningSecondaryRow
   );
   const ownershipSection = createFormSection("Ownership", "Assign accountability and project context.", ownershipRow);
@@ -566,6 +590,7 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
       status: status.value,
       assigneeId: assignee.value,
       projectId: project.value,
+      scheduleDate: scheduleDate.input.value,
       dueDate: dueDate.input.value,
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
@@ -618,7 +643,7 @@ function createField(labelText, type, value, required, attributes = {}) {
   return { wrap, input };
 }
 
-function saveTask(mode, payload, editingId = "") {
+export function saveTask(mode, payload, editingId = "") {
   if (!payload.title) {
     return { ok: false, error: "Task title is required." };
   }
@@ -674,6 +699,7 @@ function saveTask(mode, payload, editingId = "") {
         status: now,
         assigneeId: now,
         projectId: now,
+        scheduleDate: now,
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
@@ -708,6 +734,7 @@ function saveTask(mode, payload, editingId = "") {
         status: now,
         assigneeId: now,
         projectId: now,
+        scheduleDate: now,
         dueDate: now,
         recurrence: now,
         customRecurrence: now,
@@ -835,6 +862,8 @@ export function normaliseTask(task) {
     status: normaliseTaskStatus(task.status),
     assigneeId: task.assigneeId || "",
     projectId: task.projectId || "",
+    // Migration-safe default keeps legacy records fully compatible with new sort precedence.
+    scheduleDate: task.scheduleDate || "",
     dueDate: task.dueDate || "",
     recurrence: RECURRENCE_OPTIONS.includes(task.recurrence) ? task.recurrence : "none",
     customRecurrence: task.customRecurrence || "",
@@ -850,6 +879,20 @@ export function normaliseTask(task) {
         ? task.lastUpdatedByField
         : {}
   };
+}
+
+/**
+ * Returns the task's planning date using precedence: scheduleDate, then dueDate.
+ */
+export function getTaskTimelineDate(task) {
+  return task?.scheduleDate || task?.dueDate || "";
+}
+
+/**
+ * Produces a stable sortable date string for timeline ordering, with a high fallback date.
+ */
+export function getTaskTimelineSortDate(task) {
+  return getTaskTimelineDate(task) || TASK_DATE_FALLBACK;
 }
 
 function buildRecurrenceMetaFromPayload(payload, existingTask = null) {
