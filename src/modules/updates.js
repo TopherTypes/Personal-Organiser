@@ -1,6 +1,7 @@
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
 import { generateId } from "./id.js";
+import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
 const UPDATES_SCHEMA_VERSION = 1;
 const UPDATES_COLLECTION_KEY = "updates";
@@ -263,9 +264,20 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   const overlay = document.createElement("div");
   overlay.className = "meeting-modal-overlay";
+  overlay.tabIndex = -1;
+
+  const dismissGuard = createModalDismissGuard({ onClose });
+  const requestClose = () => dismissGuard.requestClose();
+
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
-      onClose();
+      requestClose();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      requestClose();
     }
   });
 
@@ -284,7 +296,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
     closeButton.type = "button";
     closeButton.className = "module-button-secondary";
     closeButton.textContent = "Close";
-    closeButton.addEventListener("click", onClose);
+    closeButton.addEventListener("click", requestClose);
 
     panel.append(heading, message, closeButton);
     overlay.appendChild(panel);
@@ -375,7 +387,7 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
   cancelButton.type = "button";
   cancelButton.className = "module-button-secondary";
   cancelButton.textContent = "Cancel";
-  cancelButton.addEventListener("click", onClose);
+  cancelButton.addEventListener("click", requestClose);
 
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
@@ -401,6 +413,9 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave }) {
       update.id
     );
   });
+
+  // Dirty tracking ensures backdrop/cancel/Escape all enforce the same confirmation flow.
+  dismissGuard.bindDirtyTracking(form);
 
   panel.append(heading, form);
   overlay.appendChild(panel);

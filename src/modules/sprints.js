@@ -1,6 +1,7 @@
 import { loadTasks } from "./tasks.js";
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 import { generateId } from "./id.js";
+import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
 const SPRINT_STORAGE_KEY = "second-brain.work.sprints.work";
 const SPRINT_SCHEMA_VERSION = 1;
@@ -359,9 +360,20 @@ function createSprintDetailView({ sprint, tasks, onBack, onRemoveTask, onAddTask
 function createSprintForm({ sprint, tasks, onSave, onCancel }) {
   const overlay = document.createElement("div");
   overlay.className = "meeting-modal-overlay";
+  overlay.tabIndex = -1;
+
+  const dismissGuard = createModalDismissGuard({ onClose: onCancel });
+  const requestClose = () => dismissGuard.requestClose();
+
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) {
-      onCancel();
+      requestClose();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      requestClose();
     }
   });
 
@@ -415,7 +427,7 @@ function createSprintForm({ sprint, tasks, onSave, onCancel }) {
 
   const actions = document.createElement("div");
   actions.className = "meeting-actions";
-  actions.append(button(sprint ? "Save changes" : "Create sprint", null, "submit"), button("Cancel", onCancel));
+  actions.append(button(sprint ? "Save changes" : "Create sprint", null, "submit"), button("Cancel", requestClose));
 
   form.append(title, name.wrap, startDate.wrap, endDate.wrap, statusWrap, tasksWrap, help, actions);
 
@@ -433,6 +445,9 @@ function createSprintForm({ sprint, tasks, onSave, onCancel }) {
       archived: Boolean(sprint?.archived)
     });
   });
+
+  // Track all draft mutations so dismissals cannot silently drop edits.
+  dismissGuard.bindDirtyTracking(form);
 
   overlay.appendChild(form);
   return overlay;
