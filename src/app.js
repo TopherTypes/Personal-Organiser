@@ -8,6 +8,7 @@ import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboardi
 import { restoreDatasetBackup } from "./modules/dataset-backups.js";
 import { loadUpdates, selectUpdatesForPerson } from "./modules/updates.js";
 import { renderCommandPalette, searchCommandPalette } from "./modules/command-palette.js";
+import { renderQuickActions } from "./modules/quick-actions.js";
 
 /**
  * In-memory app state for the shell.
@@ -31,6 +32,10 @@ const state = {
   meetingFocusByMode: {
     work: "",
     personal: ""
+  },
+  quickActionByMode: {
+    work: null,
+    personal: null
   },
   hasUnsavedChanges: false,
   settings: initialSettings,
@@ -191,6 +196,7 @@ function renderApp() {
           meetingFocusId: state.meetingFocusByMode[state.activeMode],
           onScheduleOneOnOne: handleScheduleOneOnOne,
           onNavigate: handleDashboardNavigate,
+          quickAction: state.quickActionByMode[state.activeMode],
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
           onBackupRestore: handleBackupRestore,
@@ -211,12 +217,18 @@ function renderApp() {
   const footer = renderFooter();
   const initialSyncModal = renderInitialSyncModal();
   const commandPalette = renderCommandPaletteLayer();
+  const quickActions = renderQuickActions({
+    activeMode: state.activeMode,
+    enabled: state.hasEnteredMode && !state.needsOnboarding,
+    onTriggerAction: handleQuickAction
+  });
 
-  shell.append(topBar, content, footer, initialSyncModal, commandPalette);
+  shell.append(topBar, content, footer, initialSyncModal, commandPalette, quickActions);
   appRoot.appendChild(shell);
 
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = "";
+  state.quickActionByMode[state.activeMode] = null;
 }
 
 /**
@@ -470,6 +482,26 @@ function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
   state.activeModuleByMode[state.activeMode] = moduleKey;
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = focus.meetingId || "";
+  renderApp();
+}
+
+/**
+ * Navigates to a module and injects one-shot create intent consumed during module mount.
+ */
+function handleQuickAction(action) {
+  if (!action?.moduleKey || !confirmNavigation()) {
+    return;
+  }
+
+  const mode = state.activeMode;
+  state.activeModuleByMode[mode] = action.moduleKey;
+  state.meetingFocusByMode[mode] = "";
+  state.meetingPrefillByMode[mode] = action.createIntent === "meeting" ? {} : null;
+  state.quickActionByMode[mode] = {
+    moduleKey: action.moduleKey,
+    createIntent: action.createIntent,
+    requestedAt: new Date().toISOString()
+  };
   renderApp();
 }
 

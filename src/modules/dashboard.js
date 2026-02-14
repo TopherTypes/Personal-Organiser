@@ -97,14 +97,18 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
   }
 
   if (mode === "work" && activeModule === "tasks") {
-    return renderWorkTasksModule({ mode });
+    return renderWorkTasksModule({
+      mode,
+      openComposer: uiContext.quickAction?.moduleKey === "tasks" && uiContext.quickAction?.createIntent === "task"
+    });
   }
 
   if (mode === "work" && activeModule === "projects") {
     return renderWorkProjectsModule({
       mode,
       people: loadPeople("work"),
-      meetings: loadMeetings("work")
+      meetings: loadMeetings("work"),
+      openComposer: uiContext.quickAction?.moduleKey === "projects" && uiContext.quickAction?.createIntent === "project"
     });
   }
 
@@ -118,16 +122,21 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
     return renderWorkUpdatesModule({
       mode,
       people: loadPeople("work"),
-      meetings: loadMeetings("work")
+      meetings: loadMeetings("work"),
+      focusCreateForm: uiContext.quickAction?.moduleKey === "updates" && uiContext.quickAction?.createIntent === "update"
     });
   }
 
   if (mode === "personal" && activeModule === "tasks") {
-    return renderPersonalTasksModule();
+    return renderPersonalTasksModule({
+      focusCreateForm: uiContext.quickAction?.moduleKey === "tasks" && uiContext.quickAction?.createIntent === "task"
+    });
   }
 
   if (mode === "personal" && activeModule === "projects") {
-    return renderPersonalProjectsModule();
+    return renderPersonalProjectsModule({
+      focusCreateForm: uiContext.quickAction?.moduleKey === "projects" && uiContext.quickAction?.createIntent === "project"
+    });
   }
 
   if (mode === "personal" && activeModule === "daily-log") {
@@ -143,12 +152,18 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
   }
 
   if (mode === "personal" && activeModule === "calendar") {
-    return renderPersonalCalendarModule();
+    return renderPersonalCalendarModule({
+      focusCreateForm:
+        uiContext.quickAction?.moduleKey === "calendar" && uiContext.quickAction?.createIntent === "calendar-event"
+    });
   }
 
 
   if (["work", "personal"].includes(mode) && activeModule === "notes") {
-    return renderNotesModule({ mode });
+    return renderNotesModule({
+      mode,
+      openComposer: uiContext.quickAction?.moduleKey === "notes" && uiContext.quickAction?.createIntent === "note"
+    });
   }
 
   if (activeModule === "settings") {
