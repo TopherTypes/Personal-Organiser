@@ -29,6 +29,18 @@ const sessionUiStateByMode = {
 };
 
 /**
+ * Shared status-to-class token map keeps list cards and calendar entries in sync.
+ * Unknown/legacy statuses intentionally fall back to scheduled styling.
+ */
+const MEETING_STATUS_CLASS_BY_STATUS = {
+  scheduled: "meeting-status-scheduled",
+  completed: "meeting-status-completed",
+  rescheduled: "meeting-status-rescheduled",
+  cancelled: "meeting-status-cancelled",
+  missed: "meeting-status-missed"
+};
+
+/**
  * Renders the meetings module with calendar/list split layout and modal meeting editor.
  */
 export function renderWorkMeetingsModule({
@@ -105,7 +117,20 @@ export function renderWorkMeetingsModule({
     renderModule();
   });
 
-  controls.append(viewSelect, searchNotes, statusFilter);
+  const showCompletedLabel = document.createElement("label");
+  showCompletedLabel.className = "meeting-toggle-label";
+
+  const showCompletedToggle = document.createElement("input");
+  showCompletedToggle.type = "checkbox";
+  showCompletedToggle.checked = state.showCompleted;
+  showCompletedToggle.addEventListener("change", (event) => {
+    state.showCompleted = event.target.checked;
+    renderModule();
+  });
+
+  showCompletedLabel.append(showCompletedToggle, document.createTextNode("Show completed meetings"));
+
+  controls.append(viewSelect, searchNotes, statusFilter, showCompletedLabel);
 
   const split = document.createElement("div");
   split.className = "meetings-split";
@@ -196,7 +221,8 @@ export function renderWorkMeetingsModule({
       view: state.view,
       anchorDate: state.anchorDate,
       search: state.search,
-      filter: state.filter
+      filter: state.filter,
+      showCompleted: state.showCompleted
     };
   }
 
@@ -1260,6 +1286,7 @@ function createMeetingsUiState(mode, initialPrefill) {
     anchorDate: session?.anchorDate || isoDateToday(),
     search: session?.search || "",
     filter: session?.filter || "active",
+    showCompleted: Boolean(session?.showCompleted),
     draft: null,
     dirtyDraft: false,
     draftSource: "",
@@ -1338,7 +1365,7 @@ function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, openEd
     const heading = document.createElement("strong");
     heading.textContent = `${weekdayLabel(date)} ${date}`;
 
-    const meetingsForDate = allMeetings.filter((meeting) => meeting.date === date && !meeting.archived);
+    const meetingsForDate = meetingsVisibleInCalendarDate(allMeetings, date, state);
     const count = document.createElement("span");
     count.textContent = `${meetingsForDate.length} meeting(s)`;
 
@@ -1364,7 +1391,7 @@ function renderMonthlyCalendar(state, meetingsInRange, allMeetings, range, openE
     const short = document.createElement("strong");
     short.textContent = date.slice(-2);
 
-    const meetingsForDate = allMeetings.filter((meeting) => meeting.date === date && !meeting.archived);
+    const meetingsForDate = meetingsVisibleInCalendarDate(allMeetings, date, state);
     const count = document.createElement("span");
     count.textContent = meetingsForDate.length ? `${meetingsForDate.length} items` : "—";
 
@@ -1392,7 +1419,7 @@ function buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact = fa
   for (const meeting of visibleMeetings) {
     const entry = document.createElement("button");
     entry.type = "button";
-    entry.className = "calendar-meeting-entry";
+    entry.className = `calendar-meeting-entry ${resolveMeetingStatusClass(meeting.status)}`;
     // Prevent the day-card click handler from creating a new draft when editing an existing meeting.
     entry.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1416,7 +1443,7 @@ function buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact = fa
 
 function renderMeetingRow(meeting, people, projects, { onOpen, onArchiveToggle }) {
   const row = document.createElement("article");
-  row.className = "meeting-row";
+  row.className = `meeting-row ${resolveMeetingStatusClass(meeting.status)}`;
 
   const heading = document.createElement("button");
   heading.type = "button";
@@ -1493,12 +1520,35 @@ function filterAndSortMeetings(allMeetings, state, range) {
       if (meeting.date < range.start || meeting.date > range.end) {
         return false;
       }
+      // Completed meetings are hidden by default so upcoming work is easier to scan.
+      if (!state.showCompleted && meeting.status === "completed") {
+        return false;
+      }
       if (!search) {
         return true;
       }
       return `${meeting.name} ${meeting.notes}`.toLowerCase().includes(search);
     })
     .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`));
+}
+
+/**
+ * Calendar day cards share the same completed visibility rule as the list pane.
+ */
+function meetingsVisibleInCalendarDate(allMeetings, date, state) {
+  return allMeetings.filter((meeting) => {
+    if (meeting.date !== date || meeting.archived) {
+      return false;
+    }
+    if (!state.showCompleted && meeting.status === "completed") {
+      return false;
+    }
+    return true;
+  });
+}
+
+function resolveMeetingStatusClass(status) {
+  return MEETING_STATUS_CLASS_BY_STATUS[status] || MEETING_STATUS_CLASS_BY_STATUS.scheduled;
 }
 
 function saveMeeting(mode, draft, source) {
@@ -1933,3 +1983,5 @@ function buildUpdateTypePill(entityType) {
 function buildId() {
   return generateId("meeting_");
 }
+
+export { filterAndSortMeetings, resolveMeetingStatusClass };

@@ -1481,6 +1481,57 @@ textarea:focus-visible,
   cursor: pointer;
 }
 
+.meeting-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/*
+ * Status variants use high-contrast surfaces so both calendar chips and list
+ * cards are scannable without relying on color alone.
+ */
+.meeting-status-scheduled {
+  background: color-mix(in srgb, #2563eb 18%, var(--bg-elevated));
+  border-color: color-mix(in srgb, #2563eb 64%, var(--border));
+  color: color-mix(in srgb, #071539 84%, var(--text));
+}
+
+.meeting-status-completed {
+  background: color-mix(in srgb, #15803d 18%, var(--bg-elevated));
+  border-color: color-mix(in srgb, #15803d 62%, var(--border));
+  color: color-mix(in srgb, #052e16 86%, var(--text));
+}
+
+.meeting-status-rescheduled {
+  background: color-mix(in srgb, #c2410c 17%, var(--bg-elevated));
+  border-color: color-mix(in srgb, #c2410c 58%, var(--border));
+  color: color-mix(in srgb, #431407 84%, var(--text));
+}
+
+.meeting-status-cancelled {
+  background: color-mix(in srgb, #b91c1c 16%, var(--bg-elevated));
+  border-color: color-mix(in srgb, #b91c1c 56%, var(--border));
+  color: color-mix(in srgb, #450a0a 85%, var(--text));
+}
+
+.meeting-status-missed {
+  background: color-mix(in srgb, #7c3aed 16%, var(--bg-elevated));
+  border-color: color-mix(in srgb, #7c3aed 56%, var(--border));
+  color: color-mix(in srgb, #2e1065 84%, var(--text));
+}
+
+.meeting-row.meeting-status-scheduled,
+.meeting-row.meeting-status-completed,
+.meeting-row.meeting-status-rescheduled,
+.meeting-row.meeting-status-cancelled,
+.meeting-row.meeting-status-missed {
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+}
+
 
 .initial-sync-modal-overlay {
   position: fixed;
