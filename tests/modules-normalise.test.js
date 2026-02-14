@@ -67,6 +67,9 @@ test("normaliseProject sanitises people links and timestamp maps", () => {
 
   assert.equal(project.title, "Migration");
   assert.deepEqual(project.peopleLinks, [{ personId: "p1", roles: ["SME"] }]);
+  assert.equal(project.lastProgressUpdate, "");
+  assert.equal(project.cadenceInterval, 1);
+  assert.equal(project.cadenceUnit, "weeks");
   assert.deepEqual(project.lastUpdatedByField, {});
 });
 
