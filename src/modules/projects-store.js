@@ -3,6 +3,9 @@ import { generateId } from "./id.js";
 
 export const PROJECT_STORAGE_KEY = "second-brain.work.projects.work";
 export const PROJECT_SCHEMA_VERSION = 1;
+export const PROJECT_CADENCE_UNITS = ["days", "weeks", "months"];
+const DEFAULT_CADENCE_INTERVAL = 1;
+const DEFAULT_CADENCE_UNIT = "weeks";
 
 /**
  * Enumerated person roles used when linking people to a project.
@@ -61,6 +64,7 @@ export function saveProject(mode = "work", payload, editingId = "") {
 
   const projects = loadProjects(mode);
   const now = new Date().toISOString();
+  const cadenceFields = normaliseProjectCadenceFields(payload);
 
   if (editingId) {
     const index = projects.findIndex((project) => project.id === editingId);
@@ -72,6 +76,7 @@ export function saveProject(mode = "work", payload, editingId = "") {
     projects[index] = {
       ...existing,
       ...payload,
+      ...cadenceFields,
       updatedAt: now,
       lastUpdatedByField: {
         ...existing.lastUpdatedByField,
@@ -79,7 +84,10 @@ export function saveProject(mode = "work", payload, editingId = "") {
         description: now,
         startDate: now,
         targetDate: now,
-        status: now
+        status: now,
+        lastProgressUpdate: now,
+        cadenceInterval: now,
+        cadenceUnit: now
       }
     };
 
@@ -90,6 +98,7 @@ export function saveProject(mode = "work", payload, editingId = "") {
   const nextProject = normaliseProject({
     id: buildProjectId(),
     ...payload,
+    ...cadenceFields,
     peopleLinks: [],
     createdAt: now,
     updatedAt: now,
@@ -99,6 +108,9 @@ export function saveProject(mode = "work", payload, editingId = "") {
       startDate: now,
       targetDate: now,
       status: now,
+      lastProgressUpdate: now,
+      cadenceInterval: now,
+      cadenceUnit: now,
       peopleLinks: now
     }
   });
@@ -171,6 +183,24 @@ export function loadPersonProjectLinks(mode = "work", personId) {
     .filter(Boolean);
 }
 
+
+function normaliseProjectCadenceFields(project) {
+  return {
+    lastProgressUpdate: normaliseDateString(project?.lastProgressUpdate),
+    cadenceInterval: normaliseCadenceInterval(project?.cadenceInterval),
+    cadenceUnit: normaliseCadenceUnit(project?.cadenceUnit)
+  };
+}
+
+function normaliseCadenceInterval(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CADENCE_INTERVAL;
+}
+
+function normaliseCadenceUnit(value) {
+  return PROJECT_CADENCE_UNITS.includes(value) ? value : DEFAULT_CADENCE_UNIT;
+}
+
 /**
  * Adds defensive defaults so old records remain compatible.
  */
@@ -182,6 +212,7 @@ export function normaliseProject(project) {
     startDate: project.startDate || "",
     targetDate: project.targetDate || "",
     status: project.status || "planned",
+    ...normaliseProjectCadenceFields(project),
     peopleLinks: Array.isArray(project.peopleLinks)
       ? project.peopleLinks
           .filter((entry) => entry && typeof entry === "object")
@@ -197,6 +228,60 @@ export function normaliseProject(project) {
         ? project.lastUpdatedByField
         : {}
   };
+}
+
+/**
+ * Computes the next expected progress update date from cadence metadata.
+ */
+export function deriveNextExpectedUpdateDate(project) {
+  const baselineDate = normaliseDateString(project?.lastProgressUpdate);
+  if (!baselineDate) {
+    return "";
+  }
+
+  return addIsoDateInterval(
+    baselineDate,
+    normaliseCadenceInterval(project?.cadenceInterval),
+    normaliseCadenceUnit(project?.cadenceUnit)
+  );
+}
+
+/**
+ * Adds day/week/month cadence intervals while preserving ISO date precision.
+ */
+export function addIsoDateInterval(isoDate, interval, unit) {
+  const start = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime())) {
+    return "";
+  }
+
+  const next = new Date(start);
+  if (unit === "months") {
+    next.setUTCMonth(next.getUTCMonth() + interval);
+  } else {
+    const unitDays = unit === "weeks" ? 7 : 1;
+    next.setUTCDate(next.getUTCDate() + interval * unitDays);
+  }
+
+  return next.toISOString().slice(0, 10);
+}
+
+function normaliseDateString(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  // Accept either ISO date-only values or full timestamp strings.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
 function buildProjectId() {

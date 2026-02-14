@@ -1,5 +1,7 @@
 import {
+  PROJECT_CADENCE_UNITS,
   PROJECT_PERSON_ROLES,
+  deriveNextExpectedUpdateDate,
   deleteProject,
   loadProjects,
   normaliseProject,
@@ -306,6 +308,33 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
   const description = buildTextArea("Description", project?.description || "");
   const startDate = buildLabeledInput("Start date", "date", project?.startDate || "");
   const targetDate = buildLabeledInput("Target date", "date", project?.targetDate || "");
+  const lastProgressUpdate = buildLabeledInput(
+    "Last progress update",
+    "date",
+    project?.lastProgressUpdate || ""
+  );
+
+  const cadenceRow = document.createElement("div");
+  cadenceRow.className = "field-row";
+  const cadenceInterval = buildLabeledInput(
+    "Cadence interval",
+    "number",
+    String(project?.cadenceInterval || 1),
+    true
+  );
+  cadenceInterval.input.min = "1";
+
+  const cadenceUnitWrap = document.createElement("label");
+  cadenceUnitWrap.className = "field-label";
+  cadenceUnitWrap.textContent = "Cadence unit";
+  const cadenceUnit = document.createElement("select");
+  cadenceUnit.className = "field-input";
+  PROJECT_CADENCE_UNITS.forEach((unit) => {
+    addOption(cadenceUnit, unit, unit[0].toUpperCase() + unit.slice(1));
+  });
+  cadenceUnit.value = project?.cadenceUnit || "weeks";
+  cadenceUnitWrap.appendChild(cadenceUnit);
+  cadenceRow.append(cadenceInterval.wrapper, cadenceUnitWrap);
 
   const statusWrap = document.createElement("label");
   statusWrap.className = "field-label";
@@ -376,6 +405,8 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
     description.wrapper,
     startDate.wrapper,
     targetDate.wrapper,
+    lastProgressUpdate.wrapper,
+    cadenceRow,
     statusWrap,
     personLinks,
     meetingsWrap,
@@ -399,6 +430,9 @@ function renderProjectEditor({ people, meetings, project, onClose, onSave }) {
       description: description.textarea.value.trim(),
       startDate: startDate.input.value,
       targetDate: targetDate.input.value,
+      lastProgressUpdate: lastProgressUpdate.input.value,
+      cadenceInterval: Number.parseInt(cadenceInterval.input.value, 10) || 1,
+      cadenceUnit: cadenceUnit.value,
       status: status.value,
       personLinks: selectedPersonLinks,
       meetingIds: selectedMeetingIds
@@ -444,6 +478,15 @@ function buildProjectCard(project, people, meetings, handlers) {
     deriveProjectUpdatedAt(project, meetings)
   ).toLocaleString()}`;
 
+  const cadenceSummary = document.createElement("p");
+  cadenceSummary.className = "person-meta";
+  const nextUpdateDate = deriveNextExpectedUpdateDate(project);
+  cadenceSummary.textContent = [
+    `Last progress: ${project.lastProgressUpdate || "Not recorded"}`,
+    `Cadence: every ${project.cadenceInterval} ${project.cadenceUnit}`,
+    `Next expected: ${nextUpdateDate || "Waiting for first update"}`
+  ].join(" · ");
+
   const linkPreview = document.createElement("p");
   linkPreview.className = "person-meta";
   linkPreview.textContent = linkedPeople.slice(0, 2).join("; ") || "No linked people yet.";
@@ -470,7 +513,7 @@ function buildProjectCard(project, people, meetings, handlers) {
   remove.addEventListener("click", handlers.onDelete);
 
   actions.append(view, edit, remove);
-  card.append(top, description, meta, linkPreview, actions);
+  card.append(top, description, meta, cadenceSummary, linkPreview, actions);
   return card;
 }
 

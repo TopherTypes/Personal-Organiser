@@ -2,7 +2,13 @@ import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
 import { getTaskTimelineSortDate, loadTasks, renderWorkTasksModule } from "./tasks.js";
 import { loadSprints, renderWorkSprintsModule } from "./sprints.js";
-import { PROJECT_PERSON_ROLES, loadPersonProjectLinks, loadProjects, upsertProjectPersonLink } from "./projects-store.js";
+import {
+  PROJECT_PERSON_ROLES,
+  deriveNextExpectedUpdateDate,
+  loadPersonProjectLinks,
+  loadProjects,
+  upsertProjectPersonLink
+} from "./projects-store.js";
 import { loadUpdates, markPersonPending, markPersonUpdated, renderWorkUpdatesModule, selectUpdatesForPerson } from "./updates.js";
 import { renderSettingsModule } from "./settings.js";
 import { renderPersonalTasksModule } from "./personal-tasks.js";
@@ -222,7 +228,7 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     .slice(0, 5);
 
   const activeProjects = projects.filter((project) => !["completed", "cancelled", "archived"].includes(String(project.status).toLowerCase()));
-  const atRiskProjects = activeProjects.filter((project) => project.targetDate && project.targetDate < today).slice(0, 4);
+  const atRiskProjects = selectProjectsNeedingAttention(activeProjects, today).slice(0, 4);
   const pendingUpdates = updates.reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
   const activeSprintCount = sprints.filter((sprint) => sprint.status === "active").length;
 
@@ -283,10 +289,10 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     }),
     createOverviewListCard({
       title: "Projects needing attention",
-      description: "Overdue targets or status drift.",
-      emptyText: "No overdue active projects.",
+      description: "Overdue cadence check-ins, with target-date fallback for legacy records.",
+      emptyText: "No active projects currently overdue.",
       items: atRiskProjects,
-      getLabel: (project) => `${project.title || "Untitled project"} · target ${project.targetDate || "n/a"}`,
+      getLabel: formatProjectAttentionLabel,
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "projects" }),
       footerAction: createFooterAction("Open projects", () => navigateFromDashboard(uiContext, { moduleKey: "projects" }))
     }),
@@ -307,6 +313,34 @@ function renderWorkOverviewDashboard(uiContext = {}) {
 
   section.append(title, intro, metrics, trends, grid);
   return section;
+}
+
+
+/**
+ * Selects active projects that are overdue for a progress update cadence.
+ */
+export function selectProjectsNeedingAttention(projects, todayIsoDate = isoDateToday()) {
+  return projects.filter((project) => {
+    const nextExpectedDate = deriveNextExpectedUpdateDate(project);
+    if (nextExpectedDate) {
+      return nextExpectedDate < todayIsoDate;
+    }
+
+    // Fallback for migration-era records with no cadence baseline:
+    // target date still acts as an attention signal until cadence is captured.
+    return Boolean(project.targetDate) && project.targetDate < todayIsoDate;
+  });
+}
+
+/**
+ * Builds a compact dashboard label that explains why a project is at risk.
+ */
+export function formatProjectAttentionLabel(project) {
+  const nextExpectedDate = deriveNextExpectedUpdateDate(project);
+  if (nextExpectedDate) {
+    return `${project.title || "Untitled project"} · update overdue since ${nextExpectedDate}`;
+  }
+  return `${project.title || "Untitled project"} · target ${project.targetDate || "n/a"}`;
 }
 
 /**
