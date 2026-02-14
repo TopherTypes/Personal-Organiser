@@ -11,6 +11,7 @@ import { renderPersonalDailyLogModule } from "./personal-daily-log.js";
 import { renderPersonalExerciseLogModule } from "./personal-exercise-log.js";
 import { renderPersonalPeopleModule } from "./personal-people.js";
 import { renderPersonalCalendarModule } from "./personal-calendar.js";
+import { renderNotesModule } from "./notes.js";
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { safeJsonParse, safeJsonWrite } from "./storage-core.js";
 import { generateId } from "./id.js";
@@ -143,6 +144,11 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
 
   if (mode === "personal" && activeModule === "calendar") {
     return renderPersonalCalendarModule();
+  }
+
+
+  if (["work", "personal"].includes(mode) && activeModule === "notes") {
+    return renderNotesModule({ mode });
   }
 
   if (activeModule === "settings") {
