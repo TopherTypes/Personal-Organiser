@@ -514,13 +514,17 @@ textarea:focus-visible,
  * Task editor sections keep dense data grouped and scannable inside a single modal.
  */
 .task-form {
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+.task-form > h2 {
+  margin: 0;
 }
 
 .task-form-section {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: var(--space-2);
+  padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
@@ -531,12 +535,6 @@ textarea:focus-visible,
   font-size: 0.95rem;
 }
 
-.task-form-section-description {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
-
 .task-form-grid {
   display: grid;
   gap: var(--space-2);
@@ -544,6 +542,57 @@ textarea:focus-visible,
 
 .task-form-grid-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.task-form-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.task-form-grid-4 {
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+}
+
+/*
+ * Task editor uses a tighter width and per-field max widths so short numeric/date values
+ * stop stretching the layout and forcing unnecessary modal scrolling.
+ */
+.meeting-modal.entity-editor-modal.task-form {
+  width: min(980px, 100%);
+  max-height: min(80vh, 860px);
+}
+
+/*
+ * Keep compact numeric scoring fields narrow, but allow extra width for date inputs
+ * so the native calendar icon and full date text fit without clipping.
+ */
+.task-form input[type="number"] {
+  max-width: 12ch;
+}
+
+.task-form input[type="date"] {
+  max-width: 17ch;
+}
+
+/*
+ * Collapsible sections hide secondary fields by default so edit flows stay focused
+ * on the high-signal controls at the top of the modal.
+ */
+.task-form-collapsible {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
+}
+
+.task-form-collapsible-title {
+  cursor: pointer;
+  font-weight: 700;
+  padding: var(--space-2);
+}
+
+.task-form-collapsible-body {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-2);
 }
 
 /*
@@ -1916,7 +1965,9 @@ body[data-density="compact"] .footer {
     grid-template-columns: 1fr;
   }
 
-  .task-form-grid-2 {
+  .task-form-grid-2,
+  .task-form-grid-3,
+  .task-form-grid-4 {
     grid-template-columns: 1fr;
   }
 
