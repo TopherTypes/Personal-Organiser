@@ -265,7 +265,10 @@ function renderWorkOverviewDashboard(uiContext = {}) {
       description: "Open directly in Meetings to edit agenda or attendees.",
       emptyText: "No meetings scheduled for today.",
       items: meetingRows,
-      getLabel: (meeting) => `${meeting.startTime || "Any time"} · ${meeting.name || "Untitled meeting"}`,
+      renderRow: (meeting) => createOverviewInlineRow(meeting.name || "Untitled meeting", [
+        createOverviewChip(meeting.startTime || "Any time", "neutral"),
+        createOverviewChip(toTitleCase(meeting.status || "scheduled"), resolveStatusChipTone(meeting.status))
+      ]),
       onItemClick: (meeting) =>
         navigateFromDashboard(uiContext, {
           moduleKey: "meetings",
@@ -278,14 +281,10 @@ function renderWorkOverviewDashboard(uiContext = {}) {
       description: "Sorted by scheduled date first, then due date and impact.",
       emptyText: "No active tasks to triage.",
       items: focusTasks,
-      getLabel: (task) => {
-        const timelineLabel = task.scheduleDate
-          ? `Scheduled ${task.scheduleDate}${task.dueDate ? ` · Due ${task.dueDate}` : ""}`
-          : task.dueDate
-            ? `Due ${task.dueDate}`
-            : "No dates";
-        return `${task.title || "Untitled task"} · ${timelineLabel} · ${task.status}`;
-      },
+      renderRow: (task) => createOverviewInlineRow(task.title || "Untitled task", [
+        createOverviewChip(resolveTaskDateChipLabel(task), resolveTaskDateChipTone(task, today)),
+        createOverviewChip(toTitleCase(task.status || "to do"), resolveStatusChipTone(task.status))
+      ]),
       getRowActions: (task) => [
         createOverviewItemAction("✓ Done", () => {
           markTaskCompleted("work", task.id);
@@ -300,7 +299,13 @@ function renderWorkOverviewDashboard(uiContext = {}) {
       description: "Overdue cadence check-ins, with target-date fallback for legacy records.",
       emptyText: "No active projects currently overdue.",
       items: atRiskProjects,
-      getLabel: formatProjectAttentionLabel,
+      renderRow: (project) => {
+        const nextExpectedDate = deriveNextExpectedUpdateDate(project);
+        return createOverviewInlineRow(project.title || "Untitled project", [
+          createOverviewChip(nextExpectedDate ? `Update overdue ${nextExpectedDate}` : `Target ${project.targetDate || "n/a"}`, "danger"),
+          createOverviewChip(toTitleCase(project.status || "active"), resolveStatusChipTone(project.status))
+        ]);
+      },
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "projects" }),
       footerAction: createFooterAction("Open projects", () => navigateFromDashboard(uiContext, { moduleKey: "projects" }))
     }),
@@ -313,7 +318,13 @@ function renderWorkOverviewDashboard(uiContext = {}) {
         // so non-zero length already indicates the person has pending follow-ups.
         .filter((person) => selectUpdatesForPerson(updates, person.id).length > 0)
         .slice(0, 4),
-      getLabel: (person) => `${person.name || "Unnamed person"} · ${selectUpdatesForPerson(updates, person.id).length} pending`,
+      renderRow: (person) => {
+        const pendingCount = selectUpdatesForPerson(updates, person.id).length;
+        return createOverviewInlineRow(person.name || "Unnamed person", [
+          createOverviewChip(`${pendingCount} pending`, "warning"),
+          createOverviewChip(`${(person.projectIds || []).length} projects`, "info")
+        ]);
+      },
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "updates" }),
       footerAction: createFooterAction("Open updates", () => navigateFromDashboard(uiContext, { moduleKey: "updates" }))
     })
@@ -418,10 +429,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Personal tasks requiring attention today.",
       emptyText: "No personal tasks due today.",
       items: todayTasks,
-      getLabel: (task) =>
-        `${task.title || "Untitled task"} · ${task.status}${
-          task.recurrenceMeta ? ` · repeats ${task.recurrenceMeta.frequency}/${task.recurrenceMeta.interval}` : ""
-        }`,
+      renderRow: (task) => createOverviewInlineRow(task.title || "Untitled task", [
+        createOverviewChip(toTitleCase(task.status || "to do"), resolveStatusChipTone(task.status)),
+        createOverviewChip(task.recurrenceMeta ? `Repeats ${task.recurrenceMeta.frequency}/${task.recurrenceMeta.interval}` : "One-off", "neutral")
+      ]),
       getRowActions: (task) => [
         createOverviewItemAction("✓ Done", () => {
           markTaskCompleted("personal", task.id);
@@ -436,10 +447,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Next personal events.",
       emptyText: "No upcoming calendar entries.",
       items: upcomingEvents,
-      getLabel: (event) =>
-        `${event.date} · ${event.title || "Untitled event"}${
-          event.recurrenceMeta ? ` · repeats ${event.recurrenceMeta.frequency}/${event.recurrenceMeta.interval}` : ""
-        }`,
+      renderRow: (event) => createOverviewInlineRow(event.title || "Untitled event", [
+        createOverviewChip(event.date || "No date", "info"),
+        createOverviewChip(event.recurrenceMeta ? `Repeats ${event.recurrenceMeta.frequency}/${event.recurrenceMeta.interval}` : "One-off", "neutral")
+      ]),
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }),
       footerAction: createFooterAction("Open calendar", () => navigateFromDashboard(uiContext, { moduleKey: "calendar" }))
     }),
@@ -448,7 +459,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Current personal projects/timeboxes.",
       emptyText: "No active personal projects.",
       items: activeProjects,
-      getLabel: (project) => `${project.name || "Untitled project"} · target ${project.targetDate || "not set"}`,
+      renderRow: (project) => createOverviewInlineRow(project.name || "Untitled project", [
+        createOverviewChip(`Target ${project.targetDate || "not set"}`, project.targetDate && project.targetDate < today ? "danger" : "info"),
+        createOverviewChip(`${(project.tasks || []).length} linked`, "neutral")
+      ]),
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "projects" }),
       footerAction: createFooterAction("Open projects", () => navigateFromDashboard(uiContext, { moduleKey: "projects" }))
     }),
@@ -457,7 +471,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
       description: "Recent daily logs and exercise momentum.",
       emptyText: "No daily logs available yet.",
       items: dailyLogs.slice(0, 4),
-      getLabel: (entry) => `${entry.date || "No date"} · Mood ${entry.mood || "-"}`,
+      renderRow: (entry) => createOverviewInlineRow(entry.date || "No date", [
+        createOverviewChip(`Mood ${entry.mood || "-"}`, resolveMoodChipTone(entry.mood)),
+        createOverviewChip(entry.sleepHours ? `${entry.sleepHours}h sleep` : "No sleep log", "neutral")
+      ]),
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "daily-log" }),
       footerAction: createFooterAction("Open daily log", () => navigateFromDashboard(uiContext, { moduleKey: "daily-log" }))
     })
@@ -504,7 +521,17 @@ function createMetricCard(label, value, moduleKey, uiContext) {
 /**
  * Builds a reusable list card pattern for overview dashboards.
  */
-function createOverviewListCard({ title, description, emptyText, items, getLabel, onItemClick, footerAction, getRowActions }) {
+function createOverviewListCard({
+  title,
+  description,
+  emptyText,
+  items,
+  getLabel,
+  renderRow,
+  onItemClick,
+  footerAction,
+  getRowActions
+}) {
   const card = document.createElement("article");
   card.className = "overview-card";
 
@@ -532,7 +559,14 @@ function createOverviewListCard({ title, description, emptyText, items, getLabel
     const row = document.createElement("button");
     row.type = "button";
     row.className = "overview-list-item";
-    row.textContent = getLabel(item);
+    // Preserve legacy text rendering for cards that only provide `getLabel`,
+    // while enabling richer structured rows through `renderRow`.
+    const renderedRowContent = typeof renderRow === "function" ? renderRow(item) : null;
+    if (renderedRowContent) {
+      row.appendChild(renderedRowContent);
+    } else {
+      row.textContent = typeof getLabel === "function" ? getLabel(item) : "";
+    }
     row.addEventListener("click", () => onItemClick(item));
     rowWrap.appendChild(row);
 
@@ -553,6 +587,101 @@ function createOverviewListCard({ title, description, emptyText, items, getLabel
   }
 
   return card;
+}
+
+/**
+ * Builds a row label + chip stack for overview buttons without changing button semantics.
+ */
+function createOverviewInlineRow(label, chipNodes = []) {
+  const wrapper = document.createElement("span");
+  wrapper.className = "overview-inline-row";
+
+  const title = document.createElement("span");
+  title.className = "overview-inline-row-title";
+  title.textContent = label;
+
+  const chips = document.createElement("span");
+  chips.className = "overview-inline-chips";
+  chipNodes.forEach((chip) => chips.appendChild(chip));
+
+  wrapper.append(title, chips);
+  return wrapper;
+}
+
+/**
+ * Creates a compact semantic chip used in overview list rows.
+ */
+function createOverviewChip(label, tone = "neutral") {
+  const chip = document.createElement("span");
+  chip.className = `overview-chip overview-chip-${tone}`;
+  chip.textContent = label;
+  return chip;
+}
+
+/**
+ * Maps free-form status values into consistent chip tones.
+ */
+function resolveStatusChipTone(status) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (["done", "completed", "updated", "on-track", "active"].includes(normalizedStatus)) {
+    return "success";
+  }
+  if (["blocked", "cancelled", "missed", "overdue"].includes(normalizedStatus)) {
+    return "danger";
+  }
+  if (["pending", "at-risk", "rescheduled"].includes(normalizedStatus)) {
+    return "warning";
+  }
+  return "info";
+}
+
+/**
+ * Encodes due/schedule information for priority task chips.
+ */
+function resolveTaskDateChipLabel(task) {
+  if (task.scheduleDate && task.dueDate) {
+    return `Sched ${task.scheduleDate} • Due ${task.dueDate}`;
+  }
+  if (task.scheduleDate) {
+    return `Sched ${task.scheduleDate}`;
+  }
+  if (task.dueDate) {
+    return `Due ${task.dueDate}`;
+  }
+  return "No dates";
+}
+
+/**
+ * Uses today + task timeline fields to assign urgency chip tone.
+ */
+function resolveTaskDateChipTone(task, today) {
+  if (task.dueDate && task.dueDate < today) {
+    return "danger";
+  }
+  if (task.dueDate === today || task.scheduleDate === today) {
+    return "warning";
+  }
+  if (task.dueDate || task.scheduleDate) {
+    return "info";
+  }
+  return "neutral";
+}
+
+/**
+ * Normalizes mood entries to a simple positive/neutral/negative chip palette.
+ */
+function resolveMoodChipTone(moodValue) {
+  const numericMood = Number(moodValue);
+  if (Number.isFinite(numericMood)) {
+    if (numericMood >= 7) {
+      return "success";
+    }
+    if (numericMood <= 4) {
+      return "danger";
+    }
+    return "warning";
+  }
+  return "neutral";
 }
 
 /**

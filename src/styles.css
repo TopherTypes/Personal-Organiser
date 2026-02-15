@@ -27,7 +27,9 @@
   --accent: #3255f0;
   --accent-contrast: #ffffff;
   --accent-soft: #e0e8ff;
+  --success: #1f8f53;
   --success-soft: #dff6e8;
+  --warning: #9a6400;
   --danger-soft: #ffe3e3;
   --danger: #a63535;
 }
@@ -44,7 +46,9 @@
   --accent: #8aa5ff;
   --accent-contrast: #0f1730;
   --accent-soft: #253865;
+  --success: #7fe0a9;
   --success-soft: #1f4b35;
+  --warning: #ffcb70;
   --danger-soft: #4a2a34;
   --danger: #f2909d;
 }
@@ -1655,9 +1659,68 @@ textarea:focus-visible,
 .overview-list-item {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
+}
+
+
+/*
+ * Inline overview rows preserve button semantics while allowing rich chip metadata.
+ */
+.overview-inline-row {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.overview-inline-row-title {
+  font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.overview-inline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/*
+ * Reusable semantic chip tokens for overview cards.
+ */
+.overview-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.overview-chip-neutral {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+.overview-chip-info {
+  background: color-mix(in srgb, var(--accent-soft) 40%, var(--bg-elevated));
+  color: var(--text);
+}
+
+.overview-chip-success {
+  background: color-mix(in srgb, var(--success) 20%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--success) 75%, var(--text));
+}
+
+.overview-chip-warning {
+  background: color-mix(in srgb, var(--warning) 22%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--warning) 78%, var(--text));
+}
+
+.overview-chip-danger {
+  background: color-mix(in srgb, var(--danger) 20%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--danger) 75%, var(--text));
 }
 
 .overview-list-item-actions {
