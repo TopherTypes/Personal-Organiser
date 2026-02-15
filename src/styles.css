@@ -1253,6 +1253,65 @@ textarea:focus-visible,
   border-bottom: none;
 }
 
+/*
+ * Updates table urgency states mirror task timing semantics while preserving
+ * contrast across both light and dark themes.
+ */
+.updates-due-date-cell {
+  font-weight: 600;
+}
+
+.updates-due-date-overdue {
+  color: var(--danger);
+}
+
+.updates-due-date-due-today {
+  color: color-mix(in srgb, var(--warning) 82%, var(--text));
+}
+
+.updates-due-date-upcoming {
+  color: var(--text);
+}
+
+.updates-due-date-no-due-date {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/*
+ * Pending load classes call out high follow-up pressure without overwhelming
+ * the default table rhythm for low/zero counts.
+ */
+.updates-pending-cell {
+  font-weight: 700;
+}
+
+.updates-pending-zero {
+  color: color-mix(in srgb, var(--success) 75%, var(--text));
+}
+
+.updates-pending-low {
+  color: var(--text);
+}
+
+.updates-pending-high {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 45%, transparent);
+  border-radius: 0.45rem;
+}
+
+/*
+ * Row hooks stay intentionally subtle, enabling downstream refinements while
+ * retaining compatibility with existing update/action type tokens.
+ */
+.updates-row-pending-high td {
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--danger-soft) 16%, transparent), transparent 35%);
+}
+
+:root[data-theme="dark"] .updates-pending-high {
+  background: color-mix(in srgb, var(--danger-soft) 62%, transparent);
+}
+
 .tasks-table-row {
   min-width: 780px;
   display: grid;
