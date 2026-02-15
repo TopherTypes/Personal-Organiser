@@ -49,6 +49,38 @@ test("saveTask persists scheduleDate and tracks scheduleDate updates", () => {
   assert.equal(typeof storedTask.lastUpdatedByField.scheduleDate, "string");
 });
 
+test("saveTask persists and reloads personal tasks using personal storage", () => {
+  localStorage.clear();
+
+  const create = saveTask("personal", {
+    title: "Book dentist check-up",
+    effort: 3,
+    impact: 6,
+    status: "Ready",
+    assigneeId: "",
+    projectId: "",
+    scheduleDate: "2026-04-10",
+    dueDate: "2026-04-12",
+    recurrence: "none",
+    customRecurrence: "",
+    recurrenceInterval: 1,
+    blockedByTaskIds: [],
+    blockingTaskIds: [],
+    notes: "",
+    archived: false
+  });
+
+  assert.equal(create.ok, true);
+
+  const storedEnvelope = JSON.parse(localStorage.getItem("second-brain.personal.tasks.v1"));
+  assert.equal(storedEnvelope.schemaVersion, 1);
+  assert.equal(storedEnvelope.tasks[0].title, "Book dentist check-up");
+
+  const loaded = loadTasks("personal");
+  assert.equal(loaded.length, 1);
+  assert.equal(loaded[0].title, "Book dentist check-up");
+});
+
 test("timeline sort precedence uses scheduleDate first, then dueDate, then fallback", () => {
   const withSchedule = getTaskTimelineSortDate({ scheduleDate: "2026-01-04", dueDate: "2026-01-01" });
   const withDueOnly = getTaskTimelineSortDate({ scheduleDate: "", dueDate: "2026-01-02" });

@@ -1112,11 +1112,11 @@ function stableTieBreaker(input) {
 }
 
 export function loadTasks(mode) {
-  if (mode !== "work") {
+  const storageKey = resolveTaskStorageKey(mode);
+  if (!storageKey) {
     return [];
   }
 
-  const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
   const tasks = loadVersionedCollection({
     storageKey,
     collectionKey: "tasks",
@@ -1134,11 +1134,11 @@ export function loadTasks(mode) {
 }
 
 function persistTasks(mode, tasks) {
-  if (mode !== "work") {
+  const storageKey = resolveTaskStorageKey(mode);
+  if (!storageKey) {
     return;
   }
 
-  const storageKey = `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
   persistVersionedCollection({
     storageKey,
     collectionKey: "tasks",
@@ -1417,6 +1417,22 @@ function loadPeople(mode) {
   return Array.isArray(parsed)
     ? parsed.map((person) => ({ id: person.id || "", name: person.name || "Unnamed" }))
     : [];
+}
+
+/**
+ * Resolves storage keys per mode so personal tasks persist independently
+ * from work tasks while still reusing the same task schema.
+ */
+function resolveTaskStorageKey(mode) {
+  if (mode === "work") {
+    return `${TASK_STORAGE_KEY_PREFIX}.${mode}.v1`;
+  }
+
+  if (mode === "personal") {
+    return buildPersonalStorageKey("tasks", 1);
+  }
+
+  return "";
 }
 
 function button(label, onClick, type = "button") {
