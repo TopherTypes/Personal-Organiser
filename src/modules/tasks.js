@@ -1050,6 +1050,39 @@ export function saveTask(mode, payload, editingId = "") {
   return { ok: true, wasEdit: false };
 }
 
+/**
+ * Marks a task complete from lightweight surfaces (for example dashboard overviews)
+ * without forcing users through the full edit form workflow.
+ */
+export function markTaskCompleted(mode, taskId) {
+  const tasks = loadTasks(mode);
+  const now = new Date().toISOString();
+  let wasUpdated = false;
+
+  const updated = tasks.map((task) => {
+    if (task.id !== taskId || task.status === "Done") {
+      return task;
+    }
+
+    wasUpdated = true;
+    return {
+      ...task,
+      status: "Done",
+      updatedAt: now,
+      lastUpdatedByField: {
+        ...task.lastUpdatedByField,
+        status: now
+      }
+    };
+  });
+
+  if (wasUpdated) {
+    persistTasks(mode, updated);
+  }
+
+  return wasUpdated;
+}
+
 function deleteTask(mode, taskId) {
   const tasks = loadTasks(mode);
   persistTasks(

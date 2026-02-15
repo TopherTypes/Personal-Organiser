@@ -1,6 +1,6 @@
 import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
-import { getTaskTimelineSortDate, loadTasks, renderWorkTasksModule } from "./tasks.js";
+import { getTaskTimelineSortDate, loadTasks, markTaskCompleted, renderWorkTasksModule } from "./tasks.js";
 import { loadSprints, renderWorkSprintsModule } from "./sprints.js";
 import {
   PROJECT_PERSON_ROLES,
@@ -194,70 +194,72 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
 function renderWorkOverviewDashboard(uiContext = {}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard overview-dashboard";
+  const renderContent = () => {
+    section.innerHTML = "";
 
-  const title = document.createElement("h1");
-  title.textContent = "Work Dashboard";
+    const title = document.createElement("h1");
+    title.textContent = "Work Dashboard";
 
-  const intro = document.createElement("p");
-  intro.className = "module-intro";
-  intro.textContent = "A compact snapshot of execution risk, priorities, and upcoming commitments.";
+    const intro = document.createElement("p");
+    intro.className = "module-intro";
+    intro.textContent = "A compact snapshot of execution risk, priorities, and upcoming commitments.";
 
-  const people = loadPeople("work");
-  const tasks = loadTasks("work").filter((task) => !task.archived);
-  const projects = loadProjects("work");
-  const meetings = loadMeetings("work").filter((meeting) => !meeting.archived);
-  const sprints = loadSprints("work").filter((sprint) => !sprint.archived);
-  const updates = loadUpdates("work");
-  const today = isoDateToday();
+    const people = loadPeople("work");
+    const tasks = loadTasks("work").filter((task) => !task.archived);
+    const projects = loadProjects("work");
+    const meetings = loadMeetings("work").filter((meeting) => !meeting.archived);
+    const sprints = loadSprints("work").filter((sprint) => !sprint.archived);
+    const updates = loadUpdates("work");
+    const today = isoDateToday();
 
-  const meetingRows = meetings
-    .filter((meeting) => meeting.date === today)
-    .sort((first, second) => `${first.startTime || ""}${first.name}`.localeCompare(`${second.startTime || ""}${second.name}`))
-    .slice(0, 4);
+    const meetingRows = meetings
+      .filter((meeting) => meeting.date === today)
+      .sort((first, second) => `${first.startTime || ""}${first.name}`.localeCompare(`${second.startTime || ""}${second.name}`))
+      .slice(0, 4);
 
-  const focusTasks = tasks
-    .filter((task) => !["Done", "Cancelled"].includes(task.status))
-    .sort((first, second) => {
-      const firstTimelineDate = getTaskTimelineSortDate(first);
-      const secondTimelineDate = getTaskTimelineSortDate(second);
-      if (firstTimelineDate !== secondTimelineDate) {
-        return firstTimelineDate.localeCompare(secondTimelineDate);
-      }
-      return (second.impact - second.effort) - (first.impact - first.effort);
-    })
-    .slice(0, 5);
+    const focusTasks = tasks
+      .filter((task) => !["Done", "Cancelled"].includes(task.status))
+      .sort((first, second) => {
+        const firstTimelineDate = getTaskTimelineSortDate(first);
+        const secondTimelineDate = getTaskTimelineSortDate(second);
+        if (firstTimelineDate !== secondTimelineDate) {
+          return firstTimelineDate.localeCompare(secondTimelineDate);
+        }
+        return (second.impact - second.effort) - (first.impact - first.effort);
+      })
+      .slice(0, 5);
 
-  const activeProjects = projects.filter((project) => !["completed", "cancelled", "archived"].includes(String(project.status).toLowerCase()));
-  const atRiskProjects = selectProjectsNeedingAttention(activeProjects, today).slice(0, 4);
-  const pendingUpdates = updates.reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
-  const activeSprintCount = sprints.filter((sprint) => sprint.status === "active").length;
+    const activeProjects = projects.filter((project) => !["completed", "cancelled", "archived"].includes(String(project.status).toLowerCase()));
+    const atRiskProjects = selectProjectsNeedingAttention(activeProjects, today).slice(0, 4);
+    const pendingUpdates = updates.reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
+    const activeSprintCount = sprints.filter((sprint) => sprint.status === "active").length;
 
-  const metrics = document.createElement("div");
-  metrics.className = "overview-metrics";
-  metrics.append(
-    createMetricCard("Open tasks", String(tasks.length), "tasks", uiContext),
-    createMetricCard("Meetings today", String(meetingRows.length), "meetings", uiContext),
-    createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
-    createMetricCard("Pending updates", String(pendingUpdates), "updates", uiContext),
-    createMetricCard("Active sprints", String(activeSprintCount), "sprints", uiContext)
-  );
+    const metrics = document.createElement("div");
+    metrics.className = "overview-metrics";
+    metrics.append(
+      createMetricCard("Open tasks", String(tasks.length), "tasks", uiContext),
+      createMetricCard("Meetings today", String(meetingRows.length), "meetings", uiContext),
+      createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
+      createMetricCard("Pending updates", String(pendingUpdates), "updates", uiContext),
+      createMetricCard("Active sprints", String(activeSprintCount), "sprints", uiContext)
+    );
 
-  // Lightweight trend charts stay fully local by deriving series from already
-  // persisted entities (tasks/meetings) without any server dependency.
-  const trends = createDashboardTrendsSection({
-    title: "Execution trends",
-    description: "7/30/90-day patterns for completion throughput, overdue pressure, and meetings rhythm.",
-    buildCards: ({ rangeDays }) => [
-      createTaskCompletionTrendCard(tasks, today, rangeDays),
-      createOverdueDriftTrendCard(tasks, today, rangeDays),
-      createMeetingsByWeekTrendCard(meetings, today, rangeDays)
-    ]
-  });
+    // Lightweight trend charts stay fully local by deriving series from already
+    // persisted entities (tasks/meetings) without any server dependency.
+    const trends = createDashboardTrendsSection({
+      title: "Execution trends",
+      description: "7/30/90-day patterns for completion throughput, overdue pressure, and meetings rhythm.",
+      buildCards: ({ rangeDays }) => [
+        createTaskCompletionTrendCard(tasks, today, rangeDays),
+        createOverdueDriftTrendCard(tasks, today, rangeDays),
+        createMeetingsByWeekTrendCard(meetings, today, rangeDays)
+      ]
+    });
 
-  const grid = document.createElement("div");
-  grid.className = "overview-grid";
+    const grid = document.createElement("div");
+    grid.className = "overview-grid";
 
-  grid.append(
+    grid.append(
     createOverviewListCard({
       title: "Today's meetings",
       description: "Open directly in Meetings to edit agenda or attendees.",
@@ -284,6 +286,12 @@ function renderWorkOverviewDashboard(uiContext = {}) {
             : "No dates";
         return `${task.title || "Untitled task"} · ${timelineLabel} · ${task.status}`;
       },
+      getRowActions: (task) => [
+        createOverviewItemAction("✓ Done", () => {
+          markTaskCompleted("work", task.id);
+          renderContent();
+        }, `Mark \"${task.title || "Untitled task"}\" complete`)
+      ],
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
       footerAction: createFooterAction("Open task board", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
     }),
@@ -311,7 +319,10 @@ function renderWorkOverviewDashboard(uiContext = {}) {
     })
   );
 
-  section.append(title, intro, metrics, trends, grid);
+    section.append(title, intro, metrics, trends, grid);
+  };
+
+  renderContent();
   return section;
 }
 
@@ -349,57 +360,59 @@ export function formatProjectAttentionLabel(project) {
 function renderPersonalOverviewDashboard(uiContext = {}) {
   const section = document.createElement("section");
   section.className = "mode-dashboard overview-dashboard";
+  const renderContent = () => {
+    section.innerHTML = "";
 
-  const title = document.createElement("h1");
-  title.textContent = "Personal Dashboard";
+    const title = document.createElement("h1");
+    title.textContent = "Personal Dashboard";
 
-  const intro = document.createElement("p");
-  intro.className = "module-intro";
-  intro.textContent = "A single-screen overview of your day, plans, and wellbeing trends.";
+    const intro = document.createElement("p");
+    intro.className = "module-intro";
+    intro.textContent = "A single-screen overview of your day, plans, and wellbeing trends.";
 
-  const today = isoDateToday();
-  const tasks = loadPersonalCollection("tasks");
-  const projects = loadPersonalCollection("projects");
-  const events = loadPersonalCollection("calendar");
-  const dailyLogs = loadPersonalCollection("daily-log");
-  const exerciseEntries = loadPersonalCollection("exercise-log");
+    const today = isoDateToday();
+    const tasks = loadPersonalCollection("tasks");
+    const projects = loadPersonalCollection("projects");
+    const events = loadPersonalCollection("calendar");
+    const dailyLogs = loadPersonalCollection("daily-log");
+    const exerciseEntries = loadPersonalCollection("exercise-log");
 
-  const todayTasks = tasks.filter((task) => task.dueDate === today && !["Done", "Cancelled"].includes(task.status)).slice(0, 5);
-  const recurringTasks = tasks.filter((task) => task.recurrenceMeta && task.recurrenceMeta.frequency !== "none");
-  const upcomingEvents = events.filter((entry) => entry.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
-  const recurringEvents = events.filter((entry) => entry.recurrenceMeta && entry.recurrenceMeta.frequency !== "none");
-  const activeProjects = projects.filter((project) => !project.targetDate || project.targetDate >= today).slice(0, 4);
-  const thisWeekExercise = exerciseEntries.filter((entry) => entry.date && daysBetween(entry.date, today) <= 7 && daysBetween(entry.date, today) >= 0);
-  const latestMood = dailyLogs.find((entry) => entry.date)?.mood || "-";
+    const todayTasks = tasks.filter((task) => task.dueDate === today && !["Done", "Cancelled"].includes(task.status)).slice(0, 5);
+    const recurringTasks = tasks.filter((task) => task.recurrenceMeta && task.recurrenceMeta.frequency !== "none");
+    const upcomingEvents = events.filter((entry) => entry.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+    const recurringEvents = events.filter((entry) => entry.recurrenceMeta && entry.recurrenceMeta.frequency !== "none");
+    const activeProjects = projects.filter((project) => !project.targetDate || project.targetDate >= today).slice(0, 4);
+    const thisWeekExercise = exerciseEntries.filter((entry) => entry.date && daysBetween(entry.date, today) <= 7 && daysBetween(entry.date, today) >= 0);
+    const latestMood = dailyLogs.find((entry) => entry.date)?.mood || "-";
 
-  const metrics = document.createElement("div");
-  metrics.className = "overview-metrics";
-  metrics.append(
-    createMetricCard("Tasks due today", String(todayTasks.length), "tasks", uiContext),
-    createMetricCard("Upcoming events", String(upcomingEvents.length), "calendar", uiContext),
-    createMetricCard("Recurring tasks", String(recurringTasks.length), "tasks", uiContext),
-    createMetricCard("Recurring events", String(recurringEvents.length), "calendar", uiContext),
-    createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
-    createMetricCard("Exercise entries (7d)", String(thisWeekExercise.length), "exercise-log", uiContext),
-    createMetricCard("Latest mood", String(latestMood), "daily-log", uiContext)
-  );
+    const metrics = document.createElement("div");
+    metrics.className = "overview-metrics";
+    metrics.append(
+      createMetricCard("Tasks due today", String(todayTasks.length), "tasks", uiContext),
+      createMetricCard("Upcoming events", String(upcomingEvents.length), "calendar", uiContext),
+      createMetricCard("Recurring tasks", String(recurringTasks.length), "tasks", uiContext),
+      createMetricCard("Recurring events", String(recurringEvents.length), "calendar", uiContext),
+      createMetricCard("Active projects", String(activeProjects.length), "projects", uiContext),
+      createMetricCard("Exercise entries (7d)", String(thisWeekExercise.length), "exercise-log", uiContext),
+      createMetricCard("Latest mood", String(latestMood), "daily-log", uiContext)
+    );
 
-  // Personal trends intentionally reuse the same chart primitives as work mode
-  // so the UI stays consistent while metrics remain mode-specific.
-  const trends = createDashboardTrendsSection({
-    title: "Personal consistency trends",
-    description: "7/30/90-day signals across tasks, overdue drift, calendar cadence, and routines.",
-    buildCards: ({ rangeDays }) => [
-      createTaskCompletionTrendCard(tasks, today, rangeDays),
-      createOverdueDriftTrendCard(tasks, today, rangeDays),
-      createMeetingsByWeekTrendCard(events, today, rangeDays, { dateKey: "date", heading: "Calendar meetings by week" }),
-      createHabitConsistencyTrendCard(dailyLogs, exerciseEntries, today, rangeDays)
-    ]
-  });
+    // Personal trends intentionally reuse the same chart primitives as work mode
+    // so the UI stays consistent while metrics remain mode-specific.
+    const trends = createDashboardTrendsSection({
+      title: "Personal consistency trends",
+      description: "7/30/90-day signals across tasks, overdue drift, calendar cadence, and routines.",
+      buildCards: ({ rangeDays }) => [
+        createTaskCompletionTrendCard(tasks, today, rangeDays),
+        createOverdueDriftTrendCard(tasks, today, rangeDays),
+        createMeetingsByWeekTrendCard(events, today, rangeDays, { dateKey: "date", heading: "Calendar meetings by week" }),
+        createHabitConsistencyTrendCard(dailyLogs, exerciseEntries, today, rangeDays)
+      ]
+    });
 
-  const grid = document.createElement("div");
-  grid.className = "overview-grid";
-  grid.append(
+    const grid = document.createElement("div");
+    grid.className = "overview-grid";
+    grid.append(
     createOverviewListCard({
       title: "Due today",
       description: "Personal tasks requiring attention today.",
@@ -409,6 +422,12 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
         `${task.title || "Untitled task"} · ${task.status}${
           task.recurrenceMeta ? ` · repeats ${task.recurrenceMeta.frequency}/${task.recurrenceMeta.interval}` : ""
         }`,
+      getRowActions: (task) => [
+        createOverviewItemAction("✓ Done", () => {
+          markTaskCompleted("personal", task.id);
+          renderContent();
+        }, `Mark \"${task.title || "Untitled task"}\" complete`)
+      ],
       onItemClick: () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }),
       footerAction: createFooterAction("Open tasks", () => navigateFromDashboard(uiContext, { moduleKey: "tasks" }))
     }),
@@ -444,7 +463,10 @@ function renderPersonalOverviewDashboard(uiContext = {}) {
     })
   );
 
-  section.append(title, intro, metrics, trends, grid);
+    section.append(title, intro, metrics, trends, grid);
+  };
+
+  renderContent();
   return section;
 }
 
@@ -482,7 +504,7 @@ function createMetricCard(label, value, moduleKey, uiContext) {
 /**
  * Builds a reusable list card pattern for overview dashboards.
  */
-function createOverviewListCard({ title, description, emptyText, items, getLabel, onItemClick, footerAction }) {
+function createOverviewListCard({ title, description, emptyText, items, getLabel, onItemClick, footerAction, getRowActions }) {
   const card = document.createElement("article");
   card.className = "overview-card";
 
@@ -504,12 +526,25 @@ function createOverviewListCard({ title, description, emptyText, items, getLabel
   }
 
   for (const item of items) {
+    const rowWrap = document.createElement("div");
+    rowWrap.className = "overview-list-row";
+
     const row = document.createElement("button");
     row.type = "button";
     row.className = "overview-list-item";
     row.textContent = getLabel(item);
     row.addEventListener("click", () => onItemClick(item));
-    list.appendChild(row);
+    rowWrap.appendChild(row);
+
+    const rowActions = typeof getRowActions === "function" ? getRowActions(item) : [];
+    if (rowActions.length) {
+      const actions = document.createElement("div");
+      actions.className = "overview-list-item-actions";
+      rowActions.forEach((action) => actions.appendChild(action));
+      rowWrap.appendChild(actions);
+    }
+
+    list.appendChild(rowWrap);
   }
 
   card.append(heading, copy, list);
@@ -518,6 +553,22 @@ function createOverviewListCard({ title, description, emptyText, items, getLabel
   }
 
   return card;
+}
+
+/**
+ * Creates an inline action button for overview list rows while preserving row click navigation.
+ */
+function createOverviewItemAction(label, onClick, ariaLabel = label) {
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "overview-list-item-action";
+  action.textContent = label;
+  action.setAttribute("aria-label", ariaLabel);
+  action.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  return action;
 }
 
 /**
