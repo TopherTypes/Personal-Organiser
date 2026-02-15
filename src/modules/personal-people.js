@@ -84,6 +84,18 @@ export function renderPersonalPeopleModule() {
   return section;
 }
 
+
+/**
+ * Shared snapshot loader used by other Personal modules (for example Projects)
+ * so linked-entity pickers can consume the same data source as this CRM UI.
+ */
+export function loadPersonalPeopleSnapshot() {
+  return loadContacts().map((contact) => ({
+    ...contact,
+    archived: Boolean(contact.archived)
+  }));
+}
+
 function loadContacts() {
   const raw = localStorage.getItem(PERSONAL_PEOPLE_KEY);
   if (!raw) {
