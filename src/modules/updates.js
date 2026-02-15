@@ -11,6 +11,10 @@ const UPDATE_ENTITY_TYPES = {
   ACTION: "action"
 };
 const ACTION_OWNER_ME = "me";
+const PENDING_COUNT_BANDS = {
+  low: 1,
+  high: 3
+};
 
 /**
  * Renders the work updates module and keeps data dependencies explicit.
@@ -99,6 +103,16 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
     for (const update of activeUpdates) {
       const row = document.createElement("tr");
+      const dueDateState = getUpdateDueDateState(update.dueDate);
+      const pendingCount = selectPendingPeopleCount(update);
+      const pendingLoadState = getPendingLoadState(pendingCount);
+      // Preserve type semantics while exposing due/pending hooks for richer row highlighting.
+      row.className = [
+        "updates-row",
+        `updates-row-type-${update.entityType === UPDATE_ENTITY_TYPES.ACTION ? "action" : "update"}`,
+        `updates-row-due-${dueDateState}`,
+        `updates-row-pending-${pendingLoadState}`
+      ].join(" ");
 
       const typeCell = document.createElement("td");
       typeCell.appendChild(buildUpdateTypePill(update.entityType));
@@ -113,10 +127,12 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       meetingCell.textContent = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
 
       const dueDateCell = document.createElement("td");
+      dueDateCell.className = `updates-due-date-cell updates-due-date-${dueDateState}`;
       dueDateCell.textContent = update.dueDate || "Not set";
 
       const pendingCell = document.createElement("td");
-      pendingCell.textContent = String(selectPendingPeopleCount(update));
+      pendingCell.className = `updates-pending-cell updates-pending-${pendingLoadState}`;
+      pendingCell.textContent = String(pendingCount);
 
       const completedCell = document.createElement("td");
       completedCell.textContent = String(selectCompletedPeopleCount(update));
@@ -593,6 +609,66 @@ export function selectPendingPeopleCount(update) {
  */
 export function selectCompletedPeopleCount(update) {
   return normaliseToUpdateList(update?.toUpdate).filter((entry) => entry.status === "updated").length;
+}
+
+/**
+ * Buckets update due dates for urgency styling in table cells and row-level hooks.
+ */
+function getUpdateDueDateState(dueDate) {
+  const dueTime = parseUpdateDateToMidnight(dueDate);
+  if (!dueTime) {
+    return "no-due-date";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+  if (dueTime < todayTime) {
+    return "overdue";
+  }
+
+  if (dueTime === todayTime) {
+    return "due-today";
+  }
+
+  return "upcoming";
+}
+
+/**
+ * Converts a pending recipient count into visual load bands.
+ */
+function getPendingLoadState(pendingCount) {
+  if (pendingCount <= 0) {
+    return "zero";
+  }
+
+  if (pendingCount >= PENDING_COUNT_BANDS.high) {
+    return "high";
+  }
+
+  if (pendingCount >= PENDING_COUNT_BANDS.low) {
+    return "low";
+  }
+
+  return "zero";
+}
+
+/**
+ * Parses yyyy-mm-dd update dates into local-midnight timestamps for day-level comparisons.
+ */
+function parseUpdateDateToMidnight(dateValue) {
+  if (!dateValue) {
+    return null;
+  }
+
+  const [yearValue, monthValue, dayValue] = String(dateValue).split("-").map((segment) => Number(segment));
+  if (![yearValue, monthValue, dayValue].every((segment) => Number.isInteger(segment))) {
+    return null;
+  }
+
+  const parsedDate = new Date(yearValue, monthValue - 1, dayValue);
+  parsedDate.setHours(0, 0, 0, 0);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate.getTime();
 }
 
 /**
