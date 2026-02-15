@@ -152,6 +152,34 @@ test("expired token path falls back to signed-out before sync", async () => {
   assert.equal(state.authSession, null);
 });
 
+test("manual sync auth check enables silent refresh for best-effort session recovery", async () => {
+  localStorage.clear();
+
+  const ensureCalls = [];
+  const fakeAuthClient = {
+    ensureValidSession: async (options = {}) => {
+      ensureCalls.push(options);
+      return { status: "signed-in", session: { email: "dev@example.com", expiresAt: Date.now() + 60_000 } };
+    },
+    signInInteractive: async () => ({ status: "signed-in", session: null }),
+    signOut: () => ({ status: "signed-out", session: null })
+  };
+
+  const sync = createSyncSubsystem({
+    authClientFactory: () => fakeAuthClient,
+    windowRef: createWindowStub(),
+    navigatorRef: { onLine: true },
+    driveClientFactory: () => createDriveClientStub()
+  });
+
+  sync.start();
+  await flushTasks();
+  ensureCalls.length = 0;
+  await sync.syncNow({ reason: "manual" });
+
+  assert.deepEqual(ensureCalls[0], { allowSilentRefresh: true });
+});
+
 
 test("syncNow short-circuits when auth is required", async () => {
   localStorage.clear();
