@@ -2,6 +2,7 @@ import { loadVersionedCollection, persistVersionedCollection } from "./storage-c
 import { generateId } from "./id.js";
 
 export const PROJECT_STORAGE_KEY = "second-brain.work.projects.work";
+const PERSONAL_PROJECT_STORAGE_KEY = "second-brain.personal.projects.personal";
 export const PROJECT_SCHEMA_VERSION = 1;
 export const PROJECT_CADENCE_UNITS = ["days", "weeks", "months"];
 const DEFAULT_CADENCE_INTERVAL = 1;
@@ -22,12 +23,13 @@ export const PROJECT_PERSON_ROLES = [
  * Loads projects from localStorage and normalises to a safe shape.
  */
 export function loadProjects(mode = "work") {
-  if (mode !== "work") {
+  const storageKey = resolveProjectStorageKey(mode);
+  if (!storageKey) {
     return [];
   }
 
   return loadVersionedCollection({
-    storageKey: PROJECT_STORAGE_KEY,
+    storageKey,
     collectionKey: "projects",
     schemaVersion: PROJECT_SCHEMA_VERSION,
     normaliseItem: normaliseProject,
@@ -39,12 +41,13 @@ export function loadProjects(mode = "work") {
  * Persists projects in a versioned envelope for safe schema growth.
  */
 export function persistProjects(mode = "work", projects = []) {
-  if (mode !== "work") {
+  const storageKey = resolveProjectStorageKey(mode);
+  if (!storageKey) {
     return;
   }
 
   persistVersionedCollection({
-    storageKey: PROJECT_STORAGE_KEY,
+    storageKey,
     collectionKey: "projects",
     schemaVersion: PROJECT_SCHEMA_VERSION,
     records: projects
@@ -183,6 +186,22 @@ export function loadPersonProjectLinks(mode = "work", personId) {
     .filter(Boolean);
 }
 
+
+
+/**
+ * Resolves the versioned storage key for a supported mode.
+ */
+function resolveProjectStorageKey(mode) {
+  if (mode === "work") {
+    return PROJECT_STORAGE_KEY;
+  }
+
+  if (mode === "personal") {
+    return PERSONAL_PROJECT_STORAGE_KEY;
+  }
+
+  return "";
+}
 
 function normaliseProjectCadenceFields(project) {
   return {

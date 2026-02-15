@@ -3,6 +3,7 @@ import { loadVersionedCollection, persistVersionedCollection, safeJsonParse } fr
 import { hydrateSelectOptions } from "./select-controls.js";
 import { generateId } from "./id.js";
 import { createModalDismissGuard } from "./modal-dismiss-guard.js";
+import { buildPersonalStorageKey } from "./personal-keys.js";
 
 const TASK_STORAGE_KEY_PREFIX = "second-brain.work.tasks";
 const TASK_SCHEMA_VERSION = 1;
@@ -74,11 +75,13 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
 
   const headingWrap = document.createElement("div");
   const title = document.createElement("h1");
-  title.textContent = "Work Tasks";
+  const isPersonalMode = state.mode === "personal";
+  title.textContent = isPersonalMode ? "Personal Tasks" : "Work Tasks";
   const intro = document.createElement("p");
   intro.className = "module-intro";
-  intro.textContent =
-    "Capture one-off and recurring tasks, assign owners and projects, and triage by priority score.";
+  intro.textContent = isPersonalMode
+    ? "Capture one-off and recurring tasks with the same planning workflow used in Work mode."
+    : "Capture one-off and recurring tasks, assign owners and projects, and triage by priority score.";
   headingWrap.append(title, intro);
 
   const addButton = document.createElement("button");
@@ -1387,6 +1390,23 @@ function buildDependencyStateLabel(task, taskById) {
 }
 
 function loadPeople(mode) {
+  if (mode === "personal") {
+    const personalStorageKey = buildPersonalStorageKey("people", 1);
+    const raw = localStorage.getItem(personalStorageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = safeJsonParse(raw, []);
+    return Array.isArray(parsed)
+      ? parsed.map((person) => ({
+          id: person.id || "",
+          name: person.name || "Unnamed",
+          archived: Boolean(person.archived)
+        }))
+      : [];
+  }
+
   const storageKey = `${PEOPLE_STORAGE_KEY_PREFIX}.${mode}.v1`;
   const raw = localStorage.getItem(storageKey);
   if (!raw) {

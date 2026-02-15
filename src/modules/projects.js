@@ -41,12 +41,14 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
 
     const titleWrap = document.createElement("div");
     const title = document.createElement("h1");
-    title.textContent = "Work Projects";
+    const isPersonalMode = mode === "personal";
+    title.textContent = isPersonalMode ? "Personal Projects" : "Work Projects";
 
     const intro = document.createElement("p");
     intro.className = "module-intro";
-    intro.textContent =
-      "Group related meetings and people in one place. Links are non-destructive and can be updated later.";
+    intro.textContent = isPersonalMode
+      ? "Group related tasks and people in one place using the same project workflow as Work mode."
+      : "Group related meetings and people in one place. Links are non-destructive and can be updated later.";
 
     titleWrap.append(title, intro);
 
@@ -103,7 +105,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
       const empty = document.createElement("p");
       empty.className = "empty-state";
       empty.textContent =
-        "No projects match the current filters. Create a project to start linking people and meetings.";
+        "No projects match the current filters. Create a project to start linking related records.";
       list.appendChild(empty);
     }
 
