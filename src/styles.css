@@ -2476,3 +2476,56 @@ body[data-density="compact"] .footer {
     min-width: min(15.5rem, calc(100vw - (2 * var(--space-4))));
   }
 }
+
+/*
+ * Shared personal-log chips keep mood and exercise metadata visually aligned
+ * while honoring light/dark theme tokens.
+ */
+.personal-log-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.5rem;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
+.personal-log-chip-neutral,
+.personal-log-chip-secondary {
+  background: color-mix(in srgb, var(--bg-muted) 75%, var(--bg-elevated));
+  color: var(--text-muted);
+}
+
+.personal-log-chip-mood-low {
+  background: color-mix(in srgb, var(--danger) 18%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: color-mix(in srgb, var(--danger) 70%, var(--text));
+}
+
+.personal-log-chip-mood-medium {
+  background: color-mix(in srgb, var(--warning) 20%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+  color: color-mix(in srgb, var(--warning) 76%, var(--text));
+}
+
+.personal-log-chip-mood-high {
+  background: color-mix(in srgb, var(--success) 20%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  color: color-mix(in srgb, var(--success) 72%, var(--text));
+}
+
+.personal-log-chip-activity-run {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+}
+
+.personal-log-chip-activity-walk {
+  background: color-mix(in srgb, var(--success) 16%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  color: color-mix(in srgb, var(--success) 70%, var(--text));
+}

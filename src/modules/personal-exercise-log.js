@@ -71,7 +71,21 @@ export function renderPersonalExerciseLogModule() {
     entries.forEach((entry) => {
       const row = document.createElement("article");
       row.className = "meeting-row";
-      row.textContent = `${entry.date} · ${entry.type} · ${entry.distanceKm} km · ${entry.durationMins} mins`;
+
+      const rowTitle = document.createElement("p");
+      rowTitle.className = "meeting-open-button";
+      rowTitle.textContent = entry.date || "-";
+
+      const metadata = document.createElement("div");
+      metadata.className = "overview-inline-chips";
+
+      metadata.append(
+        buildActivityTypeChip(entry.type),
+        buildExerciseMetadataChip(`${entry.distanceKm} km`),
+        buildExerciseMetadataChip(`${entry.durationMins} mins`)
+      );
+
+      row.append(rowTitle, metadata);
       list.appendChild(row);
     });
   }
@@ -105,4 +119,34 @@ function buildInput(labelText, type, required) {
   input.required = required;
   wrap.appendChild(input);
   return { wrap, input };
+}
+
+/**
+ * Activity-type chip conveys run/walk classification with distinct visual cues.
+ */
+function buildActivityTypeChip(activityType) {
+  const chip = document.createElement("span");
+  chip.className = "personal-log-chip personal-log-chip-activity";
+
+  const normalizedType = String(activityType || "").toLowerCase();
+  if (normalizedType === "run") {
+    chip.classList.add("personal-log-chip-activity-run");
+  } else if (normalizedType === "walk") {
+    chip.classList.add("personal-log-chip-activity-walk");
+  } else {
+    chip.classList.add("personal-log-chip-neutral");
+  }
+
+  chip.textContent = activityType || "Unknown activity";
+  return chip;
+}
+
+/**
+ * Secondary metadata chips intentionally remain neutral to de-emphasize metrics.
+ */
+function buildExerciseMetadataChip(text) {
+  const chip = document.createElement("span");
+  chip.className = "personal-log-chip personal-log-chip-secondary";
+  chip.textContent = text;
+  return chip;
 }
