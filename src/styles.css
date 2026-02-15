@@ -925,6 +925,22 @@ textarea:focus-visible,
   background: var(--success-soft);
 }
 
+.status-pill.planned {
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--bg-elevated));
+}
+
+.status-pill.on-hold {
+  background: color-mix(in srgb, var(--danger-soft) 38%, var(--bg-elevated));
+}
+
+.status-pill.completed {
+  background: color-mix(in srgb, var(--success-soft) 70%, var(--bg-elevated));
+}
+
+.status-pill.neutral {
+  background: color-mix(in srgb, var(--bg-muted) 70%, transparent);
+}
+
 .status-badge.archived,
 .status-pill.archived {
   background: var(--danger-soft);

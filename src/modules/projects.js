@@ -459,7 +459,8 @@ function buildProjectCard(project, people, meetings, handlers) {
   heading.textContent = project.title;
 
   const status = document.createElement("span");
-  status.className = "status-pill active";
+  // Keep visual status semantics aligned with persisted project state.
+  status.className = `status-pill ${deriveProjectStatusClass(project)}`;
   status.textContent = project.status;
   top.append(heading, status);
 
@@ -517,6 +518,29 @@ function buildProjectCard(project, people, meetings, handlers) {
   actions.append(view, edit, remove);
   card.append(top, description, meta, cadenceSummary, linkPreview, actions);
   return card;
+}
+
+/**
+ * Maps project status values to pill variants, with safe fallback handling for
+ * legacy/unknown data and archived records.
+ */
+function deriveProjectStatusClass(project) {
+  if (project.archived || project.status === "archived") {
+    return "archived";
+  }
+
+  const statusClassMap = {
+    planned: "planned",
+    active: "active",
+    "on-hold": "on-hold",
+    completed: "completed"
+  };
+
+  const normalisedStatus = String(project.status || "")
+    .trim()
+    .toLowerCase();
+
+  return statusClassMap[normalisedStatus] || "neutral";
 }
 
 function queryProjects(projects, meetings, state) {
