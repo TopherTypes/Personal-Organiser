@@ -20,6 +20,24 @@ const TASK_STATUSES = [
 ];
 
 /**
+ * Maps canonical task status values to stable class-name suffixes used by status badges.
+ */
+const TASK_STATUS_CLASS_SUFFIX = {
+  Backlog: "backlog",
+  Ready: "ready",
+  "In Progress": "in-progress",
+  Blocked: "blocked",
+  "Waiting On": "waiting-on",
+  Done: "done",
+  Cancelled: "cancelled"
+};
+
+const PRIORITY_SCORE_BANDS = {
+  high: 80,
+  medium: 50
+};
+
+/**
  * Maps historic/legacy task status values to canonical status values from SPECS §7.2.
  * This keeps older localStorage records loadable while converging all writes to canonical values.
  */
@@ -317,7 +335,11 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   const statusCell = document.createElement("div");
   statusCell.className = "tasks-cell";
-  statusCell.textContent = toTitleCase(task.status);
+
+  const statusBadge = document.createElement("span");
+  statusBadge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(task.status)}`;
+  statusBadge.textContent = toTitleCase(task.status);
+  statusCell.appendChild(statusBadge);
 
   const relationCell = document.createElement("div");
   relationCell.className = "tasks-cell";
@@ -328,9 +350,11 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
   dependencyCell.textContent = dependencyStateLabel;
 
   const dueCell = document.createElement("div");
-  dueCell.className = "tasks-cell";
+  const dueDateState = getTaskDueDateState(task);
+  dueCell.className = `tasks-cell task-due-state task-due-state-${dueDateState}`;
 
   const duePrimary = document.createElement("span");
+  duePrimary.className = `task-due-chip task-due-chip-${dueDateState}`;
   duePrimary.textContent = task.scheduleDate
     ? `Scheduled ${task.scheduleDate}`
     : task.dueDate
@@ -351,7 +375,8 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
   priorityCell.className = "tasks-cell";
 
   const priorityPill = document.createElement("span");
-  priorityPill.className = "task-score-pill";
+  const priorityScoreBand = getPriorityScoreBand(task.priorityScore);
+  priorityPill.className = `task-score-pill task-score-pill-${priorityScoreBand}`;
   priorityPill.textContent = `Score ${task.priorityScore}`;
   priorityCell.appendChild(priorityPill);
 
@@ -365,6 +390,72 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   row.append(taskCell, statusCell, dependencyCell, relationCell, dueCell, priorityCell, actions);
   return row;
+}
+
+/**
+ * Returns a CSS-safe suffix for task status badges.
+ */
+function getTaskStatusClassSuffix(status) {
+  return TASK_STATUS_CLASS_SUFFIX[status] || "backlog";
+}
+
+/**
+ * Classifies a task into due-date urgency buckets so visual styling can highlight timing risk.
+ */
+function getTaskDueDateState(task) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const scheduleTime = parseTaskDateToMidnight(task.scheduleDate);
+  const dueTime = parseTaskDateToMidnight(task.dueDate);
+
+  if (!scheduleTime && !dueTime) {
+    return "unscheduled";
+  }
+
+  const timelineDate = scheduleTime || dueTime;
+  const hasOverdueDate = [scheduleTime, dueTime].some((dateValue) => dateValue && dateValue < today.getTime());
+  if (hasOverdueDate) {
+    return "overdue";
+  }
+
+  if (timelineDate === today.getTime()) {
+    return "due-today";
+  }
+
+  return "upcoming";
+}
+
+/**
+ * Buckets priority score for at-a-glance visual triage bands.
+ */
+function getPriorityScoreBand(priorityScore) {
+  if (priorityScore >= PRIORITY_SCORE_BANDS.high) {
+    return "high";
+  }
+
+  if (priorityScore >= PRIORITY_SCORE_BANDS.medium) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+/**
+ * Parses a yyyy-mm-dd task date and normalises it to local midnight for stable day-level compares.
+ */
+function parseTaskDateToMidnight(dateValue) {
+  if (!dateValue) {
+    return null;
+  }
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {

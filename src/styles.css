@@ -1268,6 +1268,107 @@ textarea:focus-visible,
   gap: var(--space-1);
 }
 
+/*
+ * Status badges make workflow state scannable without relying on table-column context.
+ */
+.task-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.task-status-backlog {
+  border-color: color-mix(in srgb, var(--text-muted) 48%, var(--border));
+  background: color-mix(in srgb, var(--bg-muted) 88%, transparent);
+}
+
+.task-status-ready,
+.task-status-in-progress {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
+}
+
+.task-status-blocked,
+.task-status-cancelled {
+  border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 80%, transparent);
+}
+
+.task-status-waiting-on {
+  border-color: color-mix(in srgb, #d59f35 64%, var(--border));
+  background: color-mix(in srgb, #ffe8ba 58%, transparent);
+}
+
+:root[data-theme="dark"] .task-status-waiting-on {
+  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
+  background: color-mix(in srgb, #4b3a1f 82%, transparent);
+}
+
+.task-status-done {
+  border-color: color-mix(in srgb, #1d8f58 58%, var(--border));
+  background: color-mix(in srgb, var(--success-soft) 86%, transparent);
+}
+
+/*
+ * Due-state chips and cell accents provide clear urgency semantics for scheduling.
+ */
+.task-due-state {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.task-due-chip {
+  width: fit-content;
+  padding: 0.06rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.task-due-chip-overdue,
+.task-due-state-overdue .task-due-chip {
+  border-color: color-mix(in srgb, var(--danger) 62%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 82%, transparent);
+}
+
+.task-due-chip-due-today,
+.task-due-state-due-today .task-due-chip {
+  border-color: color-mix(in srgb, #d59f35 62%, var(--border));
+  background: color-mix(in srgb, #ffe8ba 58%, transparent);
+}
+
+:root[data-theme="dark"] .task-due-chip-due-today,
+:root[data-theme="dark"] .task-due-state-due-today .task-due-chip {
+  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
+  background: color-mix(in srgb, #4b3a1f 84%, transparent);
+}
+
+.task-due-chip-upcoming,
+.task-due-state-upcoming .task-due-chip {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 84%, transparent);
+}
+
+.task-due-chip-unscheduled,
+.task-due-state-unscheduled .task-due-chip {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--text-muted) 46%, var(--border));
+  background: color-mix(in srgb, var(--bg-muted) 70%, transparent);
+  color: var(--text-muted);
+}
+
+/*
+ * Priority score bands reinforce urgency ordering through consistent triage colours.
+ */
 .task-score-pill {
   width: fit-content;
   padding: 0.05rem 0.45rem;
@@ -1277,6 +1378,26 @@ textarea:focus-visible,
   color: var(--text);
   font-size: 0.74rem;
   font-weight: 600;
+}
+
+.task-score-pill-high {
+  border-color: color-mix(in srgb, var(--danger) 62%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 82%, transparent);
+}
+
+.task-score-pill-medium {
+  border-color: color-mix(in srgb, #d59f35 62%, var(--border));
+  background: color-mix(in srgb, #ffe8ba 58%, transparent);
+}
+
+:root[data-theme="dark"] .task-score-pill-medium {
+  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
+  background: color-mix(in srgb, #4b3a1f 84%, transparent);
+}
+
+.task-score-pill-low {
+  border-color: color-mix(in srgb, #1d8f58 58%, var(--border));
+  background: color-mix(in srgb, var(--success-soft) 84%, transparent);
 }
 
 .task-meta-inline {
