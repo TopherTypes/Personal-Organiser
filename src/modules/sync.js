@@ -299,8 +299,11 @@ export function createSyncSubsystem({
     }
 
     // Token expiry is checked before sync so stale persisted metadata does not imply auth validity.
+    // For user-initiated sync attempts, we allow a best-effort silent refresh so
+    // sessions can recover without forcing an immediate interactive prompt.
+    const allowSilentRefresh = reason === "manual" || reason === "online";
     setPartialState({ syncStatus: "auth-check", errorMessage: "", errorReason: "" });
-    const authResult = await authClient.ensureValidSession({ allowSilentRefresh: false });
+    const authResult = await authClient.ensureValidSession({ allowSilentRefresh });
     if (authResult.status !== "signed-in") {
       setPartialState({
         authStatus: "signed-out",
