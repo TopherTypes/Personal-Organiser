@@ -2140,8 +2140,16 @@ body[data-density="compact"] .footer {
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   box-shadow: var(--elevation-2);
   backdrop-filter: blur(7px);
-  display: grid;
+  display: none;
   gap: var(--space-2);
+}
+
+/*
+ * Menu options are intentionally hidden by default and only revealed when
+ * the launcher is toggled open.
+ */
+.quick-actions.quick-actions-expanded .quick-actions-menu {
+  display: grid;
 }
 
 .quick-actions-item {

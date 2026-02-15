@@ -24,13 +24,15 @@ export function renderQuickActions({
   const quickActions = buildQuickActionConfig(activeMode);
   const menuId = `quick-actions-menu-${activeMode}`;
 
+  // Menu remains collapsed by default so the floating affordance stays unobtrusive
+  // until the user explicitly asks for quick-create shortcuts.
   let isMenuOpen = false;
 
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = "quick-actions-trigger";
   launcher.textContent = "+";
-  launcher.setAttribute("aria-label", "Open quick create actions");
+  launcher.setAttribute("aria-label", "Expand quick create actions");
   launcher.setAttribute("aria-haspopup", "menu");
   launcher.setAttribute("aria-expanded", "false");
   launcher.setAttribute("aria-controls", menuId);
@@ -115,14 +117,20 @@ export function renderQuickActions({
 
   function openMenu() {
     isMenuOpen = true;
+    container.classList.add("quick-actions-expanded");
     menu.hidden = false;
+    launcher.textContent = "×";
+    launcher.setAttribute("aria-label", "Collapse quick create actions");
     launcher.setAttribute("aria-expanded", "true");
     menuItems[0]?.focus();
   }
 
   function closeMenu({ returnFocus = true } = {}) {
     isMenuOpen = false;
+    container.classList.remove("quick-actions-expanded");
     menu.hidden = true;
+    launcher.textContent = "+";
+    launcher.setAttribute("aria-label", "Expand quick create actions");
     launcher.setAttribute("aria-expanded", "false");
     if (returnFocus) {
       launcher.focus();
