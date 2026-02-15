@@ -63,10 +63,23 @@ export function renderPersonalDailyLogModule() {
     entries.forEach((entry) => {
       const card = document.createElement("article");
       card.className = "project-card";
-      card.innerHTML = `<h3>${entry.date}</h3>
-        <p><strong>Nutrition:</strong> ${entry.nutrition || "-"}</p>
-        <p><strong>Exercise:</strong> ${entry.exercise || "-"}</p>
-        <p><strong>Mood:</strong> ${entry.mood || "-"}</p>`;
+
+      const heading = document.createElement("h3");
+      heading.textContent = entry.date;
+
+      const nutritionLine = document.createElement("p");
+      nutritionLine.innerHTML = `<strong>Nutrition:</strong> ${entry.nutrition || "-"}`;
+
+      const exerciseLine = document.createElement("p");
+      exerciseLine.innerHTML = `<strong>Exercise:</strong> ${entry.exercise || "-"}`;
+
+      const moodLine = document.createElement("p");
+      const moodLabel = document.createElement("strong");
+      moodLabel.textContent = "Mood: ";
+      const moodChip = buildMoodChip(entry.mood);
+      moodLine.append(moodLabel, moodChip);
+
+      card.append(heading, nutritionLine, exerciseLine, moodLine);
       list.appendChild(card);
     });
   }
@@ -91,6 +104,40 @@ function loadEntries() {
 
 function persistEntries(entries) {
   localStorage.setItem(PERSONAL_DAILY_LOG_KEY, JSON.stringify(entries));
+}
+
+/**
+ * Builds a mood chip with semantic score band classes to keep visual mapping
+ * consistent while leaving persisted values untouched.
+ */
+function buildMoodChip(rawMoodValue) {
+  const numericMood = Number(rawMoodValue);
+  const chip = document.createElement("span");
+  chip.className = "personal-log-chip personal-log-chip-mood";
+
+  if (!Number.isFinite(numericMood)) {
+    chip.classList.add("personal-log-chip-neutral");
+    chip.textContent = rawMoodValue || "-";
+    return chip;
+  }
+
+  const { className, label } = getMoodBand(numericMood);
+  chip.classList.add(className);
+  chip.textContent = `${label} (${numericMood}/10)`;
+  return chip;
+}
+
+/**
+ * Maps numeric mood values into low/medium/high presentation bands.
+ */
+function getMoodBand(score) {
+  if (score <= 3) {
+    return { className: "personal-log-chip-mood-low", label: "Low" };
+  }
+  if (score <= 7) {
+    return { className: "personal-log-chip-mood-medium", label: "Medium" };
+  }
+  return { className: "personal-log-chip-mood-high", label: "High" };
 }
 
 function buildInput(labelText, type, required) {
