@@ -1210,153 +1210,117 @@ textarea:focus-visible,
 }
 
 .tasks-table {
-  display: grid;
-  overflow-x: auto;
-}
-
-.updates-form,
-.updates-editor-form {
-  display: grid;
-  gap: var(--space-3);
-}
-
-/*
- * Keep form labels in the updates editor vertically stacked so long text fields,
- * date controls and selects do not visually collide in compact widths.
- */
-.updates-editor-form .field-label {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.updates-table-wrap {
-  overflow-x: auto;
-}
-
-.updates-table {
   width: 100%;
+  min-width: 880px;
   border-collapse: collapse;
-  min-width: 760px;
+  table-layout: fixed;
 }
 
-.updates-table th,
-.updates-table td {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
-}
-
-.updates-table th {
-  font-size: 0.84rem;
-  color: var(--text-muted);
+.tasks-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--bg-muted);
-}
-
-.updates-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/*
- * Updates table urgency states mirror task timing semantics while preserving
- * contrast across both light and dark themes.
- */
-.updates-due-date-cell {
-  font-weight: 600;
-}
-
-.updates-due-date-overdue {
-  color: var(--danger);
-}
-
-.updates-due-date-due-today {
-  color: color-mix(in srgb, var(--warning) 82%, var(--text));
-}
-
-.updates-due-date-upcoming {
-  color: var(--text);
-}
-
-.updates-due-date-no-due-date {
   color: var(--text-muted);
-  font-weight: 500;
-}
-
-/*
- * Pending load classes call out high follow-up pressure without overwhelming
- * the default table rhythm for low/zero counts.
- */
-.updates-pending-cell {
-  font-weight: 700;
-}
-
-.updates-pending-zero {
-  color: color-mix(in srgb, var(--success) 75%, var(--text));
-}
-
-.updates-pending-low {
-  color: var(--text);
-}
-
-.updates-pending-high {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger-soft) 45%, transparent);
-  border-radius: 0.45rem;
-}
-
-/*
- * Row hooks stay intentionally subtle, enabling downstream refinements while
- * retaining compatibility with existing update/action type tokens.
- */
-.updates-row-pending-high td {
-  background-image: linear-gradient(to right, color-mix(in srgb, var(--danger-soft) 16%, transparent), transparent 35%);
-}
-
-:root[data-theme="dark"] .updates-pending-high {
-  background: color-mix(in srgb, var(--danger-soft) 62%, transparent);
-}
-
-.tasks-table-row {
-  min-width: 780px;
-  display: grid;
-  grid-template-columns: 2fr 1fr 1.3fr 1.4fr 1.4fr 0.8fr auto;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
   border-bottom: 1px solid var(--border);
 }
 
-.tasks-cell-title {
-  display: grid;
-  gap: var(--space-1);
+.tasks-table tbody td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  line-height: 1.2;
+  font-size: 0.78rem;
 }
 
-.task-title-link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  font-weight: 700;
-  text-align: left;
+.tasks-display-row .task-row-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-right: 0.25rem;
+  padding: 0.08rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  white-space: nowrap;
+}
+
+.task-muted {
+  color: var(--text-muted);
+}
+
+.task-cell-dates {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tasks-row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.task-edit-trigger {
+  padding: 0.2rem 0.5rem;
+  min-height: unset;
+}
+
+.task-row-menu summary {
+  list-style: none;
   cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  text-underline-offset: 0.14rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.4rem;
+  text-align: center;
 }
 
-.task-title-link:hover {
-  color: var(--accent);
+.task-row-menu[open] {
+  position: relative;
 }
 
-.task-inline-row {
+.task-row-menu[open] button {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  white-space: nowrap;
+  z-index: 4;
+}
+
+.tasks-editor-row td {
+  padding: 0.55rem 0.6rem 0.7rem;
+  background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
+}
+
+.task-inline-editor {
   display: grid;
-  gap: var(--space-1);
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.task-inline-input {
-  min-height: 1.9rem;
-  padding: 0.2rem 0.4rem;
+.task-inline-editor .field-label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+}
+
+.task-inline-editor-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 /*
@@ -1371,13 +1335,13 @@ textarea:focus-visible,
   border: 1px solid var(--border);
   background: var(--bg-muted);
   color: var(--text);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 650;
 }
 
+
 .task-status-backlog {
   border-color: color-mix(in srgb, var(--text-muted) 48%, var(--border));
-  background: color-mix(in srgb, var(--bg-muted) 88%, transparent);
 }
 
 .task-status-ready,
@@ -1397,78 +1361,21 @@ textarea:focus-visible,
   background: color-mix(in srgb, #ffe8ba 58%, transparent);
 }
 
-:root[data-theme="dark"] .task-status-waiting-on {
-  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
-  background: color-mix(in srgb, #4b3a1f 82%, transparent);
-}
-
 .task-status-done {
   border-color: color-mix(in srgb, #1d8f58 58%, var(--border));
   background: color-mix(in srgb, var(--success-soft) 86%, transparent);
 }
 
-/*
- * Due-state chips and cell accents provide clear urgency semantics for scheduling.
- */
-.task-due-state {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.task-due-chip {
-  width: fit-content;
-  padding: 0.06rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.task-due-chip-overdue,
-.task-due-state-overdue .task-due-chip {
-  border-color: color-mix(in srgb, var(--danger) 62%, var(--border));
-  background: color-mix(in srgb, var(--danger-soft) 82%, transparent);
-}
-
-.task-due-chip-due-today,
-.task-due-state-due-today .task-due-chip {
-  border-color: color-mix(in srgb, #d59f35 62%, var(--border));
-  background: color-mix(in srgb, #ffe8ba 58%, transparent);
-}
-
-:root[data-theme="dark"] .task-due-chip-due-today,
-:root[data-theme="dark"] .task-due-state-due-today .task-due-chip {
-  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
-  background: color-mix(in srgb, #4b3a1f 84%, transparent);
-}
-
-.task-due-chip-upcoming,
-.task-due-state-upcoming .task-due-chip {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 84%, transparent);
-}
-
-.task-due-chip-unscheduled,
-.task-due-state-unscheduled .task-due-chip {
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--text-muted) 46%, var(--border));
-  background: color-mix(in srgb, var(--bg-muted) 70%, transparent);
-  color: var(--text-muted);
-}
-
-/*
- * Priority score bands reinforce urgency ordering through consistent triage colours.
- */
 .task-score-pill {
-  width: fit-content;
-  padding: 0.05rem 0.45rem;
+  display: inline-flex;
+  justify-content: center;
+  min-width: 3.25rem;
+  padding: 0.08rem 0.45rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
   background: color-mix(in srgb, var(--accent-soft) 80%, transparent);
-  color: var(--text);
-  font-size: 0.74rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 650;
 }
 
 .task-score-pill-high {
@@ -1481,52 +1388,10 @@ textarea:focus-visible,
   background: color-mix(in srgb, #ffe8ba 58%, transparent);
 }
 
-:root[data-theme="dark"] .task-score-pill-medium {
-  border-color: color-mix(in srgb, #efbf68 70%, var(--border));
-  background: color-mix(in srgb, #4b3a1f 84%, transparent);
-}
-
 .task-score-pill-low {
   border-color: color-mix(in srgb, #1d8f58 58%, var(--border));
   background: color-mix(in srgb, var(--success-soft) 84%, transparent);
 }
-
-.task-meta-inline {
-  display: inline-flex;
-  gap: 0.25rem;
-  align-items: center;
-}
-
-.tasks-table-row:last-child {
-  border-bottom: none;
-}
-
-.tasks-table-head {
-  font-size: 0.84rem;
-  color: var(--text-muted);
-  background: var(--bg-muted);
-}
-
-.tasks-row-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.task-delete-icon {
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0.15rem;
-}
-
-.task-delete-icon:hover {
-  color: var(--danger);
-}
-
-
 
 /*
  * Overview dashboards use a constrained, scroll-safe card grid so the
@@ -2271,8 +2136,12 @@ body[data-density="compact"] .footer {
     grid-template-columns: 1fr;
   }
 
-  .tasks-table-row {
+  .tasks-table {
     min-width: 720px;
+  }
+
+  .task-inline-editor {
+    grid-template-columns: 1fr;
   }
 
   .meeting-modal-overlay {
