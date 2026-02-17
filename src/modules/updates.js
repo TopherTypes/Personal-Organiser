@@ -26,71 +26,114 @@ const PENDING_COUNT_BANDS = {
  */
 export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [], focusCreateForm = false } = {}) {
   const state = {
-    // Opening in create mode preserves keyboard shortcut behaviour from the old inline form.
-    modalMode: focusCreateForm ? "create" : "",
-    editingId: "",
+    expandedId: focusCreateForm ? "__new__" : "",
+    dirty: false,
+    focusTriggerId: "",
     feedback: ""
   };
 
   const section = document.createElement("section");
   section.className = "mode-dashboard updates-module";
 
-  const renderModule = () => {
-    section.innerHTML = "";
+  const header = document.createElement("div");
+  header.className = "meetings-header";
 
-    const header = document.createElement("div");
-    header.className = "meetings-header";
+  const title = document.createElement("h1");
+  title.textContent = "Work Updates";
 
-    const title = document.createElement("h1");
-    title.textContent = "Work Updates";
+  const newUpdateButton = document.createElement("button");
+  newUpdateButton.type = "button";
+  newUpdateButton.className = "enter-mode-button";
+  newUpdateButton.textContent = "New update";
+  newUpdateButton.addEventListener("click", () => {
+    if (!openEditor("__new__")) {
+      return;
+    }
+    renderModule();
+  });
+  header.append(title, newUpdateButton);
 
-    const newUpdateButton = document.createElement("button");
-    newUpdateButton.type = "button";
-    newUpdateButton.className = "enter-mode-button";
-    newUpdateButton.textContent = "New update";
-    newUpdateButton.addEventListener("click", () => {
-      state.modalMode = "create";
-      state.editingId = "";
-      renderModule();
-    });
-    header.append(title, newUpdateButton);
+  const intro = document.createElement("p");
+  intro.className = "module-intro";
+  intro.textContent =
+    "Capture meeting follow-ups as either updates or actions with owner/due-date controls and meeting context.";
 
-    const intro = document.createElement("p");
-    intro.className = "module-intro";
-    intro.textContent =
-      "Capture meeting follow-ups as either updates or actions with owner/due-date controls and meeting context.";
+  const summary = document.createElement("p");
+  summary.className = "module-intro";
 
+  const feedback = document.createElement("p");
+  feedback.className = "feedback";
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "updates-table-wrap card";
+
+  const table = document.createElement("table");
+  table.className = "updates-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th scope="col">Type</th>
+        <th scope="col">Update</th>
+        <th scope="col">Owner</th>
+        <th scope="col">Meeting</th>
+        <th scope="col">Due date</th>
+        <th scope="col">Pending</th>
+        <th scope="col">Updated</th>
+        <th scope="col">Actions</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+
+  section.append(header, intro, summary, feedback, tableWrap);
+
+  function renderModule() {
     const updates = loadUpdates(mode);
     const activeUpdates = updates.filter((update) => !update.archived);
     const activePeople = selectActivePeople(people);
 
-    const summary = document.createElement("p");
-    summary.className = "module-intro";
     summary.textContent = [
       `${activeUpdates.length} active update${activeUpdates.length === 1 ? "" : "s"}`,
       `${people.length} available people`,
       `${meetings.length} available meetings`
     ].join(" · ");
 
-    const tableWrap = document.createElement("div");
-    tableWrap.className = "updates-table-wrap card";
+    feedback.textContent = state.feedback;
+    feedback.hidden = !state.feedback;
 
-    const table = document.createElement("table");
-    table.className = "updates-table";
+    body.innerHTML = "";
 
-    const headerRow = document.createElement("tr");
-    ["Type", "Update", "Owner", "Meeting", "Due date", "Pending", "Updated", "Actions"].forEach((label) => {
-      const cell = document.createElement("th");
-      cell.scope = "col";
-      cell.textContent = label;
-      headerRow.appendChild(cell);
-    });
+    if (state.expandedId === "__new__") {
+      body.appendChild(
+        createUpdateEditorRow({
+          update: null,
+          people,
+          meetings,
+          onDirty: () => {
+            state.dirty = true;
+          },
+          onSave: (draft) => {
+            const result = saveUpdate(mode, draft, "", activePeople);
+            if (!result.ok) {
+              state.feedback = result.error || "Unable to save update.";
+              renderModule();
+              return;
+            }
 
-    const head = document.createElement("thead");
-    head.appendChild(headerRow);
-    table.appendChild(head);
+            state.feedback = "Update created.";
+            closeEditor();
+            renderModule();
+          },
+          onCancel: () => {
+            closeEditor();
+            renderModule();
+          }
+        })
+      );
+    }
 
-    const body = document.createElement("tbody");
     if (!activeUpdates.length) {
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
@@ -106,7 +149,6 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       const dueDateState = getUpdateDueDateState(update.dueDate);
       const pendingCount = selectPendingPeopleCount(update);
       const pendingLoadState = getPendingLoadState(pendingCount);
-      // Preserve type semantics while exposing due/pending hooks for richer row highlighting.
       row.className = [
         "updates-row",
         `updates-row-type-${update.entityType === UPDATE_ENTITY_TYPES.ACTION ? "action" : "update"}`,
@@ -118,6 +160,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       typeCell.appendChild(buildUpdateTypePill(update.entityType));
 
       const textCell = document.createElement("td");
+      textCell.className = "updates-text-cell";
       textCell.textContent = update.text;
 
       const ownerCell = document.createElement("td");
@@ -128,77 +171,313 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
       const dueDateCell = document.createElement("td");
       dueDateCell.className = `updates-due-date-cell updates-due-date-${dueDateState}`;
-      dueDateCell.textContent = update.dueDate || "Not set";
+      dueDateCell.textContent = update.dueDate || "—";
 
       const pendingCell = document.createElement("td");
       pendingCell.className = `updates-pending-cell updates-pending-${pendingLoadState}`;
       pendingCell.textContent = String(pendingCount);
 
-      const completedCell = document.createElement("td");
-      completedCell.textContent = String(selectCompletedPeopleCount(update));
+      const updatedCell = document.createElement("td");
+      updatedCell.textContent = formatUpdatedAt(update.updatedAt);
 
       const actionCell = document.createElement("td");
+      actionCell.className = "tasks-row-actions";
       const editButton = document.createElement("button");
       editButton.type = "button";
-      editButton.className = "module-button-secondary";
+      editButton.className = "secondary-button task-edit-trigger";
+      editButton.dataset.updateEditTrigger = update.id;
+      editButton.setAttribute("aria-expanded", String(state.expandedId === update.id));
       editButton.textContent = "Edit";
       editButton.addEventListener("click", () => {
-        state.editingId = update.id;
-        state.modalMode = "edit";
+        if (!openEditor(update.id)) {
+          return;
+        }
         renderModule();
       });
-      actionCell.appendChild(editButton);
 
-      row.append(typeCell, textCell, ownerCell, meetingCell, dueDateCell, pendingCell, completedCell, actionCell);
+      const menu = document.createElement("details");
+      menu.className = "task-row-menu";
+      const summaryButton = document.createElement("summary");
+      summaryButton.setAttribute("aria-label", `Update actions for ${update.text.slice(0, 40)}`);
+      summaryButton.textContent = "⋯";
+      const archiveButton = document.createElement("button");
+      archiveButton.type = "button";
+      archiveButton.className = "secondary-button";
+      archiveButton.textContent = "Archive";
+      archiveButton.addEventListener("click", () => {
+        menu.open = false;
+        archiveUpdate(mode, update.id, true);
+        state.feedback = "Update archived.";
+        if (state.expandedId === update.id) {
+          closeEditor(update.id);
+        }
+        renderModule();
+      });
+      menu.append(summaryButton, archiveButton);
+
+      actionCell.append(editButton, menu);
+      row.append(typeCell, textCell, ownerCell, meetingCell, dueDateCell, pendingCell, updatedCell, actionCell);
       body.appendChild(row);
+
+      if (state.expandedId === update.id) {
+        try {
+          body.appendChild(
+            createUpdateEditorRow({
+              update,
+              people,
+              meetings,
+              onDirty: () => {
+                state.dirty = true;
+              },
+              onSave: (draft) => {
+                const result = saveUpdate(mode, draft, update.id, activePeople);
+                if (!result.ok) {
+                  state.feedback = result.error || "Unable to save update.";
+                  renderModule();
+                  return;
+                }
+
+                state.feedback = "Update saved.";
+                closeEditor(update.id);
+                renderModule();
+              },
+              onCancel: () => {
+                closeEditor(update.id);
+                renderModule();
+              },
+              onToggleArchived: () => {
+                archiveUpdate(mode, update.id, !update.archived);
+                state.feedback = update.archived ? "Update restored." : "Update archived.";
+                closeEditor(update.id);
+                renderModule();
+              }
+            })
+          );
+        } catch (error) {
+          // Defensive render fallback: if one malformed record breaks editor-row construction,
+          // keep the rest of the table visible and surface a compact inline error state.
+          console.error("Failed to render inline update editor row", error);
+          state.feedback = "Could not open inline editor for this update. Please refresh and try again.";
+          body.appendChild(createInlineEditorRenderErrorRow());
+        }
+      }
     }
 
-    table.appendChild(body);
-    tableWrap.appendChild(table);
+    if (state.focusTriggerId) {
+      section.querySelector(`[data-update-edit-trigger="${state.focusTriggerId}"]`)?.focus();
+      state.focusTriggerId = "";
+    }
+  }
 
-    if (state.feedback) {
-      const feedback = document.createElement("p");
-      feedback.className = "feedback";
-      feedback.textContent = state.feedback;
-      section.appendChild(feedback);
-      state.feedback = "";
+  function openEditor(nextId) {
+    if (state.dirty && state.expandedId && state.expandedId !== nextId && !window.confirm("Discard unsaved update changes?")) {
+      return false;
     }
 
-    section.append(header, intro, summary, tableWrap);
+    state.expandedId = nextId;
+    state.dirty = false;
+    return true;
+  }
 
-    if (state.modalMode) {
-      const editing = updates.find((update) => update.id === state.editingId);
-      section.appendChild(
-        renderUpdateEditor({
-          update: state.modalMode === "edit" ? editing : null,
-          focusTextInput: state.modalMode === "create",
-          people,
-          meetings,
-          onClose: () => {
-            state.modalMode = "";
-            state.editingId = "";
-            renderModule();
-          },
-          onSave: (draft, editingId) => {
-            const result = saveUpdate(mode, draft, editingId, activePeople);
-            if (!result.ok) {
-              state.feedback = result.error || "Unable to save update.";
-              renderModule();
-              return;
-            }
-
-            state.feedback = editingId ? "Update saved." : "Update created.";
-            state.modalMode = "";
-            state.editingId = "";
-            renderModule();
-          }
-        })
-      );
-    }
-  };
+  function closeEditor(focusId = "") {
+    state.expandedId = "";
+    state.dirty = false;
+    state.focusTriggerId = focusId;
+  }
 
   renderModule();
   return section;
+}
+
+
+function createInlineEditorRenderErrorRow() {
+  const row = document.createElement("tr");
+  row.className = "tasks-editor-row";
+
+  const cell = document.createElement("td");
+  cell.colSpan = 8;
+  cell.className = "empty-state";
+  cell.textContent = "Unable to render the inline editor for this update.";
+
+  row.appendChild(cell);
+  return row;
+}
+
+/**
+ * Builds recipient selector options from active people plus existing recipients that may
+ * now be archived/deleted, so editing legacy updates does not silently drop recipients.
+ */
+function buildUpdateRecipientOptions(activePeople, seedToUpdate) {
+  const options = new Map(
+    activePeople.map((person) => [person.id, person.name || person.id])
+  );
+
+  normaliseToUpdateList(seedToUpdate).forEach((entry) => {
+    if (!entry.personId || options.has(entry.personId)) {
+      return;
+    }
+    options.set(entry.personId, `${entry.personId} (archived/deleted)`);
+  });
+
+  return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+}
+
+/**
+ * Builds a full inline update editor row that expands beneath the selected display row.
+ */
+function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onDirty, onToggleArchived = null }) {
+  const row = document.createElement("tr");
+  row.className = "tasks-editor-row";
+
+  const cell = document.createElement("td");
+  cell.colSpan = 8;
+
+  const form = document.createElement("form");
+  form.className = "task-inline-editor";
+
+  const activePeople = selectActivePeople(people);
+  const seed = update || {
+    text: "",
+    entityType: UPDATE_ENTITY_TYPES.UPDATE,
+    ownerId: "",
+    meetingId: "",
+    dueDate: "",
+    toUpdate: []
+  };
+
+  const entityTypeLabel = document.createElement("label");
+  entityTypeLabel.className = "field-label";
+  entityTypeLabel.textContent = "Entity type";
+  const entityTypeSelect = document.createElement("select");
+  entityTypeSelect.className = "field-input";
+  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
+  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
+  entityTypeSelect.value = seed.entityType;
+  entityTypeLabel.appendChild(entityTypeSelect);
+
+  const textLabel = document.createElement("label");
+  textLabel.className = "field-label";
+  textLabel.textContent = "Update";
+  const textInput = document.createElement("textarea");
+  textInput.className = "field-input field-textarea";
+  textInput.value = seed.text;
+  textLabel.appendChild(textInput);
+
+  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
+  const toUpdateField = buildEntityTokenMultiSelectField({
+    label: "People to update",
+    options: recipientOptions,
+    values: normaliseToUpdateList(seed.toUpdate)
+      .map((entry) => entry.personId)
+      .filter(Boolean),
+    emptyMessage: "Add people first to select update recipients.",
+    inputPlaceholder: "Search people to update"
+  });
+
+  const ownerLabel = document.createElement("label");
+  ownerLabel.className = "field-label";
+  ownerLabel.textContent = "Owner (required for actions)";
+  const ownerSelect = document.createElement("select");
+  ownerSelect.className = "field-input";
+  for (const option of buildUpdateOwnerOptions(activePeople)) {
+    addOption(ownerSelect, option.value, option.label);
+  }
+  ownerSelect.value = seed.ownerId;
+  ownerLabel.appendChild(ownerSelect);
+
+  const meetingLabel = document.createElement("label");
+  meetingLabel.className = "field-label";
+  meetingLabel.textContent = "Linked meeting";
+  const meetingSelect = document.createElement("select");
+  meetingSelect.className = "field-input";
+  addOption(meetingSelect, "", "No linked meeting");
+  meetings.filter((meeting) => !meeting.archived).forEach((meeting) => addOption(meetingSelect, meeting.id, meeting.name));
+  if (Array.from(meetingSelect.options).some((option) => option.value === seed.meetingId)) {
+    meetingSelect.value = seed.meetingId;
+  }
+  meetingLabel.appendChild(meetingSelect);
+
+  const dueDateLabel = document.createElement("label");
+  dueDateLabel.className = "field-label";
+  dueDateLabel.textContent = "Due date (required for actions)";
+  const dueDateInput = document.createElement("input");
+  dueDateInput.type = "date";
+  dueDateInput.className = "field-input";
+  dueDateInput.value = seed.dueDate;
+  dueDateLabel.appendChild(dueDateInput);
+
+  const syncEditorRequirements = () => {
+    const isAction = entityTypeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
+    ownerSelect.required = isAction;
+    dueDateInput.required = isAction;
+    if (!isAction) {
+      dueDateInput.value = "";
+    }
+  };
+  entityTypeSelect.addEventListener("change", syncEditorRequirements);
+  syncEditorRequirements();
+
+  form.append(entityTypeLabel, textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel);
+
+  const actions = document.createElement("div");
+  actions.className = "task-inline-editor-actions";
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = update ? "Save" : "Create";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", onCancel);
+
+  actions.append(saveButton, cancelButton);
+  if (update && onToggleArchived) {
+    const archiveButton = document.createElement("button");
+    archiveButton.type = "button";
+    archiveButton.className = "secondary-button";
+    archiveButton.textContent = update.archived ? "Unarchive" : "Archive";
+    archiveButton.addEventListener("click", onToggleArchived);
+    actions.appendChild(archiveButton);
+  }
+
+  form.appendChild(actions);
+
+  [entityTypeSelect, textInput, ownerSelect, meetingSelect, dueDateInput].forEach((control) => {
+    control.addEventListener("input", onDirty);
+    control.addEventListener("change", onDirty);
+  });
+  toUpdateField.hiddenInput.addEventListener("change", onDirty);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
+    onSave({
+      text: textInput.value,
+      entityType: entityTypeSelect.value,
+      ownerId: ownerSelect.value,
+      meetingId: meetingSelect.value,
+      dueDate: dueDateInput.value,
+      toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
+    });
+  });
+
+  cell.appendChild(form);
+  row.appendChild(cell);
+  window.requestAnimationFrame(() => {
+    textInput.focus();
+  });
+  return row;
+}
+
+function formatUpdatedAt(updatedAt) {
+  const date = new Date(updatedAt);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function renderUpdateEditor({ update, people, meetings, onClose, onSave, focusTextInput = false }) {
@@ -279,9 +558,10 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave, focusTe
   entityTypeSelect.value = seed.entityType;
   entityTypeLabel.appendChild(entityTypeSelect);
 
+  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
-    options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
+    options: recipientOptions,
     values: normaliseToUpdateList(seed.toUpdate)
       .map((entry) => entry.personId)
       .filter(Boolean),
