@@ -204,26 +204,22 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       const table = createTaskTable();
       list.appendChild(table);
 
-      // Build lookup maps once to avoid repeated linear scans while rerendering rows.
-      const peopleById = new Map(people.map((person) => [person.id, person]));
-      const projectsById = new Map(projects.map((project) => [project.id, project]));
+      // Dependency labels still require full task lookup for cross-row relationship summaries.
       const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
-        const assignee = peopleById.get(task.assigneeId);
-        const project = projectsById.get(task.projectId);
         table.appendChild(
           createTaskTableRow(task, {
-            assigneeLabel: assignee?.name || "Unassigned",
-            projectLabel: project?.title || "No project",
+            people,
+            projects,
             dependencyStateLabel: buildDependencyStateLabel(task, taskById),
-            onEdit: () => {
+            onOpenEditor: () => {
               state.editingId = task.id;
               state.isPanelOpen = true;
               renderModule();
             },
-            onArchiveToggle: () => {
-              setTaskArchived(state.mode, task.id, !task.archived);
-              state.feedback = task.archived ? "Task restored." : "Task archived.";
+            onInlineUpdate: (updates) => {
+              updateTaskInline(state.mode, task.id, updates);
+              state.feedback = "Task updated.";
               renderModule();
             },
             onDelete: () => {
@@ -287,7 +283,7 @@ function createTaskTable() {
 
   const header = document.createElement("div");
   header.className = "tasks-table-row tasks-table-head";
-  ["Task", "Status", "Dependencies", "Assignee / Project", "Schedule / Due", "Priority", "Actions"].forEach((label) => {
+  ["Task", "Status", "Dependencies", "Assignee / Project", "Schedule / Due", "Priority", ""].forEach((label) => {
     const headCell = document.createElement("strong");
     headCell.className = "tasks-cell";
     headCell.textContent = label;
@@ -301,27 +297,39 @@ function createTaskTable() {
 /**
  * Renders a single task row for the compact task pseudo-table view.
  */
-function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyStateLabel, onEdit, onArchiveToggle, onDelete }) {
+function createTaskTableRow(task, { people, projects, dependencyStateLabel, onOpenEditor, onInlineUpdate, onDelete }) {
   const row = document.createElement("article");
   row.className = "tasks-table-row";
 
   const taskCell = document.createElement("div");
   taskCell.className = "tasks-cell tasks-cell-title";
 
-  const title = document.createElement("strong");
+  const title = document.createElement("button");
+  title.type = "button";
+  title.className = "task-title-link";
   title.textContent = task.title;
+  title.addEventListener("click", onOpenEditor);
 
   const taskMeta = document.createElement("small");
   taskMeta.className = "person-meta";
-  taskMeta.innerHTML = "";
 
-  const effortSpan = document.createElement("span");
-  effortSpan.className = "task-meta-inline";
-  effortSpan.textContent = `Effort ${task.effort}/10`;
+  const effortInput = document.createElement("input");
+  effortInput.type = "number";
+  effortInput.min = "1";
+  effortInput.max = "10";
+  effortInput.className = "field-input task-inline-input";
+  effortInput.value = String(task.effort);
+  effortInput.setAttribute("aria-label", `Effort for ${task.title}`);
+  effortInput.addEventListener("change", () => onInlineUpdate({ effort: clampTaskScaleValue(effortInput.value, task.effort) }));
 
-  const impactSpan = document.createElement("span");
-  impactSpan.className = "task-meta-inline";
-  impactSpan.textContent = `Impact ${task.impact}/10`;
+  const impactInput = document.createElement("input");
+  impactInput.type = "number";
+  impactInput.min = "1";
+  impactInput.max = "10";
+  impactInput.className = "field-input task-inline-input";
+  impactInput.value = String(task.impact);
+  impactInput.setAttribute("aria-label", `Impact for ${task.title}`);
+  impactInput.addEventListener("change", () => onInlineUpdate({ impact: clampTaskScaleValue(impactInput.value, task.impact) }));
 
   const recurrenceSpan = document.createElement("span");
   recurrenceSpan.className = "task-meta-inline";
@@ -329,47 +337,71 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
     task.recurrence === "custom" && task.customRecurrence ? ` (${task.customRecurrence})` : ""
   }`;
 
-  taskMeta.append(effortSpan, document.createTextNode(" • "), impactSpan, document.createTextNode(" • "), recurrenceSpan);
-
+  // Inline controls intentionally focus on high-frequency edits so the table supports
+  // quick triage while preserving the full editor for richer fields.
+  taskMeta.append(
+    document.createTextNode("Effort "),
+    effortInput,
+    document.createTextNode(" • Impact "),
+    impactInput,
+    document.createTextNode(" • "),
+    recurrenceSpan
+  );
   taskCell.append(title, taskMeta);
 
   const statusCell = document.createElement("div");
   statusCell.className = "tasks-cell";
 
-  const statusBadge = document.createElement("span");
-  statusBadge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(task.status)}`;
-  statusBadge.textContent = toTitleCase(task.status);
-  statusCell.appendChild(statusBadge);
-
-  const relationCell = document.createElement("div");
-  relationCell.className = "tasks-cell";
-  relationCell.textContent = `${assigneeLabel} • ${projectLabel}`;
+  const statusInput = document.createElement("select");
+  statusInput.className = "field-input task-inline-input";
+  for (const statusValue of TASK_STATUSES) {
+    addOption(statusInput, statusValue, statusValue);
+  }
+  statusInput.value = task.status;
+  statusInput.addEventListener("change", () => onInlineUpdate({ status: statusInput.value }));
+  statusCell.appendChild(statusInput);
 
   const dependencyCell = document.createElement("div");
   dependencyCell.className = "tasks-cell";
   dependencyCell.textContent = dependencyStateLabel;
 
-  const dueCell = document.createElement("div");
-  const dueDateState = getTaskDueDateState(task);
-  dueCell.className = `tasks-cell task-due-state task-due-state-${dueDateState}`;
+  const relationCell = document.createElement("div");
+  relationCell.className = "tasks-cell task-inline-row";
 
-  const duePrimary = document.createElement("span");
-  duePrimary.className = `task-due-chip task-due-chip-${dueDateState}`;
-  duePrimary.textContent = task.scheduleDate
-    ? `Scheduled ${task.scheduleDate}`
-    : task.dueDate
-      ? `Due ${task.dueDate}`
-      : "Not set";
-  dueCell.appendChild(duePrimary);
-
-  // Keep due date visible as secondary metadata when schedule date is set so users can
-  // quickly compare intent (scheduled execution) versus obligation (deadline).
-  if (task.scheduleDate && task.dueDate) {
-    const dueSecondary = document.createElement("small");
-    dueSecondary.className = "person-meta";
-    dueSecondary.textContent = `Due ${task.dueDate}`;
-    dueCell.appendChild(dueSecondary);
+  const assigneeInput = document.createElement("select");
+  assigneeInput.className = "field-input task-inline-input";
+  addOption(assigneeInput, "", "Unassigned");
+  for (const person of people) {
+    addOption(assigneeInput, person.id, person.name);
   }
+  assigneeInput.value = task.assigneeId;
+  assigneeInput.addEventListener("change", () => onInlineUpdate({ assigneeId: assigneeInput.value }));
+
+  const projectInput = document.createElement("select");
+  projectInput.className = "field-input task-inline-input";
+  addOption(projectInput, "", "No project");
+  for (const project of projects) {
+    addOption(projectInput, project.id, project.title);
+  }
+  projectInput.value = task.projectId;
+  projectInput.addEventListener("change", () => onInlineUpdate({ projectId: projectInput.value }));
+  relationCell.append(assigneeInput, projectInput);
+
+  const dueCell = document.createElement("div");
+  dueCell.className = "tasks-cell task-inline-row";
+
+  const scheduleInput = document.createElement("input");
+  scheduleInput.type = "date";
+  scheduleInput.className = "field-input task-inline-input";
+  scheduleInput.value = task.scheduleDate || "";
+  scheduleInput.addEventListener("change", () => onInlineUpdate({ scheduleDate: scheduleInput.value }));
+
+  const dueInput = document.createElement("input");
+  dueInput.type = "date";
+  dueInput.className = "field-input task-inline-input";
+  dueInput.value = task.dueDate || "";
+  dueInput.addEventListener("change", () => onInlineUpdate({ dueDate: dueInput.value }));
+  dueCell.append(scheduleInput, dueInput);
 
   const priorityCell = document.createElement("div");
   priorityCell.className = "tasks-cell";
@@ -382,11 +414,13 @@ function createTaskTableRow(task, { assigneeLabel, projectLabel, dependencyState
 
   const actions = document.createElement("div");
   actions.className = "tasks-cell tasks-row-actions";
-  actions.append(
-    button("Edit", onEdit),
-    button(task.archived ? "Restore" : "Archive", onArchiveToggle),
-    button("Delete", onDelete)
-  );
+  const deleteIcon = document.createElement("button");
+  deleteIcon.type = "button";
+  deleteIcon.className = "task-delete-icon";
+  deleteIcon.setAttribute("aria-label", `Delete task ${task.title}`);
+  deleteIcon.textContent = "🗑";
+  deleteIcon.addEventListener("click", onDelete);
+  actions.appendChild(deleteIcon);
 
   row.append(taskCell, statusCell, dependencyCell, relationCell, dueCell, priorityCell, actions);
   return row;
@@ -456,6 +490,18 @@ function parseTaskDateToMidnight(dateValue) {
 
   date.setHours(0, 0, 0, 0);
   return date.getTime();
+}
+
+/**
+ * Bounds inline effort/impact values to the canonical 1-10 scoring scale.
+ */
+function clampTaskScaleValue(rawValue, fallbackValue = 5) {
+  const parsed = Number.parseInt(rawValue, 10);
+  if (Number.isNaN(parsed)) {
+    return fallbackValue;
+  }
+
+  return Math.min(10, Math.max(1, parsed));
 }
 
 function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
@@ -1182,22 +1228,62 @@ function deleteTask(mode, taskId) {
   );
 }
 
-function setTaskArchived(mode, taskId, archived) {
+/**
+ * Applies small inline updates from the task table while preserving per-field audit metadata.
+ */
+function updateTaskInline(mode, taskId, updates) {
   const tasks = loadTasks(mode);
   const now = new Date().toISOString();
-  const updated = tasks.map((task) =>
-    task.id === taskId
-      ? {
-          ...task,
-          archived,
-          updatedAt: now,
-          lastUpdatedByField: {
-            ...task.lastUpdatedByField,
-            archived: now
-          }
-        }
-      : task
-  );
+  const updated = tasks.map((task) => {
+    if (task.id !== taskId) {
+      return task;
+    }
+
+    const nextTask = { ...task };
+    const nextUpdatedFields = { ...task.lastUpdatedByField };
+
+    if (Object.hasOwn(updates, "status")) {
+      nextTask.status = normaliseTaskStatus(updates.status);
+      nextUpdatedFields.status = now;
+    }
+
+    if (Object.hasOwn(updates, "assigneeId")) {
+      nextTask.assigneeId = updates.assigneeId || "";
+      nextUpdatedFields.assigneeId = now;
+    }
+
+    if (Object.hasOwn(updates, "projectId")) {
+      nextTask.projectId = updates.projectId || "";
+      nextUpdatedFields.projectId = now;
+    }
+
+    if (Object.hasOwn(updates, "scheduleDate")) {
+      nextTask.scheduleDate = updates.scheduleDate || "";
+      nextUpdatedFields.scheduleDate = now;
+    }
+
+    if (Object.hasOwn(updates, "dueDate")) {
+      nextTask.dueDate = updates.dueDate || "";
+      nextUpdatedFields.dueDate = now;
+    }
+
+    if (Object.hasOwn(updates, "effort")) {
+      nextTask.effort = clampTaskScaleValue(updates.effort, task.effort);
+      nextUpdatedFields.effort = now;
+    }
+
+    if (Object.hasOwn(updates, "impact")) {
+      nextTask.impact = clampTaskScaleValue(updates.impact, task.impact);
+      nextUpdatedFields.impact = now;
+    }
+
+    return {
+      ...nextTask,
+      updatedAt: now,
+      lastUpdatedByField: nextUpdatedFields
+    };
+  });
+
   persistTasks(mode, updated);
 }
 
