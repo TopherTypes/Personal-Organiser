@@ -122,3 +122,35 @@ test("getAccessToken restores runtime token cache from session storage after rel
   assert.equal(token, "session-cached-token");
   assert.equal(subsequentInitCalls, 0);
 });
+
+
+test("maximum session longevity mode enables silent refresh by default", async () => {
+  localStorage.clear();
+  sessionStorage.clear();
+
+  let initTokenClientCalls = 0;
+  const googleRef = {
+    accounts: {
+      oauth2: {
+        initTokenClient({ callback }) {
+          initTokenClientCalls += 1;
+          return {
+            requestAccessToken() {
+              callback({ access_token: "max-mode-token", expires_in: 3600 });
+            }
+          };
+        }
+      }
+    }
+  };
+
+  const authClient = createGoogleAuthClient({
+    clientId: "client-id",
+    googleRef,
+    sessionLongevityMode: "maximum"
+  });
+
+  const token = await authClient.getAccessToken({ interactive: false });
+  assert.equal(token, "max-mode-token");
+  assert.equal(initTokenClientCalls, 1);
+});
