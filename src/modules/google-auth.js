@@ -13,6 +13,9 @@ const EXPIRY_SAFETY_WINDOW_MS = 30_000;
 export function createGoogleAuthClient({
   clientId,
   scope = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+  // balanced: minimise silent GIS attempts to avoid popup-policy noise.
+  // maximum: default to silent refresh attempts so users stay signed in longer.
+  sessionLongevityMode = "balanced",
   storageKey = GOOGLE_AUTH_STORAGE_KEY,
   localStorageRef = localStorage,
   sessionStorageRef = globalThis.sessionStorage,
@@ -20,6 +23,8 @@ export function createGoogleAuthClient({
   googleRef = globalThis.google
 } = {}) {
   const hasConfig = typeof clientId === "string" && clientId.trim().length > 0;
+  // This flag only affects default behaviour. Callers can still override per call.
+  const maximiseSessionDuration = sessionLongevityMode === "maximum";
   let currentAccessToken = "";
 
   function loadRuntimeToken() {
@@ -206,7 +211,7 @@ export function createGoogleAuthClient({
     return { status: "signed-in", session };
   }
 
-  async function ensureValidSession({ allowInteractiveFallback = false, allowSilentRefresh = true } = {}) {
+  async function ensureValidSession({ allowInteractiveFallback = false, allowSilentRefresh = maximiseSessionDuration } = {}) {
     const existingSession = loadSession();
     if (existingSession && existingSession.expiresAt - now() > EXPIRY_SAFETY_WINDOW_MS) {
       const refreshedSession = { ...existingSession, lastAuthCheckAt: now() };
@@ -239,7 +244,7 @@ export function createGoogleAuthClient({
     }
   }
 
-  async function getAccessToken({ interactive = false, allowSilentRefresh = false } = {}) {
+  async function getAccessToken({ interactive = false, allowSilentRefresh = maximiseSessionDuration } = {}) {
     // Reuse a token already acquired during the current runtime (for example
     // after user-initiated sign-in) to avoid unnecessary auth round-trips.
     if (currentAccessToken) {

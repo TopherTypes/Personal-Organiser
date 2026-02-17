@@ -105,7 +105,12 @@ export function createSyncSubsystem({
     conflicts: loadJson(SYNC_CONFLICT_QUEUE_KEY, [])
   };
 
-  const authClient = authClientFactory({ clientId: windowRef.__APP_CONFIG__?.googleClientId || "" });
+  const authClient = authClientFactory({
+    clientId: windowRef.__APP_CONFIG__?.googleClientId || "",
+    // Default to longest practical sign-in duration by allowing silent token refresh
+    // when browser policy and Google cookies permit it.
+    sessionLongevityMode: "maximum"
+  });
   const driveClient = driveClientFactory({ authClient });
   let loopTimerId = 0;
 
