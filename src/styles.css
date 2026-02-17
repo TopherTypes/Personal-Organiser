@@ -2435,3 +2435,90 @@ body[data-density="compact"] .footer {
   border-color: color-mix(in srgb, var(--success) 42%, var(--border));
   color: color-mix(in srgb, var(--success) 70%, var(--text));
 }
+
+/*
+ * Compact updates/people table styles share density defaults and sticky context headers.
+ */
+.updates-table-wrap {
+  overflow-x: auto;
+}
+
+.updates-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.updates-table th,
+.updates-table td {
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  line-height: 1.2;
+  font-size: 0.78rem;
+}
+
+.updates-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+.updates-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.updates-text-cell,
+.people-compact-table .people-notes-cell {
+  max-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.people-compact-table .people-name-cell {
+  font-weight: 650;
+}
+
+.updates-due-date-cell {
+  font-weight: 600;
+}
+
+.updates-due-date-overdue {
+  color: var(--danger);
+}
+
+.updates-due-date-due-today {
+  color: color-mix(in srgb, var(--warning) 82%, var(--text));
+}
+
+.updates-due-date-upcoming {
+  color: var(--text);
+}
+
+.updates-due-date-no-due-date {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.updates-pending-cell {
+  font-weight: 700;
+}
+
+.updates-pending-zero {
+  color: color-mix(in srgb, var(--success) 75%, var(--text));
+}
+
+.updates-pending-low {
+  color: var(--text);
+}
+
+.updates-pending-high {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 45%, transparent);
+  border-radius: 0.45rem;
+}
