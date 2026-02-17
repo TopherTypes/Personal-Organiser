@@ -282,6 +282,25 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 }
 
 /**
+ * Builds recipient selector options from active people plus existing recipients that may
+ * now be archived/deleted, so editing legacy updates does not silently drop recipients.
+ */
+function buildUpdateRecipientOptions(activePeople, seedToUpdate) {
+  const options = new Map(
+    activePeople.map((person) => [person.id, person.name || person.id])
+  );
+
+  normaliseToUpdateList(seedToUpdate).forEach((entry) => {
+    if (!entry.personId || options.has(entry.personId)) {
+      return;
+    }
+    options.set(entry.personId, `${entry.personId} (archived/deleted)`);
+  });
+
+  return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+}
+
+/**
  * Builds a full inline update editor row that expands beneath the selected display row.
  */
 function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onDirty, onToggleArchived = null }) {
@@ -303,6 +322,8 @@ function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onD
     dueDate: "",
     toUpdate: []
   };
+  entityTypeSelect.addEventListener("change", syncEditorRequirements);
+  syncEditorRequirements();
 
   const entityTypeLabel = document.createElement("label");
   entityTypeLabel.className = "field-label";
@@ -322,9 +343,10 @@ function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onD
   textInput.value = seed.text;
   textLabel.appendChild(textInput);
 
+  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
-    options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
+    options: recipientOptions,
     values: normaliseToUpdateList(seed.toUpdate)
       .map((entry) => entry.personId)
       .filter(Boolean),
@@ -516,9 +538,10 @@ function renderUpdateEditor({ update, people, meetings, onClose, onSave, focusTe
   entityTypeSelect.value = seed.entityType;
   entityTypeLabel.appendChild(entityTypeSelect);
 
+  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
   const toUpdateField = buildEntityTokenMultiSelectField({
     label: "People to update",
-    options: activePeople.map((person) => ({ value: person.id, label: person.name || person.id })),
+    options: recipientOptions,
     values: normaliseToUpdateList(seed.toUpdate)
       .map((entry) => entry.personId)
       .filter(Boolean),
