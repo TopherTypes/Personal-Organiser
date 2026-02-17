@@ -322,6 +322,8 @@ function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onD
     dueDate: "",
     toUpdate: []
   };
+  entityTypeSelect.addEventListener("change", syncEditorRequirements);
+  syncEditorRequirements();
 
   const entityTypeLabel = document.createElement("label");
   entityTypeLabel.className = "field-label";
