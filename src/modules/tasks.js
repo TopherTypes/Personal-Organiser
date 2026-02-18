@@ -503,6 +503,35 @@ function createTableTextCell(value) {
   return cell;
 }
 
+/**
+ * Formats a persisted yyyy-mm-dd value into the locale-friendly short date used by table cells.
+ *
+ * Returning an em dash for blank/invalid values keeps dense table rows readable while still
+ * making the absence of a schedule/due date explicit to users.
+ */
+function formatTaskDateDisplay(dateValue) {
+  if (!dateValue) {
+    return "—";
+  }
+
+function createTableStatusCell(status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(status)}`;
+  badge.textContent = status;
+  cell.appendChild(badge);
+  return cell;
+}
+
+function createTablePriorityCell(priorityScore) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-meta-pill task-meta-pill-${getPriorityScoreBand(priorityScore)}`;
+  badge.textContent = String(priorityScore);
+  cell.appendChild(badge);
+  return cell;
+}
+
 function createTableStatusCell(status) {
   const cell = document.createElement("td");
   const badge = document.createElement("span");
