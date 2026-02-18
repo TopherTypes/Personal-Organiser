@@ -1,6 +1,7 @@
 import { loadMeetings, renderWorkMeetingsModule } from "./meetings.js";
 import { renderWorkProjectsModule } from "./projects.js";
-import { getTaskTimelineSortDate, loadTasks, markTaskCompleted, renderWorkTasksModule } from "./tasks.js";
+// Cache-busted tasks module import avoids stale browser module caches after syntax hotfixes.
+import { getTaskTimelineSortDate, loadTasks, markTaskCompleted, renderWorkTasksModule } from "./tasks.js?v=2026-02-18-1";
 import { loadSprints, renderWorkSprintsModule } from "./sprints.js";
 import {
   PROJECT_PERSON_ROLES,
