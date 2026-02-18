@@ -102,3 +102,36 @@ test("archiveCompletedTasks archives only done tasks and returns count", () => {
   assert.equal(doneTask.archived, true);
   assert.equal(inProgressTask.archived, false);
 });
+
+test("saveTask editing path updates persisted task fields", () => {
+  localStorage.clear();
+
+  const created = createTask("work", "Original title");
+  assert.equal(created.ok, true);
+
+  const [task] = loadTasks("work");
+  const edited = saveTask("work", {
+    title: "Updated title",
+    effort: 6,
+    impact: 7,
+    status: "In Progress",
+    assigneeId: "",
+    projectId: "",
+    scheduleDate: "",
+    dueDate: "",
+    recurrence: "none",
+    customRecurrence: "",
+    recurrenceInterval: 1,
+    blockedByTaskIds: [],
+    blockingTaskIds: [],
+    notes: "",
+    archived: false
+  }, task.id);
+
+  assert.equal(edited.ok, true);
+  assert.equal(edited.wasEdit, true);
+
+  const [updatedTask] = loadTasks("work");
+  assert.equal(updatedTask.title, "Updated title");
+  assert.equal(updatedTask.status, "In Progress");
+});
