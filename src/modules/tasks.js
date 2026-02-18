@@ -79,10 +79,10 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     assigneeFilter: "all",
     projectFilter: "all",
     includeArchived: false,
-    // Only one inline editor may be expanded at a time to preserve row density.
-    expandedTaskId: openComposer ? "__new__" : "",
-    inlineDraft: null,
-    inlineDirty: false,
+    createModalOpen: openComposer,
+    // Keep a single active inline editing row to preserve table density.
+    editingTaskId: "",
+    hasInlineEdits: false,
     // Persisted focus-return target improves keyboard workflow when collapsing rows.
     focusEditButtonTaskId: "",
     feedback: ""
@@ -110,13 +110,27 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   addButton.className = "enter-mode-button";
   addButton.textContent = "New task";
   addButton.addEventListener("click", () => {
-    if (!requestInlineEditorSwitch("__new__")) {
-      return;
-    }
+    state.createModalOpen = true;
     renderModule();
   });
 
-  header.append(headingWrap, addButton);
+  const archiveDoneButton = document.createElement("button");
+  archiveDoneButton.type = "button";
+  archiveDoneButton.className = "secondary-button";
+  archiveDoneButton.textContent = "Archive done tasks";
+  archiveDoneButton.addEventListener("click", () => {
+    const archivedCount = archiveCompletedTasks(state.mode);
+    state.feedback = archivedCount > 0
+      ? `Archived ${archivedCount} completed ${archivedCount === 1 ? "task" : "tasks"}.`
+      : "No done tasks to archive.";
+    renderModule();
+  });
+
+  const headerActions = document.createElement("div");
+  headerActions.className = "tasks-header-actions";
+  headerActions.append(addButton, archiveDoneButton);
+
+  header.append(headingWrap, headerActions);
 
   const feedback = document.createElement("p");
   feedback.className = "feedback";
@@ -127,7 +141,10 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   const list = document.createElement("div");
   list.className = "tasks-list";
 
-  section.append(header, feedback, controls, list);
+  const modalHost = document.createElement("div");
+  modalHost.className = "tasks-modal-host";
+
+  section.append(header, feedback, controls, list, modalHost);
 
   function renderModule() {
     const people = loadPeople(state.mode);
@@ -178,8 +195,6 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       .filter((task) => (state.assigneeFilter === "all" ? true : task.assigneeId === state.assigneeFilter))
       .filter((task) => (state.projectFilter === "all" ? true : task.projectId === state.projectFilter))
       .map((task) => ({ ...task, priorityScore: computePriorityScore(task) }))
-      // Task lists prioritise scheduled execution date first, then due date, so teams can
-      // sequence planned work while still respecting hard deadlines.
       .sort((first, second) => {
         const firstTimelineDate = getTaskTimelineSortDate(first);
         const secondTimelineDate = getTaskTimelineSortDate(second);
@@ -195,53 +210,22 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       });
 
     list.innerHTML = "";
+    modalHost.innerHTML = "";
+
     if (filtered.length === 0) {
       const empty = document.createElement("p");
       empty.className = "empty-state";
       empty.textContent = "No tasks match your current filters.";
       list.appendChild(empty);
     } else {
-      const cards = createTaskCardsContainer();
-      list.appendChild(cards);
+      const { wrap: tableWrap, body: tableBody } = createTaskTable();
+      list.appendChild(tableWrap);
 
-      // New task create flow uses the same inline editor pattern as existing task edits.
-      if (state.expandedTaskId === "__new__") {
-        cards.appendChild(
-          createTaskEditorRow({
-            task: createDraftTaskTemplate(),
-            people,
-            projects,
-            mode: "create",
-            onDraftChange: (nextDraft) => {
-              state.inlineDraft = nextDraft;
-              state.inlineDirty = true;
-            },
-            onSave: (payload) => {
-              const result = saveTask(state.mode, payload);
-              if (!result.ok) {
-                state.feedback = result.error;
-                renderModule();
-                return;
-              }
-
-              state.feedback = "Task created.";
-              closeInlineEditor();
-              renderModule();
-            },
-            onCancel: () => {
-              closeInlineEditor();
-              renderModule();
-            }
-          })
-        );
-      }
-
-      // Dependency labels still require full task lookup for cross-card relationship summaries.
       const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
-        cards.appendChild(
-          createTaskDisplayCard(task, {
-            isExpanded: state.expandedTaskId === task.id,
+        tableBody.appendChild(
+          createTaskTableRow(task, {
+            isEditing: state.editingTaskId === task.id,
             people,
             projects,
             dependencyStateLabel: buildDependencyStateLabel(task, taskById),
@@ -252,51 +236,60 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
               state.focusEditButtonTaskId = task.id;
               renderModule();
             },
+            onCancelEdit: () => {
+              closeInlineEditor(task.id);
+              renderModule();
+            },
             onToggleArchived: () => {
               updateTaskInline(state.mode, task.id, { archived: !task.archived });
               state.feedback = task.archived ? "Task unarchived." : "Task archived.";
               renderModule();
+            },
+            onSaveInline: (payload) => {
+              const result = saveTask(state.mode, payload, task.id);
+              if (!result.ok) {
+                state.feedback = result.error;
+                renderModule();
+                return;
+              }
+
+              state.feedback = "Task updated.";
+              closeInlineEditor(task.id);
+              renderModule();
+            },
+            onEditDirty: () => {
+              state.hasInlineEdits = true;
             }
           })
         );
-
-        if (state.expandedTaskId === task.id) {
-          cards.appendChild(
-            createTaskEditorRow({
-              task,
-              people,
-              projects,
-              mode: "edit",
-              onDraftChange: (nextDraft) => {
-                state.inlineDraft = nextDraft;
-                state.inlineDirty = true;
-              },
-              onSave: (payload) => {
-                const result = saveTask(state.mode, payload, task.id);
-                if (!result.ok) {
-                  state.feedback = result.error;
-                  renderModule();
-                  return;
-                }
-
-                state.feedback = "Task updated.";
-                closeInlineEditor(task.id);
-                renderModule();
-              },
-              onCancel: () => {
-                closeInlineEditor(task.id);
-                renderModule();
-              },
-              onToggleArchived: () => {
-                updateTaskInline(state.mode, task.id, { archived: !task.archived });
-                state.feedback = task.archived ? "Task unarchived." : "Task archived.";
-                closeInlineEditor(task.id);
-                renderModule();
-              }
-            })
-          );
-        }
       }
+    }
+
+    if (state.createModalOpen) {
+      modalHost.appendChild(
+        createTaskForm({
+          task: null,
+          tasks,
+          people,
+          projects,
+          onSave: (payload) => {
+            const result = saveTask(state.mode, payload);
+            if (!result.ok) {
+              state.feedback = result.error;
+              renderModule();
+              return;
+            }
+
+            state.feedback = "Task created.";
+            state.createModalOpen = false;
+            renderModule();
+          },
+          onCancel: () => {
+            state.createModalOpen = false;
+            renderModule();
+          }
+        })
+      );
     }
 
     feedback.textContent = state.feedback;
@@ -310,10 +303,9 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   }
 
   function requestInlineEditorSwitch(nextTaskId) {
-    if (!state.inlineDirty || !state.expandedTaskId || state.expandedTaskId === nextTaskId) {
-      state.expandedTaskId = nextTaskId;
-      state.inlineDraft = null;
-      state.inlineDirty = false;
+    if (!state.hasInlineEdits || !state.editingTaskId || state.editingTaskId === nextTaskId) {
+      state.editingTaskId = nextTaskId;
+      state.hasInlineEdits = false;
       return true;
     }
 
@@ -321,16 +313,14 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       return false;
     }
 
-    state.expandedTaskId = nextTaskId;
-    state.inlineDraft = null;
-    state.inlineDirty = false;
+    state.editingTaskId = nextTaskId;
+    state.hasInlineEdits = false;
     return true;
   }
 
   function closeInlineEditor(focusTaskId = "") {
-    state.expandedTaskId = "";
-    state.inlineDraft = null;
-    state.inlineDirty = false;
+    state.editingTaskId = "";
+    state.hasInlineEdits = false;
     state.focusEditButtonTaskId = focusTaskId;
   }
 
@@ -339,115 +329,74 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
 }
 
 /**
- * Builds the high-density task card list shell used by the tasks module.
+ * Builds the task table used by the compact task workflow.
  */
-function createTaskCardsContainer() {
-  const container = document.createElement("div");
-  container.className = "tasks-card-list";
-  return container;
+function createTaskTable() {
+  const wrap = document.createElement("div");
+  wrap.className = "tasks-table-wrap";
+
+  const table = document.createElement("table");
+  table.className = "tasks-table";
+
+  const headRow = document.createElement("tr");
+  ["Task", "Status", "Assignee", "Project", "Schedule", "Due", "Priority", "Dependencies", "Actions"].forEach((labelText) => {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = labelText;
+    headRow.appendChild(cell);
+  });
+
+  const thead = document.createElement("thead");
+  thead.appendChild(headRow);
+
+  const body = document.createElement("tbody");
+  table.append(thead, body);
+  wrap.appendChild(table);
+  return { wrap, body };
 }
 
 /**
- * Renders a single compact read-only task card for high-density scanning.
+ * Creates a task table row that can switch between read-only and inline-edit modes.
  */
-function createTaskDisplayCard(task, { people, projects, dependencyStateLabel, onOpenEditor, onToggleArchived, isExpanded = false }) {
-  const card = document.createElement("article");
-  card.className = "task-card";
+function createTaskTableRow(task, {
+  isEditing,
+  people,
+  projects,
+  dependencyStateLabel,
+  onOpenEditor,
+  onCancelEdit,
+  onToggleArchived,
+  onSaveInline,
+  onEditDirty
+}) {
+  const row = document.createElement("tr");
+  row.className = "task-table-row";
 
-  const header = document.createElement("div");
-  header.className = "task-card-header";
+  if (!isEditing) {
+    row.append(
+      createTableTextCell(task.title),
+      createTableStatusCell(task.status),
+      createTableTextCell(people.find((person) => person.id === task.assigneeId)?.name || "Unassigned"),
+      createTableTextCell(projects.find((project) => project.id === task.projectId)?.title || "No project"),
+      createTableTextCell(formatTaskDateDisplay(task.scheduleDate)),
+      createTableTextCell(formatTaskDateDisplay(task.dueDate)),
+      createTablePriorityCell(task.priorityScore),
+      createTableTextCell(dependencyStateLabel),
+      createTaskActionsCell({ task, onOpenEditor, onToggleArchived })
+    );
+    return row;
+  }
 
-  const statusDot = document.createElement("span");
-  statusDot.className = `task-status-dot task-status-${getTaskStatusClassSuffix(task.status)}`;
-  statusDot.setAttribute("aria-hidden", "true");
+  const title = document.createElement("input");
+  title.className = "field-input";
+  title.type = "text";
+  title.required = true;
+  title.value = task.title || "";
 
-  const title = document.createElement("h3");
-  title.className = "task-row-title";
-  title.textContent = task.title;
-
-  const statusBadge = document.createElement("span");
-  statusBadge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(task.status)}`;
-  statusBadge.textContent = task.status;
-
-  header.append(statusDot, title, statusBadge);
-
-  const details = document.createElement("div");
-  details.className = "task-card-details";
-
-  const assigneeLabel = people.find((person) => person.id === task.assigneeId)?.name || "Unassigned";
-  const projectLabel = projects.find((project) => project.id === task.projectId)?.title || "No project";
-
-  details.append(
-    createTaskMetaPill("Project", projectLabel),
-    createTaskMetaPill("Assignee", assigneeLabel),
-    createTaskMetaPill("Schedule", formatTaskDateDisplay(task.scheduleDate)),
-    createTaskMetaPill("Due", formatTaskDateDisplay(task.dueDate)),
-    createTaskMetaPill("Priority", String(task.priorityScore), getPriorityScoreBand(task.priorityScore)),
-    createTaskMetaPill("Dependencies", dependencyStateLabel, task.blockedByTaskIds.length ? "info" : "muted")
-  );
-
-  const actions = document.createElement("div");
-  actions.className = "tasks-row-actions";
-
-  const editButton = document.createElement("button");
-  editButton.type = "button";
-  editButton.className = "secondary-button task-edit-trigger task-action-icon";
-  editButton.dataset.taskEditTrigger = task.id;
-  editButton.setAttribute("aria-expanded", String(isExpanded));
-  editButton.setAttribute("aria-label", `Edit ${task.title}`);
-  editButton.textContent = "✎";
-  editButton.addEventListener("click", () => onOpenEditor(editButton));
-
-  const archiveButton = document.createElement("button");
-  archiveButton.type = "button";
-  archiveButton.className = "secondary-button task-action-icon";
-  archiveButton.setAttribute("aria-label", `${task.archived ? "Unarchive" : "Archive"} ${task.title}`);
-  archiveButton.textContent = task.archived ? "↺" : "⎋";
-  archiveButton.addEventListener("click", onToggleArchived);
-
-  actions.append(editButton, archiveButton);
-  card.append(header, details, actions);
-  return card;
-}
-
-/**
- * Creates compact metadata pills for task cards.
- */
-function createTaskMetaPill(label, value, tone = "neutral") {
-  const pill = document.createElement("p");
-  pill.className = `task-meta-pill task-meta-pill-${tone}`;
-
-  const key = document.createElement("span");
-  key.className = "task-meta-label";
-  key.textContent = `${label}:`;
-
-  const content = document.createElement("span");
-  content.className = "task-meta-value";
-  content.textContent = value;
-
-  pill.append(key, content);
-  return pill;
-}
-
-function createTaskEditorRow({ task, people, projects, mode, onDraftChange, onSave, onCancel, onToggleArchived }) {
-  const wrapper = document.createElement("article");
-  wrapper.className = "tasks-editor-row";
-
-  const form = document.createElement("form");
-  form.className = "task-inline-editor";
-  const firstInput = createField("Title", "text", task.title || "", true).input;
-  const effort = createField("Effort", "number", String(task.effort || 5), true, { min: "1", max: "10" }).input;
-  const impact = createField("Impact", "number", String(task.impact || 5), true, { min: "1", max: "10" }).input;
   const status = document.createElement("select");
   status.className = "field-input";
   TASK_STATUSES.forEach((value) => addOption(status, value, value));
   status.value = task.status || "Backlog";
-
-  const dependencies = document.createElement("input");
-  dependencies.type = "text";
-  dependencies.className = "field-input";
-  dependencies.placeholder = "Comma-separated task IDs";
-  dependencies.value = (task.blockedByTaskIds || []).join(", ");
 
   const assignee = document.createElement("select");
   assignee.className = "field-input";
@@ -461,54 +410,46 @@ function createTaskEditorRow({ task, people, projects, mode, onDraftChange, onSa
   projects.forEach((entry) => addOption(project, entry.id, entry.title));
   project.value = task.projectId || "";
 
-  const scheduleDate = createField("Schedule date", "date", task.scheduleDate || "", false).input;
-  const dueDate = createField("Due date", "date", task.dueDate || "", false).input;
+  const scheduleDate = document.createElement("input");
+  scheduleDate.className = "field-input";
+  scheduleDate.type = "date";
+  scheduleDate.value = task.scheduleDate || "";
 
-  form.append(
-    buildInlineEditorField("Title", firstInput),
-    buildInlineEditorField("Effort", effort),
-    buildInlineEditorField("Impact", impact),
-    buildInlineEditorField("Status", status),
-    buildInlineEditorField("Dependencies", dependencies),
-    buildInlineEditorField("Assignee", assignee),
-    buildInlineEditorField("Project", project),
-    buildInlineEditorField("Schedule date", scheduleDate),
-    buildInlineEditorField("Due date", dueDate)
-  );
+  const dueDate = document.createElement("input");
+  dueDate.className = "field-input";
+  dueDate.type = "date";
+  dueDate.value = task.dueDate || "";
 
-  const actions = document.createElement("div");
-  actions.className = "task-inline-editor-actions";
-  const save = document.createElement("button");
-  save.type = "submit";
-  save.className = "primary-button";
-  save.textContent = "Save";
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "secondary-button";
-  cancel.textContent = "Cancel";
-  cancel.addEventListener("click", onCancel);
-  actions.append(save, cancel);
+  const effort = document.createElement("input");
+  effort.className = "field-input";
+  effort.type = "number";
+  effort.min = "1";
+  effort.max = "10";
+  effort.value = String(task.effort || 5);
 
-  if (mode === "edit") {
-    const archive = document.createElement("button");
-    archive.type = "button";
-    archive.className = "secondary-button";
-    archive.textContent = task.archived ? "Unarchive" : "Archive";
-    archive.addEventListener("click", onToggleArchived);
-    actions.appendChild(archive);
-  }
+  const impact = document.createElement("input");
+  impact.className = "field-input";
+  impact.type = "number";
+  impact.min = "1";
+  impact.max = "10";
+  impact.value = String(task.impact || 5);
 
-  form.appendChild(actions);
+  const dependencies = document.createElement("input");
+  dependencies.className = "field-input";
+  dependencies.type = "text";
+  dependencies.placeholder = "Comma-separated IDs";
+  dependencies.value = (task.blockedByTaskIds || []).join(", ");
 
-  const notifyDraftChange = () => onDraftChange(readInlineEditorPayload());
-  [firstInput, effort, impact, status, dependencies, assignee, project, scheduleDate, dueDate].forEach((input) => {
-    input.addEventListener("input", notifyDraftChange);
-    input.addEventListener("change", notifyDraftChange);
-  });
+  const actions = document.createElement("td");
+  actions.className = "tasks-table-actions";
 
-  function readInlineEditorPayload() {
-    const payload = {
-      title: firstInput.value.trim(),
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Save";
+  saveButton.addEventListener("click", () => {
+    onSaveInline({
+      title: title.value.trim(),
       effort: clampTaskScaleValue(effort.value, task.effort || 5),
       impact: clampTaskScaleValue(impact.value, task.impact || 5),
       status: status.value,
@@ -523,93 +464,69 @@ function createTaskEditorRow({ task, people, projects, mode, onDraftChange, onSa
       recurrenceMeta: task.recurrenceMeta || { frequency: "none", interval: 1 },
       notes: task.notes || "",
       archived: task.archived || false
-    };
-    return payload;
-  }
-
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    onSave(readInlineEditorPayload());
+    });
   });
 
-  wrapper.appendChild(form);
-  setTimeout(() => firstInput.focus(), 0);
-  return wrapper;
-}
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", onCancelEdit);
 
-function buildInlineEditorField(labelText, input) {
-  const label = document.createElement("label");
-  label.className = "field-label";
-  label.textContent = labelText;
-  label.appendChild(input);
-  return label;
-}
+  actions.append(saveButton, cancelButton);
 
-function createDraftTaskTemplate() {
-  return normaliseTask({
-    title: "",
-    effort: 5,
-    impact: 5,
-    status: "Backlog",
-    assigneeId: "",
-    projectId: "",
-    scheduleDate: "",
-    dueDate: "",
-    blockedByTaskIds: [],
-    blockingTaskIds: [],
-    recurrence: "none",
-    customRecurrence: "",
-    recurrenceMeta: { frequency: "none", interval: 1 },
-    notes: "",
-    archived: false
+  // Any user input marks the row dirty so editor-switch confirmation can protect unsaved changes.
+  [title, status, assignee, project, scheduleDate, dueDate, effort, impact, dependencies].forEach((field) => {
+    field.addEventListener("input", onEditDirty);
+    field.addEventListener("change", onEditDirty);
   });
+
+  row.append(
+    createTableInputCell(title),
+    createTableInputCell(status),
+    createTableInputCell(assignee),
+    createTableInputCell(project),
+    createTableInputCell(scheduleDate),
+    createTableInputCell(dueDate),
+    createTableInputCell(createInlinePriorityFields(effort, impact)),
+    createTableInputCell(dependencies),
+    actions
+  );
+
+  setTimeout(() => title.focus(), 0);
+  return row;
 }
 
-function formatTaskDateDisplay(dateValue) {
-  if (!dateValue) {
-    return "—";
-  }
-
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+function createTableTextCell(value) {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  return cell;
 }
+
+function createTableStatusCell(status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(status)}`;
+  badge.textContent = status;
+  cell.appendChild(badge);
+  return cell;
+}
+
+function createTablePriorityCell(priorityScore) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-meta-pill task-meta-pill-${getPriorityScoreBand(priorityScore)}`;
+  badge.textContent = String(priorityScore);
+  cell.appendChild(badge);
+  return cell;
+}
+
 
 /**
- * Returns a CSS-safe suffix for task status badges.
+ * Returns a CSS-safe suffix for task status badges used in table and modal surfaces.
  */
 function getTaskStatusClassSuffix(status) {
   return TASK_STATUS_CLASS_SUFFIX[status] || "backlog";
-}
-
-/**
- * Classifies a task into due-date urgency buckets so visual styling can highlight timing risk.
- */
-function getTaskDueDateState(task) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const scheduleTime = parseTaskDateToMidnight(task.scheduleDate);
-  const dueTime = parseTaskDateToMidnight(task.dueDate);
-
-  if (!scheduleTime && !dueTime) {
-    return "unscheduled";
-  }
-
-  const timelineDate = scheduleTime || dueTime;
-  const hasOverdueDate = [scheduleTime, dueTime].some((dateValue) => dateValue && dateValue < today.getTime());
-  if (hasOverdueDate) {
-    return "overdue";
-  }
-
-  if (timelineDate === today.getTime()) {
-    return "due-today";
-  }
-
-  return "upcoming";
 }
 
 /**
@@ -627,33 +544,53 @@ function getPriorityScoreBand(priorityScore) {
   return "low";
 }
 
-/**
- * Parses a yyyy-mm-dd task date and normalises it to local midnight for stable day-level compares.
- */
-function parseTaskDateToMidnight(dateValue) {
-  if (!dateValue) {
-    return null;
-  }
+function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
+  const cell = document.createElement("td");
+  cell.className = "tasks-table-actions";
 
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "secondary-button";
+  editButton.dataset.taskEditTrigger = task.id;
+  editButton.textContent = "Edit";
+  editButton.addEventListener("click", onOpenEditor);
 
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+  const archiveButton = document.createElement("button");
+  archiveButton.type = "button";
+  archiveButton.className = "secondary-button";
+  archiveButton.textContent = task.archived ? "Unarchive" : "Archive";
+  archiveButton.addEventListener("click", onToggleArchived);
+
+  cell.append(editButton, archiveButton);
+  return cell;
 }
 
-/**
- * Bounds inline effort/impact values to the canonical 1-10 scoring scale.
- */
-function clampTaskScaleValue(rawValue, fallbackValue = 5) {
-  const parsed = Number.parseInt(rawValue, 10);
-  if (Number.isNaN(parsed)) {
-    return fallbackValue;
+function createTableInputCell(content) {
+  const cell = document.createElement("td");
+  if (content instanceof Node) {
+    cell.appendChild(content);
+  } else {
+    cell.textContent = String(content || "");
   }
+  return cell;
+}
 
-  return Math.min(10, Math.max(1, parsed));
+function createInlinePriorityFields(effort, impact) {
+  const wrap = document.createElement("div");
+  wrap.className = "task-inline-priority-fields";
+
+  const effortWrap = document.createElement("label");
+  effortWrap.className = "task-inline-priority-item";
+  effortWrap.textContent = "E";
+  effortWrap.appendChild(effort);
+
+  const impactWrap = document.createElement("label");
+  impactWrap.className = "task-inline-priority-item";
+  impactWrap.textContent = "I";
+  impactWrap.appendChild(impact);
+
+  wrap.append(effortWrap, impactWrap);
+  return wrap;
 }
 
 function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
@@ -1370,6 +1307,41 @@ export function markTaskCompleted(mode, taskId) {
   }
 
   return wasUpdated;
+}
+
+/**
+ * Archives all non-archived tasks currently marked as Done.
+ *
+ * Returns the number of tasks that were archived so callers can surface
+ * immediate user feedback in table-level actions.
+ */
+export function archiveCompletedTasks(mode) {
+  const tasks = loadTasks(mode);
+  const now = new Date().toISOString();
+  let archivedCount = 0;
+
+  const updated = tasks.map((task) => {
+    if (task.archived || task.status !== "Done") {
+      return task;
+    }
+
+    archivedCount += 1;
+    return {
+      ...task,
+      archived: true,
+      updatedAt: now,
+      lastUpdatedByField: {
+        ...task.lastUpdatedByField,
+        archived: now
+      }
+    };
+  });
+
+  if (archivedCount > 0) {
+    persistTasks(mode, updated);
+  }
+
+  return archivedCount;
 }
 
 /**

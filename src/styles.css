@@ -2742,6 +2742,70 @@ small,
   gap: 0.75rem;
 }
 
+.tasks-header-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tasks-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tasks-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid rgba(152, 174, 235, 0.2);
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: rgba(17, 24, 37, 0.78);
+}
+
+.tasks-table th,
+.tasks-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid rgba(152, 174, 235, 0.12);
+  vertical-align: top;
+  font-size: 0.82rem;
+}
+
+.tasks-table th {
+  text-align: left;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(22, 33, 52, 0.86);
+}
+
+.tasks-table tr:last-child td {
+  border-bottom: none;
+}
+
+.tasks-table-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.task-inline-priority-fields {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.task-inline-priority-item {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.task-inline-priority-item .field-input {
+  width: 4.25rem;
+}
+
 .tasks-card-list {
   display: grid;
   gap: 0.55rem;
@@ -2871,6 +2935,23 @@ textarea.field-input {
   bottom: 0;
   padding-top: 0.4rem;
   background: linear-gradient(180deg, rgba(14, 21, 34, 0), rgba(14, 21, 34, 0.94) 34%);
+}
+
+/* Task create modal stays compact and mirrors the spacing style from other lightbox forms. */
+.task-form.meeting-modal {
+  max-width: min(44rem, 96vw);
+  gap: 0.55rem;
+}
+
+.task-form .task-form-section,
+.task-form .task-form-collapsible {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+}
+
+.task-form .task-form-section-title,
+.task-form .task-form-collapsible-title {
+  margin-bottom: 0.45rem;
 }
 
 * {
