@@ -1,4 +1,5 @@
-import { loadTasks } from "./tasks.js";
+// Cache-busted task import ensures sprint selectors consume the latest task parser/runtime fixes.
+import { loadTasks } from "./tasks.js?v=2026-02-18-1";
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 import { generateId } from "./id.js";
 import { createModalDismissGuard } from "./modal-dismiss-guard.js";
