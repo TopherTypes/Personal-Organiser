@@ -514,8 +514,36 @@ function createMetricCard(label, value, moduleKey, uiContext) {
   metricValue.className = "overview-metric-value";
   metricValue.textContent = value;
 
+  // Animate numeric values to improve first-load legibility without changing
+  // any metric semantics or introducing asynchronous data dependencies.
+  const numericValue = Number.parseInt(value, 10);
+  if (!Number.isNaN(numericValue)) {
+    animateMetricValue(metricValue, numericValue);
+  }
+
   button.append(heading, metricValue);
   return button;
+}
+
+/**
+ * Performs a lightweight count-up animation for dashboard KPI values.
+ */
+function animateMetricValue(element, targetValue) {
+  const durationMs = 520;
+  const start = performance.now();
+
+  const tick = (now) => {
+    const progress = Math.min((now - start) / durationMs, 1);
+    // Ease-out cubic keeps movement snappy up-front while settling smoothly.
+    const eased = 1 - Math.pow(1 - progress, 3);
+    element.textContent = String(Math.round(targetValue * eased));
+
+    if (progress < 1) {
+      window.requestAnimationFrame(tick);
+    }
+  };
+
+  window.requestAnimationFrame(tick);
 }
 
 /**
