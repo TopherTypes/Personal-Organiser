@@ -1,7 +1,8 @@
 import { APP_VERSION, VERSION_BUMP_NOTE } from "./version.js";
 import { renderTopBar } from "./modules/topbar.js";
 import { renderSidebar } from "./modules/sidebar.js";
-import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js";
+// Cache-bust dashboard module import so clients always fetch the latest navigation/module wiring.
+import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js?v=2026-02-18-2";
 import { loadSettings, saveSettings } from "./modules/settings.js";
 import { createSyncSubsystem } from "./modules/sync.js";
 import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
