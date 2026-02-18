@@ -514,12 +514,22 @@ function formatTaskDateDisplay(dateValue) {
     return "—";
   }
 
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
+function createTableStatusCell(status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(status)}`;
+  badge.textContent = status;
+  cell.appendChild(badge);
+  return cell;
+}
 
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+function createTablePriorityCell(priorityScore) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `task-meta-pill task-meta-pill-${getPriorityScoreBand(priorityScore)}`;
+  badge.textContent = String(priorityScore);
+  cell.appendChild(badge);
+  return cell;
 }
 
 function createTableStatusCell(status) {
@@ -559,8 +569,7 @@ function getPriorityScoreBand(priorityScore) {
   if (priorityScore >= PRIORITY_SCORE_BANDS.medium) {
     return "medium";
   }
-
-  return "low";
+  return cell;
 }
 
 function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
