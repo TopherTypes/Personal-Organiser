@@ -514,13 +514,16 @@ function formatTaskDateDisplay(dateValue) {
     return "—";
   }
 
-function createTableStatusCell(status) {
-  const cell = document.createElement("td");
-  const badge = document.createElement("span");
-  badge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(status)}`;
-  badge.textContent = status;
-  cell.appendChild(badge);
-  return cell;
+  const parsedDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "—";
+  }
+
+  return parsedDate.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
 }
 
 function createTableStatusCell(status) {
@@ -560,7 +563,7 @@ function getPriorityScoreBand(priorityScore) {
   if (priorityScore >= PRIORITY_SCORE_BANDS.medium) {
     return "medium";
   }
-  return cell;
+  return "low";
 }
 
 function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
