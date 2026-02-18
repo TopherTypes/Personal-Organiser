@@ -1640,15 +1640,45 @@ function filterAndSortMeetings(allMeetings, state, range) {
  * Calendar day cards share the same completed visibility rule as the list pane.
  */
 function meetingsVisibleInCalendarDate(allMeetings, date, state) {
-  return allMeetings.filter((meeting) => {
-    if (meeting.date !== date || meeting.archived) {
-      return false;
-    }
-    if (!state.showCompleted && meeting.status === "completed") {
-      return false;
-    }
-    return true;
-  });
+  return allMeetings
+    .filter((meeting) => {
+      if (meeting.date !== date || meeting.archived) {
+        return false;
+      }
+      if (!state.showCompleted && meeting.status === "completed") {
+        return false;
+      }
+      return true;
+    })
+    .sort((first, second) => {
+      // Calendar cards are ordered by start time so day columns remain
+      // chronologically scannable as meeting volume grows.
+      const firstStart = normaliseMeetingTimeForSort(first.startTime);
+      const secondStart = normaliseMeetingTimeForSort(second.startTime);
+      if (firstStart !== secondStart) {
+        return firstStart.localeCompare(secondStart);
+      }
+
+      const firstEnd = normaliseMeetingTimeForSort(first.endTime);
+      const secondEnd = normaliseMeetingTimeForSort(second.endTime);
+      if (firstEnd !== secondEnd) {
+        return firstEnd.localeCompare(secondEnd);
+      }
+
+      return (first.name || "").localeCompare(second.name || "");
+    });
+}
+
+/**
+ * Converts a potentially-empty time string into a stable sort token.
+ * Empty/invalid values are intentionally moved to the end of the day.
+ */
+function normaliseMeetingTimeForSort(value) {
+  const raw = String(value || "").trim();
+  if (!raw || !/^\d{2}:\d{2}$/.test(raw)) {
+    return "99:99";
+  }
+  return raw;
 }
 
 function resolveMeetingStatusClass(status) {

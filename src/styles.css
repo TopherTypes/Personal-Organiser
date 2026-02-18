@@ -1812,7 +1812,12 @@ textarea:focus-visible,
   position: fixed;
   inset: 0;
   z-index: 48;
-  background: color-mix(in srgb, var(--bg) 55%, #000);
+  /*
+   * Modal overlays intentionally use an opaque-enough backdrop so underlying
+   * module surfaces never bleed through and compete with form readability.
+   */
+  background: rgba(4, 8, 16, 0.74);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   padding: var(--space-4);
