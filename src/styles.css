@@ -2953,3 +2953,60 @@ textarea.field-input {
   border-color: rgba(187, 132, 255, 0.72);
   color: #f7efff;
 }
+
+/*
+ * Weekly meetings layout enhancement:
+ * The weekly mode now prioritises a full-width calendar with in-context details
+ * selection before opening the editor modal.
+ */
+.meetings-split.meetings-split-weekly {
+  grid-template-columns: 1fr;
+}
+
+.meetings-split.meetings-split-weekly .meetings-list-pane {
+  display: none;
+}
+
+.meeting-calendar-details {
+  width: 100%;
+  border: 1px solid rgba(121, 143, 247, 0.34);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(22, 34, 59, 0.9), rgba(16, 26, 46, 0.88));
+  color: var(--text);
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  display: grid;
+  gap: 0.32rem;
+  margin-bottom: 0.65rem;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.meeting-calendar-details:not(:disabled):hover,
+.meeting-calendar-details:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 147, 255, 0.74);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.28);
+}
+
+.meeting-calendar-details:disabled {
+  opacity: 0.85;
+  cursor: default;
+}
+
+.meeting-calendar-details-meta {
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+/*
+ * Show full meeting lists in weekly calendar columns for easier scheduling
+ * review without forcing users into the side list.
+ */
+.week-grid .calendar-day {
+  align-content: start;
+}
+
+.week-grid .calendar-meeting-entries {
+  max-height: none;
+  overflow: visible;
+}
