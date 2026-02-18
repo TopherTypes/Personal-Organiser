@@ -379,7 +379,7 @@ function createTaskTableRow(task, {
       createTableTextCell(people.find((person) => person.id === task.assigneeId)?.name || "Unassigned"),
       createTableTextCell(projects.find((project) => project.id === task.projectId)?.title || "No project"),
       createTableTextCell(formatTaskDateDisplay(task.scheduleDate)),
-      createTableTextCell(formatTaskDateDisplay(task.dueDate)),
+      createTableDueDateCell(task.dueDate),
       createTablePriorityCell(task.priorityScore),
       createTableTextCell(dependencyStateLabel),
       createTaskActionsCell({ task, onOpenEditor, onToggleArchived })
@@ -548,6 +548,37 @@ function createTableStatusCell(status) {
   badge.textContent = status;
   cell.appendChild(badge);
   return cell;
+}
+
+/**
+ * Applies semantic urgency styling to due-date values so users can triage from
+ * the table scan line without opening row details.
+ */
+function createTableDueDateCell(dateValue) {
+  const cell = document.createElement("td");
+  const state = getDueDateState(dateValue);
+  cell.className = `task-due-date-cell task-due-date-${state}`;
+  cell.textContent = formatTaskDateDisplay(dateValue);
+  return cell;
+}
+
+function getDueDateState(dateValue) {
+  if (!dateValue) {
+    return "no-date";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(dueDate.getTime())) {
+    return "no-date";
+  }
+
+  if (dueDate < today) {
+    return "overdue";
+  }
+
+  return "upcoming";
 }
 
 function createTablePriorityCell(priorityScore) {

@@ -3414,3 +3414,391 @@ textarea.field-input {
   gap: var(--space-2);
   justify-items: start;
 }
+
+/*
+ * ===== Desktop command-centre refinement pass =====
+ * This layer intentionally de-intensifies glow, tightens rhythm, and reinforces
+ * depth hierarchy without changing module architecture.
+ */
+:root {
+  /* 4/8/12/16/24 spacing scale used as canonical vertical rhythm. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 1.5rem;
+  --space-8: 1.5rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.65rem;
+  --radius-lg: 0.8rem;
+  --ring: 0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent);
+
+  /* Explicit depth planes keep hierarchy stable and scannable. */
+  --layer-background: #080d17;
+  --layer-sidebar: #0f1728;
+  --layer-base: #131d30;
+  --layer-raised: #182338;
+  --layer-floating: #1f2a42;
+  --elevation-1: 0 6px 16px rgba(3, 7, 16, 0.18);
+  --elevation-2: 0 14px 34px rgba(2, 6, 14, 0.34);
+}
+
+body {
+  background: var(--layer-background);
+}
+
+.top-bar,
+.footer {
+  box-shadow: none;
+  border-color: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.content {
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+/* Sidebar is intentionally recessed so content remains the focal layer. */
+.sidebar {
+  background: var(--layer-sidebar);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent);
+  padding: var(--space-3);
+  gap: var(--space-3);
+}
+
+.module-item.active {
+  background: color-mix(in srgb, var(--accent-soft) 52%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.module-button {
+  padding: 0.5rem 0.62rem;
+  transition: background-color 170ms ease, border-color 170ms ease, transform 170ms ease;
+}
+
+.module-button:hover {
+  transform: translateY(-1px);
+}
+
+.mode-dashboard,
+.people-shell,
+.meetings-calendar-pane,
+.meetings-list-pane,
+.tasks-table,
+.overview-card,
+.project-card,
+.project-card-v2,
+.project-row-v2,
+.people-list-panel,
+.people-detail-panel,
+.meeting-row,
+.card,
+.landing-card,
+.people-form {
+  background: var(--layer-base);
+  box-shadow: none;
+  border-color: color-mix(in srgb, var(--border) 85%, transparent);
+}
+
+.project-card,
+.project-card-v2,
+.project-row-v2,
+.overview-metric-card,
+.meeting-row,
+.calendar-day,
+.meeting-attached-update-card,
+.contact-trail li,
+.people-list-item,
+.project-list-card {
+  background: var(--layer-raised);
+  box-shadow: none;
+  transition: transform 170ms ease, border-color 170ms ease, box-shadow 170ms ease;
+}
+
+.project-card:hover,
+.project-card-v2:hover,
+.project-row-v2:hover,
+.overview-metric-card:hover,
+.meeting-row:hover,
+.calendar-day:hover,
+.people-list-item:hover,
+.project-list-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elevation-1);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+/* Floating layer for modals: distinct surface + stronger but clean shadow. */
+.meeting-modal,
+.initial-sync-modal,
+.command-palette,
+.quick-actions-menu,
+.settings-action-modal,
+.entity-editor-modal {
+  background: var(--layer-floating);
+  box-shadow: var(--elevation-2);
+  border-color: color-mix(in srgb, var(--border) 88%, transparent);
+}
+
+.meeting-modal {
+  width: min(1180px, 100%);
+  padding: var(--space-4);
+}
+
+.entity-editor-modal {
+  width: min(700px, 100%);
+}
+
+.mode-dashboard > h1,
+.projects-header-v2 h1 {
+  font-weight: 700;
+  margin-bottom: var(--space-1);
+}
+
+.module-intro,
+.projects-header-v2 .module-intro,
+.project-v2-summary,
+.project-v2-meta,
+.person-meta {
+  color: color-mix(in srgb, var(--text-muted) 90%, var(--text));
+}
+
+/* Command bars are flattened to avoid looking like heavyweight containers. */
+.people-controls,
+.projects-toolbar,
+.meeting-controls,
+.meetings-controls,
+.tasks-header-actions {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.people-controls,
+.projects-toolbar,
+.meeting-controls,
+.meetings-controls {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  padding-bottom: var(--space-2);
+}
+
+.field-input,
+select.field-input,
+input.field-input,
+textarea.field-input {
+  min-height: 2rem;
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.55rem;
+}
+
+.button,
+.enter-mode-button,
+.ghost-button,
+.module-button-secondary,
+.sync-action-button,
+.primary-button,
+.secondary-button,
+button {
+  border-radius: var(--radius-sm);
+}
+
+/* Table density and scan-line alignment improvements for tasks + updates. */
+.tasks-table th,
+.tasks-table td,
+.updates-table th,
+.updates-table td {
+  padding: 0.3rem 0.46rem;
+}
+
+.tasks-table thead th,
+.updates-table th {
+  font-size: 0.72rem;
+}
+
+.tasks-table tbody td,
+.updates-table td {
+  font-size: 0.76rem;
+}
+
+.tasks-table th:nth-child(6),
+.tasks-table td:nth-child(6),
+.tasks-table th:nth-child(7),
+.tasks-table td:nth-child(7),
+.updates-table th:nth-child(6),
+.updates-table td:nth-child(6) {
+  text-align: left;
+}
+
+.task-due-date-cell {
+  font-weight: 600;
+}
+
+.task-due-date-overdue {
+  color: var(--danger);
+}
+
+.task-due-date-upcoming {
+  color: var(--text);
+}
+
+.task-due-date-no-date {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.task-meta-pill {
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+}
+
+.tasks-row-actions {
+  gap: 0.28rem;
+  margin-top: 0;
+  opacity: 1;
+}
+
+.task-edit-trigger,
+.tasks-row-actions .secondary-button,
+.tasks-row-actions .button {
+  min-height: 1.7rem;
+  padding: 0.12rem 0.42rem;
+  font-size: 0.74rem;
+}
+
+.overview-metric-card {
+  padding: var(--space-2);
+  gap: 0.1rem;
+}
+
+.overview-metric-value {
+  font-size: clamp(1.35rem, 1.8vw, 1.95rem);
+  font-weight: 760;
+  line-height: 1;
+}
+
+.overview-metrics {
+  gap: var(--space-1);
+}
+
+.meetings-header,
+.calendar-header {
+  gap: var(--space-2);
+}
+
+.calendar-day {
+  min-height: 4.2rem;
+  padding: var(--space-2);
+  gap: var(--space-1);
+}
+
+.calendar-meeting-entry {
+  padding: 0.15rem 0.34rem;
+  font-size: 0.74rem;
+}
+
+.meeting-row,
+.meetings-calendar-pane,
+.meetings-list-pane {
+  padding: var(--space-2);
+}
+
+.people-list {
+  gap: var(--space-2);
+}
+
+.people-list-button {
+  padding: var(--space-2);
+}
+
+.people-detail-panel,
+.people-list-panel,
+.card-muted,
+.people-form,
+.project-card,
+.project-card-v2 {
+  padding: var(--space-3);
+}
+
+.contact-trail {
+  gap: var(--space-1);
+}
+
+.contact-trail li {
+  padding: var(--space-1) var(--space-2);
+}
+
+.person-meta,
+.last-contact-label,
+.project-v2-summary,
+.project-v2-meta {
+  font-size: 0.78rem;
+}
+
+.status-pill,
+.status-badge,
+.project-stat-chip,
+.metric-chip,
+.task-status-badge,
+.update-type-pill {
+  box-shadow: none;
+}
+
+.project-v2-summary {
+  opacity: 0.9;
+}
+
+.project-stat-chip {
+  padding: 0.08rem 0.4rem;
+}
+
+.project-stat-chip.is-alert {
+  font-weight: 700;
+}
+
+.project-v2-actions {
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.project-open-button,
+.project-icon-button {
+  min-height: 1.75rem;
+}
+
+.task-form,
+.meeting-form,
+.meeting-one-on-one-updates,
+.meeting-review-notes,
+.meeting-attached-updates,
+.task-form-section,
+.task-form-collapsible,
+.task-form-collapsible-body,
+.meeting-attached-update-card,
+.settings-danger-warning {
+  padding: var(--space-2);
+  gap: var(--space-2);
+}
+
+.task-form-section + .task-form-section,
+.task-form-collapsible + .task-form-collapsible {
+  margin-top: var(--space-1);
+}
+
+.task-form-section {
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+/* Desktop project density targets: 3-up at 1280+, 4-up at 1600+. */
+.projects-view-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 1600px) {
+  .projects-view-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
