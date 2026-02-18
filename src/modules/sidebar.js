@@ -21,8 +21,18 @@ export function renderSidebar({ mode, activeModule = "dashboard", onModuleSelect
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "sidebar-toggle button button-secondary";
-  toggle.textContent = "Modules";
+  toggle.innerHTML = '<span aria-hidden="true">☰</span><span class="sidebar-toggle-label">Collapse</span>';
   toggle.setAttribute("aria-expanded", "true");
+
+  // Persist sidebar collapsed state by mode so users can retain their
+  // preferred high-density navigation footprint between route switches.
+  const collapseStorageKey = `second-brain.ui.sidebar.collapsed.${mode}`;
+  const isInitiallyCollapsed = window.localStorage.getItem(collapseStorageKey) === "true";
+  if (isInitiallyCollapsed) {
+    aside.classList.add("collapsed");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.querySelector(".sidebar-toggle-label").textContent = "Expand";
+  }
 
   const list = document.createElement("ul");
   list.className = "module-list";
@@ -36,6 +46,8 @@ export function renderSidebar({ mode, activeModule = "dashboard", onModuleSelect
   toggle.addEventListener("click", () => {
     const isCollapsed = aside.classList.toggle("collapsed");
     toggle.setAttribute("aria-expanded", String(!isCollapsed));
+    toggle.querySelector(".sidebar-toggle-label").textContent = isCollapsed ? "Expand" : "Collapse";
+    window.localStorage.setItem(collapseStorageKey, String(isCollapsed));
   });
 
   header.append(heading, toggle);

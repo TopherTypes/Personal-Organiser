@@ -201,13 +201,12 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       empty.textContent = "No tasks match your current filters.";
       list.appendChild(empty);
     } else {
-      const table = createTaskTable();
-      list.appendChild(table);
-      const tableBody = table.querySelector("tbody");
+      const cards = createTaskCardsContainer();
+      list.appendChild(cards);
 
-      // New task create flow uses the same inline editor pattern as edit rows.
+      // New task create flow uses the same inline editor pattern as existing task edits.
       if (state.expandedTaskId === "__new__") {
-        tableBody.appendChild(
+        cards.appendChild(
           createTaskEditorRow({
             task: createDraftTaskTemplate(),
             people,
@@ -237,16 +236,16 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
         );
       }
 
-      // Dependency labels still require full task lookup for cross-row relationship summaries.
+      // Dependency labels still require full task lookup for cross-card relationship summaries.
       const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
-        tableBody.appendChild(
-          createTaskDisplayRow(task, {
+        cards.appendChild(
+          createTaskDisplayCard(task, {
             isExpanded: state.expandedTaskId === task.id,
             people,
             projects,
             dependencyStateLabel: buildDependencyStateLabel(task, taskById),
-            onOpenEditor: (editButton) => {
+            onOpenEditor: () => {
               if (!requestInlineEditorSwitch(task.id)) {
                 return;
               }
@@ -262,7 +261,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
         );
 
         if (state.expandedTaskId === task.id) {
-          tableBody.appendChild(
+          cards.appendChild(
             createTaskEditorRow({
               task,
               people,
@@ -340,114 +339,99 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
 }
 
 /**
- * Builds the compact pseudo-table shell used by the tasks list.
+ * Builds the high-density task card list shell used by the tasks module.
  */
-function createTaskTable() {
-  const table = document.createElement("table");
-  table.className = "tasks-table";
-
-  const columnGroup = document.createElement("colgroup");
-  ["30%", "12%", "11%", "17%", "15%", "8%", "7%"].forEach((width) => {
-    const col = document.createElement("col");
-    col.style.width = width;
-    columnGroup.appendChild(col);
-  });
-
-  const header = document.createElement("thead");
-  header.className = "tasks-table-head";
-  const headerRow = document.createElement("tr");
-  ["Task", "Status", "Dependencies", "Assignee / Project", "Schedule / Due", "Priority", "Actions"].forEach((label) => {
-    const headCell = document.createElement("th");
-    headCell.scope = "col";
-    headCell.textContent = label;
-    headerRow.appendChild(headCell);
-  });
-  header.appendChild(headerRow);
-
-  const body = document.createElement("tbody");
-  table.append(columnGroup, header, body);
-  return table;
+function createTaskCardsContainer() {
+  const container = document.createElement("div");
+  container.className = "tasks-card-list";
+  return container;
 }
 
 /**
- * Renders a single compact read-only task row for high-density table scanning.
+ * Renders a single compact read-only task card for high-density scanning.
  */
-function createTaskDisplayRow(task, { people, projects, dependencyStateLabel, onOpenEditor, onToggleArchived, isExpanded = false }) {
-  const row = document.createElement("tr");
-  row.className = "tasks-display-row";
+function createTaskDisplayCard(task, { people, projects, dependencyStateLabel, onOpenEditor, onToggleArchived, isExpanded = false }) {
+  const card = document.createElement("article");
+  card.className = "task-card";
 
-  const taskCell = document.createElement("td");
-  const title = document.createElement("p");
+  const header = document.createElement("div");
+  header.className = "task-card-header";
+
+  const statusDot = document.createElement("span");
+  statusDot.className = `task-status-dot task-status-${getTaskStatusClassSuffix(task.status)}`;
+  statusDot.setAttribute("aria-hidden", "true");
+
+  const title = document.createElement("h3");
   title.className = "task-row-title";
   title.textContent = task.title;
-  taskCell.appendChild(title);
 
-  const statusCell = document.createElement("td");
   const statusBadge = document.createElement("span");
   statusBadge.className = `task-status-badge task-status-${getTaskStatusClassSuffix(task.status)}`;
   statusBadge.textContent = task.status;
-  statusCell.appendChild(statusBadge);
 
-  const dependencyCell = document.createElement("td");
-  dependencyCell.className = task.blockedByTaskIds.length ? "" : "task-muted";
-  dependencyCell.textContent = dependencyStateLabel;
+  header.append(statusDot, title, statusBadge);
 
-  const relationCell = document.createElement("td");
+  const details = document.createElement("div");
+  details.className = "task-card-details";
+
   const assigneeLabel = people.find((person) => person.id === task.assigneeId)?.name || "Unassigned";
   const projectLabel = projects.find((project) => project.id === task.projectId)?.title || "No project";
-  const assigneeChip = document.createElement("span");
-  assigneeChip.className = "task-chip";
-  assigneeChip.textContent = assigneeLabel;
-  const projectChip = document.createElement("span");
-  projectChip.className = "task-chip";
-  projectChip.textContent = projectLabel;
-  relationCell.append(assigneeChip, projectChip);
 
-  const dueCell = document.createElement("td");
-  dueCell.className = "task-cell-dates";
-  dueCell.textContent = `${formatTaskDateDisplay(task.scheduleDate)} / ${formatTaskDateDisplay(task.dueDate)}`;
+  details.append(
+    createTaskMetaPill("Project", projectLabel),
+    createTaskMetaPill("Assignee", assigneeLabel),
+    createTaskMetaPill("Schedule", formatTaskDateDisplay(task.scheduleDate)),
+    createTaskMetaPill("Due", formatTaskDateDisplay(task.dueDate)),
+    createTaskMetaPill("Priority", String(task.priorityScore), getPriorityScoreBand(task.priorityScore)),
+    createTaskMetaPill("Dependencies", dependencyStateLabel, task.blockedByTaskIds.length ? "info" : "muted")
+  );
 
-  const priorityCell = document.createElement("td");
-  const priorityPill = document.createElement("span");
-  priorityPill.className = `task-score-pill task-score-pill-${getPriorityScoreBand(task.priorityScore)}`;
-  priorityPill.textContent = String(task.priorityScore);
-  priorityCell.appendChild(priorityPill);
-
-  const actions = document.createElement("td");
+  const actions = document.createElement("div");
   actions.className = "tasks-row-actions";
+
   const editButton = document.createElement("button");
   editButton.type = "button";
-  editButton.className = "secondary-button task-edit-trigger";
+  editButton.className = "secondary-button task-edit-trigger task-action-icon";
   editButton.dataset.taskEditTrigger = task.id;
   editButton.setAttribute("aria-expanded", String(isExpanded));
-  editButton.textContent = "Edit";
+  editButton.setAttribute("aria-label", `Edit ${task.title}`);
+  editButton.textContent = "✎";
   editButton.addEventListener("click", () => onOpenEditor(editButton));
 
-  const menuDetails = document.createElement("details");
-  menuDetails.className = "task-row-menu";
-  const menuSummary = document.createElement("summary");
-  menuSummary.setAttribute("aria-label", `Task actions for ${task.title}`);
-  menuSummary.textContent = "⋯";
-  const menuAction = document.createElement("button");
-  menuAction.type = "button";
-  menuAction.className = "secondary-button";
-  menuAction.textContent = task.archived ? "Unarchive" : "Archive";
-  menuAction.addEventListener("click", () => {
-    menuDetails.open = false;
-    onToggleArchived();
-  });
-  menuDetails.append(menuSummary, menuAction);
+  const archiveButton = document.createElement("button");
+  archiveButton.type = "button";
+  archiveButton.className = "secondary-button task-action-icon";
+  archiveButton.setAttribute("aria-label", `${task.archived ? "Unarchive" : "Archive"} ${task.title}`);
+  archiveButton.textContent = task.archived ? "↺" : "⎋";
+  archiveButton.addEventListener("click", onToggleArchived);
 
-  actions.append(editButton, menuDetails);
-  row.append(taskCell, statusCell, dependencyCell, relationCell, dueCell, priorityCell, actions);
-  return row;
+  actions.append(editButton, archiveButton);
+  card.append(header, details, actions);
+  return card;
+}
+
+/**
+ * Creates compact metadata pills for task cards.
+ */
+function createTaskMetaPill(label, value, tone = "neutral") {
+  const pill = document.createElement("p");
+  pill.className = `task-meta-pill task-meta-pill-${tone}`;
+
+  const key = document.createElement("span");
+  key.className = "task-meta-label";
+  key.textContent = `${label}:`;
+
+  const content = document.createElement("span");
+  content.className = "task-meta-value";
+  content.textContent = value;
+
+  pill.append(key, content);
+  return pill;
 }
 
 function createTaskEditorRow({ task, people, projects, mode, onDraftChange, onSave, onCancel, onToggleArchived }) {
-  const row = document.createElement("tr");
-  row.className = "tasks-editor-row";
-  const cell = document.createElement("td");
-  cell.colSpan = 7;
+  const wrapper = document.createElement("article");
+  wrapper.className = "tasks-editor-row";
 
   const form = document.createElement("form");
   form.className = "task-inline-editor";
@@ -548,12 +532,10 @@ function createTaskEditorRow({ task, people, projects, mode, onDraftChange, onSa
     onSave(readInlineEditorPayload());
   });
 
-  row.appendChild(cell);
-  cell.appendChild(form);
+  wrapper.appendChild(form);
   setTimeout(() => firstInput.focus(), 0);
-  return row;
+  return wrapper;
 }
-
 
 function buildInlineEditorField(labelText, input) {
   const label = document.createElement("label");
