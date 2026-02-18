@@ -2522,3 +2522,434 @@ body[data-density="compact"] .footer {
   background: color-mix(in srgb, var(--danger-soft) 45%, transparent);
   border-radius: 0.45rem;
 }
+
+/*
+ * ===== 2026 Premium Command-Centre UI Refresh =====
+ * This override layer keeps existing business logic and markup contracts intact
+ * while dramatically modernising visual hierarchy, spacing, and interactions.
+ */
+:root {
+  color-scheme: dark;
+  --font-sans: "Inter", "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  --bg: #06090f;
+  --bg-elevated: #0f1522;
+  --bg-muted: #141d2d;
+  --bg-soft: #192338;
+  --border: rgba(166, 184, 224, 0.14);
+  --border-strong: rgba(166, 184, 224, 0.24);
+  --text: #e8edff;
+  --text-muted: #95a2c6;
+  --accent: #5a6fff;
+  --accent-soft: rgba(90, 111, 255, 0.14);
+  --radius-sm: 0.75rem;
+  --radius-md: 0.95rem;
+  --radius-lg: 1rem;
+  --ring: 0 0 0 3px rgba(90, 111, 255, 0.38);
+  --elevation-1: 0 10px 24px rgba(0, 0, 0, 0.33);
+  --elevation-2: 0 20px 56px rgba(0, 0, 0, 0.42);
+}
+
+body {
+  background:
+    radial-gradient(1100px 480px at 28% 10%, rgba(90, 111, 255, 0.2), transparent 58%),
+    radial-gradient(900px 420px at 82% 18%, rgba(110, 74, 255, 0.13), transparent 62%),
+    linear-gradient(175deg, #070a11 0%, #05070c 62%, #06090f 100%);
+  color: var(--text);
+}
+
+.app-shell {
+  position: relative;
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 6.5rem 1.2rem 1.2rem 1.2rem;
+  border-radius: 1.25rem;
+  pointer-events: none;
+  background: radial-gradient(circle at 18% 20%, rgba(109, 132, 255, 0.14), transparent 42%);
+}
+
+.top-bar {
+  margin: 0.8rem 0.9rem 0;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: rgba(12, 17, 29, 0.86);
+  box-shadow: var(--elevation-1);
+  padding: 0.4rem 0.7rem 0.4rem 1rem;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.mode-switch {
+  border: 1px solid var(--border);
+  background: rgba(28, 38, 58, 0.78);
+  border-radius: 0.8rem;
+}
+
+.mode-button {
+  border-radius: 0.65rem;
+  font-weight: 600;
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.mode-button.active {
+  background: linear-gradient(180deg, rgba(90, 111, 255, 0.34), rgba(90, 111, 255, 0.18));
+  border-color: rgba(120, 138, 255, 0.7);
+}
+
+.mode-button:hover:not(:disabled),
+.button:hover,
+.enter-mode-button:hover,
+.ghost-button:hover,
+.module-button-secondary:hover,
+.sync-action-button:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.32);
+}
+
+.content {
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.sidebar {
+  width: 78px;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: rgba(14, 21, 34, 0.92);
+  box-shadow: var(--elevation-1);
+  transition: width 150ms ease, background-color 150ms ease;
+}
+
+.sidebar:not(.collapsed) {
+  width: 220px;
+}
+
+.sidebar-heading {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-toggle {
+  border-radius: 0.6rem;
+  font-size: 0.76rem;
+}
+
+.sidebar.collapsed .sidebar-toggle-label,
+.sidebar.collapsed .sidebar-heading,
+.sidebar.collapsed .module-label {
+  display: none;
+}
+
+.module-list {
+  gap: 0.35rem;
+}
+
+.module-button {
+  justify-content: flex-start;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: all 150ms ease;
+}
+
+.module-item.active .module-button,
+.module-button:hover {
+  border-color: rgba(101, 124, 255, 0.26);
+  background: linear-gradient(90deg, rgba(90, 111, 255, 0.16), rgba(90, 111, 255, 0.04));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.mode-dashboard,
+.people-shell,
+.people-form,
+.meetings-calendar-pane,
+.meetings-list-pane,
+.overview-card,
+.project-card,
+.person-card,
+.settings-card,
+.sprint-card,
+.note-card {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(17, 25, 39, 0.9), rgba(13, 19, 30, 0.94));
+  box-shadow: var(--elevation-1);
+}
+
+.mode-dashboard {
+  animation: module-fade-slide 220ms ease;
+}
+
+@keyframes module-fade-slide {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h1 { font-size: clamp(1.35rem, 1.8vw, 1.9rem); font-weight: 700; }
+h2 { font-size: clamp(1.05rem, 1.1vw, 1.3rem); font-weight: 600; }
+
+.module-intro,
+.sync-status-detail,
+.sync-account-label,
+.sync-status-info,
+.sync-status-error,
+.overview-card-description,
+label,
+small,
+.task-meta-label {
+  color: var(--text-muted);
+}
+
+.overview-metric-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(121, 139, 255, 0.22);
+  background: linear-gradient(180deg, rgba(22, 32, 50, 0.9), rgba(15, 23, 38, 0.95));
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.overview-metric-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(121, 139, 255, 0.56);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.38);
+}
+
+.overview-metric-value {
+  font-size: clamp(1.7rem, 2.4vw, 2.35rem);
+  font-weight: 700;
+}
+
+.overview-metric-label {
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Task module: modern high-density cards replacing rigid table layout. */
+.tasks-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tasks-card-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.task-card,
+.tasks-editor-row {
+  position: relative;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(152, 174, 235, 0.16);
+  background: linear-gradient(180deg, rgba(20, 29, 45, 0.96), rgba(13, 20, 33, 0.94));
+  padding: 0.75rem 0.85rem;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.task-card:hover,
+.tasks-editor-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 135, 255, 0.62);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(90, 111, 255, 0.24);
+}
+
+.task-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.task-status-dot {
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.task-card-details {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 0.45rem;
+}
+
+.task-meta-pill {
+  margin: 0;
+  padding: 0.32rem 0.45rem;
+  border-radius: 0.65rem;
+  background: rgba(145, 169, 232, 0.08);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.task-meta-pill-high { box-shadow: inset 0 0 0 1px rgba(224, 105, 105, 0.42); }
+.task-meta-pill-medium { box-shadow: inset 0 0 0 1px rgba(245, 177, 60, 0.46); }
+.task-meta-pill-low { box-shadow: inset 0 0 0 1px rgba(120, 214, 166, 0.45); }
+.task-meta-pill-muted { opacity: 0.75; }
+
+.tasks-row-actions {
+  margin-top: 0.55rem;
+  opacity: 0.35;
+  transition: opacity 150ms ease;
+}
+
+.task-card:hover .tasks-row-actions,
+.task-card:focus-within .tasks-row-actions {
+  opacity: 1;
+}
+
+.task-action-icon {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  border-radius: 0.6rem;
+}
+
+/* Meetings and people lists adopt consistent elevated card styling. */
+.meeting-card,
+.meeting-list-card,
+.people-list-item,
+.project-list-card {
+  border: 1px solid rgba(152, 174, 235, 0.16);
+  border-radius: 0.9rem;
+  background: rgba(19, 28, 44, 0.84);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.meeting-card:hover,
+.meeting-list-card:hover,
+.people-list-item:hover,
+.project-list-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 135, 255, 0.46);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.33);
+}
+
+.field-input,
+select.field-input,
+input.field-input,
+textarea.field-input {
+  border: 1px solid rgba(140, 163, 227, 0.26);
+  background: rgba(11, 17, 29, 0.9);
+  border-radius: 0.72rem;
+  color: var(--text);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.field-input:focus,
+.field-input:focus-visible {
+  border-color: rgba(109, 132, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(109, 132, 255, 0.28);
+}
+
+.task-inline-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 0.75rem;
+}
+
+.task-inline-editor .field-label:first-child {
+  grid-column: span 2;
+}
+
+.task-inline-editor-actions {
+  grid-column: span 2;
+  position: sticky;
+  bottom: 0;
+  padding-top: 0.4rem;
+  background: linear-gradient(180deg, rgba(14, 21, 34, 0), rgba(14, 21, 34, 0.94) 34%);
+}
+
+* {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+@media (max-width: 880px) {
+  .top-bar { margin: 0.55rem; }
+  .content { padding: 0.6rem; }
+  .sidebar,
+  .sidebar:not(.collapsed) { width: 100%; }
+  .task-inline-editor,
+  .task-inline-editor .field-label:first-child,
+  .task-inline-editor-actions { grid-column: auto; }
+  .task-inline-editor { grid-template-columns: 1fr; }
+}
+
+/*
+ * Calendar readability hotfix:
+ * The premium refresh introduced very subtle status tints that reduced contrast
+ * inside compact weekly calendar chips. These scoped overrides preserve status
+ * differentiation while restoring WCAG-friendly legibility in dark mode.
+ */
+.calendar-day {
+  background: linear-gradient(180deg, rgba(32, 46, 77, 0.78), rgba(24, 36, 62, 0.72));
+  border-color: rgba(128, 153, 222, 0.28);
+}
+
+.calendar-day:hover {
+  border-color: rgba(122, 146, 255, 0.58);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.28);
+}
+
+.calendar-meeting-entry {
+  border-width: 1px;
+  font-weight: 560;
+  line-height: 1.35;
+  color: #eaf0ff;
+  background: rgba(16, 26, 47, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(90, 111, 255, 0.22);
+}
+
+.calendar-meeting-entry:hover,
+.calendar-meeting-entry:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(118, 141, 255, 0.78);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(110, 133, 255, 0.36);
+}
+
+/*
+ * Status tones intentionally keep high-contrast text while applying subtle hue
+ * shifts in the surface/border so state remains immediately scannable.
+ */
+.calendar-meeting-entry.meeting-status-scheduled,
+.meeting-row.meeting-status-scheduled {
+  background: linear-gradient(180deg, rgba(32, 56, 109, 0.88), rgba(25, 45, 92, 0.86));
+  border-color: rgba(113, 156, 255, 0.78);
+  color: #eef3ff;
+}
+
+.calendar-meeting-entry.meeting-status-completed,
+.meeting-row.meeting-status-completed {
+  background: linear-gradient(180deg, rgba(29, 81, 63, 0.88), rgba(22, 63, 48, 0.86));
+  border-color: rgba(98, 201, 155, 0.72);
+  color: #ecfff5;
+}
+
+.calendar-meeting-entry.meeting-status-rescheduled,
+.meeting-row.meeting-status-rescheduled {
+  background: linear-gradient(180deg, rgba(99, 62, 22, 0.9), rgba(76, 46, 16, 0.86));
+  border-color: rgba(255, 177, 93, 0.72);
+  color: #fff7ed;
+}
+
+.calendar-meeting-entry.meeting-status-cancelled,
+.meeting-row.meeting-status-cancelled {
+  background: linear-gradient(180deg, rgba(101, 33, 45, 0.9), rgba(76, 24, 34, 0.86));
+  border-color: rgba(255, 123, 152, 0.68);
+  color: #fff0f4;
+}
+
+.calendar-meeting-entry.meeting-status-missed,
+.meeting-row.meeting-status-missed {
+  background: linear-gradient(180deg, rgba(67, 37, 109, 0.9), rgba(51, 28, 84, 0.86));
+  border-color: rgba(187, 132, 255, 0.72);
+  color: #f7efff;
+}
