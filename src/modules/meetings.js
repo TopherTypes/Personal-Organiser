@@ -195,7 +195,7 @@ export function renderWorkMeetingsModule({
         openEditor(meeting, { source: "weekly-details" });
       }) : null,
       isWeeklyView
-        ? renderWeeklyCalendar(state, meetings, allMeetings, range, onSelectCalendarMeeting)
+        ? renderWeeklyCalendar(state, meetings, allMeetings, range, onSelectCalendarMeeting, state.selectedCalendarMeetingId)
         : renderMonthlyCalendar(state, meetings, allMeetings, range, openEditor)
     );
 
@@ -1385,7 +1385,7 @@ function buildCalendarHeader(state, range, rerender) {
   return wrap;
 }
 
-function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, onSelectMeeting) {
+function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, onSelectMeeting, selectedMeetingId = "") {
   const grid = document.createElement("div");
   grid.className = "calendar-grid week-grid";
 
@@ -1402,7 +1402,11 @@ function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, onSele
     const count = document.createElement("span");
     count.textContent = `${meetingsForDate.length} meeting(s)`;
 
-    const entries = buildCalendarMeetingEntries(meetingsForDate, onSelectMeeting, { compact: false, showAll: true });
+    const entries = buildCalendarMeetingEntries(meetingsForDate, onSelectMeeting, {
+      compact: false,
+      showAll: true,
+      selectedMeetingId
+    });
 
     card.append(heading, count, entries);
     grid.appendChild(card);
@@ -1428,7 +1432,11 @@ function renderMonthlyCalendar(state, meetingsInRange, allMeetings, range, openE
     const count = document.createElement("span");
     count.textContent = meetingsForDate.length ? `${meetingsForDate.length} items` : "—";
 
-    const entries = buildCalendarMeetingEntries(meetingsForDate, openEditor, { compact: true, showAll: false });
+    const entries = buildCalendarMeetingEntries(meetingsForDate, openEditor, {
+      compact: true,
+      showAll: false,
+      selectedMeetingId: ""
+    });
 
     cell.append(short, count, entries);
     grid.appendChild(cell);
@@ -1444,7 +1452,11 @@ function buildInlineFieldRow(fieldElements, layoutClass) {
   return row;
 }
 
-function buildCalendarMeetingEntries(meetingsForDate, onMeetingClick, { compact = false, showAll = false } = {}) {
+function buildCalendarMeetingEntries(
+  meetingsForDate,
+  onMeetingClick,
+  { compact = false, showAll = false, selectedMeetingId = "" } = {}
+) {
   const wrap = document.createElement("div");
   wrap.className = `calendar-meeting-entries${compact ? " compact" : ""}`;
 
@@ -1452,15 +1464,29 @@ function buildCalendarMeetingEntries(meetingsForDate, onMeetingClick, { compact 
   for (const meeting of visibleMeetings) {
     const entry = document.createElement("button");
     entry.type = "button";
-    entry.className = `calendar-meeting-entry ${resolveMeetingStatusClass(meeting.status)}`;
+    entry.className = `calendar-meeting-entry ${resolveMeetingStatusClass(meeting.status)}${selectedMeetingId === meeting.id ? " selected" : ""}`;
     // Prevent the day-card click handler from creating a new draft when editing an existing meeting.
     entry.addEventListener("click", (event) => {
       event.stopPropagation();
       onMeetingClick(meeting, { source: "calendar-entry" });
     });
-    entry.textContent = compact
+    // Weekly cards intentionally show richer context so users can compare
+    // cadence, status, and ownership without opening the modal.
+    const primaryLine = document.createElement("span");
+    primaryLine.className = "calendar-meeting-entry-primary";
+    primaryLine.textContent = compact
       ? `${meeting.startTime || "Time TBC"} · ${meeting.name}`
-      : `${meeting.startTime || "Time TBC"} — ${meeting.name}`;
+      : `${meeting.startTime || "Time TBC"}${meeting.endTime ? `–${meeting.endTime}` : ""} · ${meeting.name}`;
+
+    const secondaryLine = document.createElement("span");
+    secondaryLine.className = "calendar-meeting-entry-meta";
+    secondaryLine.textContent = [
+      toTitleCase(meeting.status),
+      meeting.type === "one-on-one" ? "1:1" : "Standard",
+      meeting.chairId ? `Chair: ${meeting.chairId}` : "No chair"
+    ].join(" · ");
+
+    entry.append(primaryLine, secondaryLine);
     wrap.appendChild(entry);
   }
 
@@ -1490,7 +1516,7 @@ function renderCalendarMeetingDetails(selectedMeeting, people, projects, onOpenE
     title.textContent = "Select a meeting in the calendar";
     const hint = document.createElement("span");
     hint.className = "module-intro";
-    hint.textContent = "Meeting details will appear here. Click this panel to edit once selected.";
+    hint.textContent = "Meeting details will appear here. Select a calendar card, then click this panel to edit.";
     detailsButton.append(title, hint);
     return detailsButton;
   }
@@ -1512,7 +1538,7 @@ function renderCalendarMeetingDetails(selectedMeeting, people, projects, onOpenE
     selectedMeeting.type === "one-on-one" ? "1:1" : "Standard",
     selectedMeeting.chairId ? `Chair: ${selectedMeeting.chairId}` : "No chair",
     attendeeNames ? `Attendees: ${attendeeNames}` : "No attendees",
-    "Click to open full editor"
+    "Click here to open full editor"
   ].join(" · ");
 
   detailsButton.append(title, metadata);
