@@ -521,6 +521,28 @@ function createTablePriorityCell(priorityScore) {
   return cell;
 }
 
+
+/**
+ * Returns a CSS-safe suffix for task status badges used in table and modal surfaces.
+ */
+function getTaskStatusClassSuffix(status) {
+  return TASK_STATUS_CLASS_SUFFIX[status] || "backlog";
+}
+
+/**
+ * Buckets priority score for at-a-glance visual triage bands.
+ */
+function getPriorityScoreBand(priorityScore) {
+  if (priorityScore >= PRIORITY_SCORE_BANDS.high) {
+    return "high";
+  }
+
+  if (priorityScore >= PRIORITY_SCORE_BANDS.medium) {
+    return "medium";
+  }
+  return cell;
+}
+
 function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
   const cell = document.createElement("td");
   cell.className = "tasks-table-actions";
