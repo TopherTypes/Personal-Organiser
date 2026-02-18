@@ -1,4 +1,5 @@
-import { renderWorkTasksModule } from "./tasks.js";
+// Keep personal tasks pointed at the cache-busted tasks module build.
+import { renderWorkTasksModule } from "./tasks.js?v=2026-02-18-1";
 
 /**
  * Personal Tasks now reuses the Work Tasks renderer with `mode: "personal"`

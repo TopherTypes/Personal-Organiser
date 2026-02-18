@@ -1,4 +1,5 @@
-import { loadTasks } from "./tasks.js";
+// Cache-busted task import keeps command indexing aligned with the latest task module bundle.
+import { loadTasks } from "./tasks.js?v=2026-02-18-1";
 import { loadProjects } from "./projects-store.js";
 import { loadMeetings } from "./meetings.js";
 import { loadUpdates } from "./updates.js";
