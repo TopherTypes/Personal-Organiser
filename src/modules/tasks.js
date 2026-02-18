@@ -523,15 +523,6 @@ function createTableStatusCell(status) {
   return cell;
 }
 
-function createTablePriorityCell(priorityScore) {
-  const cell = document.createElement("td");
-  const badge = document.createElement("span");
-  badge.className = `task-meta-pill task-meta-pill-${getPriorityScoreBand(priorityScore)}`;
-  badge.textContent = String(priorityScore);
-  cell.appendChild(badge);
-  return cell;
-}
-
 function createTableStatusCell(status) {
   const cell = document.createElement("td");
   const badge = document.createElement("span");
