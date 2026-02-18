@@ -540,8 +540,7 @@ function getPriorityScoreBand(priorityScore) {
   if (priorityScore >= PRIORITY_SCORE_BANDS.medium) {
     return "medium";
   }
-
-  return "low";
+  return cell;
 }
 
 function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
