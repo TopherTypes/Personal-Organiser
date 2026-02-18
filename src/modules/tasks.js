@@ -1445,6 +1445,22 @@ function updateTaskInline(mode, taskId, updates) {
   persistTasks(mode, updated);
 }
 
+
+/**
+ * Clamps effort/impact scale values into the valid 1-10 range used by task scoring.
+ *
+ * The fallback keeps inline edit updates resilient if an empty/invalid value slips
+ * through browser input constraints.
+ */
+function clampTaskScaleValue(value, fallbackValue = 5) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
+    return Math.min(10, Math.max(1, Number(fallbackValue) || 5));
+  }
+
+  return Math.min(10, Math.max(1, Math.round(parsedValue)));
+}
+
 function computePriorityScore(task) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
