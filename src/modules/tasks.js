@@ -447,7 +447,11 @@ function createTaskTableRow(task, {
   saveButton.type = "button";
   saveButton.className = "primary-button";
   saveButton.textContent = "Save";
-  saveButton.addEventListener("click", () => {
+  /**
+   * Persists the current inline row draft and lets the caller transition
+   * back to read-only mode after a successful save.
+   */
+  const commitInlineDraft = () => {
     onSaveInline({
       title: title.value.trim(),
       effort: clampTaskScaleValue(effort.value, task.effort || 5),
@@ -462,10 +466,13 @@ function createTaskTableRow(task, {
       recurrence: task.recurrence || "none",
       customRecurrence: task.customRecurrence || "",
       recurrenceMeta: task.recurrenceMeta || { frequency: "none", interval: 1 },
+      recurrenceInterval: task.recurrenceMeta?.interval || 1,
       notes: task.notes || "",
       archived: task.archived || false
     });
-  });
+  };
+
+  saveButton.addEventListener("click", commitInlineDraft);
 
   const cancelButton = document.createElement("button");
   cancelButton.type = "button";
@@ -479,6 +486,14 @@ function createTaskTableRow(task, {
   [title, status, assignee, project, scheduleDate, dueDate, effort, impact, dependencies].forEach((field) => {
     field.addEventListener("input", onEditDirty);
     field.addEventListener("change", onEditDirty);
+    field.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      event.preventDefault();
+      commitInlineDraft();
+    });
   });
 
   row.append(
@@ -1428,6 +1443,22 @@ function updateTaskInline(mode, taskId, updates) {
   });
 
   persistTasks(mode, updated);
+}
+
+
+/**
+ * Clamps effort/impact scale values into the valid 1-10 range used by task scoring.
+ *
+ * The fallback keeps inline edit updates resilient if an empty/invalid value slips
+ * through browser input constraints.
+ */
+function clampTaskScaleValue(value, fallbackValue = 5) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
+    return Math.min(10, Math.max(1, Number(fallbackValue) || 5));
+  }
+
+  return Math.min(10, Math.max(1, Math.round(parsedValue)));
 }
 
 function computePriorityScore(task) {
