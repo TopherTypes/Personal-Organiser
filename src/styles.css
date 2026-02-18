@@ -394,7 +394,7 @@ textarea:focus-visible,
 .ghost-button,
 .module-button-secondary,
 .sync-action-button {
-  margin-top: 0;
+  margin-top: var(--space-2);
   border-radius: var(--radius-sm);
   min-height: 2.25rem;
   padding: 0.52rem 0.85rem;
@@ -502,7 +502,7 @@ textarea:focus-visible,
 }
 
 .meeting-inline-row-triple {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(290px, 1fr));
 }
 
 .meeting-inline-row-double {
@@ -527,8 +527,8 @@ textarea:focus-visible,
 
 .task-form-section {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg-muted) 65%, transparent);
@@ -549,7 +549,7 @@ textarea:focus-visible,
 }
 
 .task-form-grid-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(290px, 1fr));
 }
 
 .task-form-grid-4 {
@@ -1930,7 +1930,7 @@ textarea:focus-visible,
 }
 
 .meeting-review-notes-rendered > :first-child {
-  margin-top: 0;
+  margin-top: var(--space-2);
 }
 
 .meeting-review-notes-rendered > :last-child {
@@ -3132,15 +3132,16 @@ textarea.field-input {
 .projects-module {
   max-width: 1360px;
   margin: 0 auto;
-  gap: var(--space-2);
+  /* Use an even vertical rhythm between header, toolbar, summary, and results. */
+  gap: var(--space-4);
 }
 
 .projects-header-v2 {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: var(--space-3);
-  padding: 0 0 var(--space-2);
+  gap: var(--space-4);
+  padding: 0;
 }
 
 .projects-header-copy {
@@ -3160,13 +3161,14 @@ textarea.field-input {
 
 .projects-toolbar {
   position: sticky;
-  top: 0.45rem;
+  /* Keeps controls pinned below the app chrome without overlapping cards. */
+  top: 0.6rem;
   z-index: 4;
   display: grid;
   grid-template-columns: minmax(320px, 1.8fr) minmax(160px, 0.8fr) minmax(210px, 1fr) auto;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
@@ -3231,17 +3233,20 @@ textarea.field-input {
 .projects-results-summary {
   font-size: 0.82rem;
   color: var(--text-muted);
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .projects-results {
   display: grid;
   gap: var(--space-2);
-  max-height: min(68vh, calc(100vh - 265px));
+  /* Let page scrolling drive the flow so cards do not sit in an inner cramped viewport. */
+  max-height: none;
   min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  padding-right: var(--space-1);
+  overflow: visible;
+  padding-right: 0;
+  align-content: start;
+  align-items: start;
+  grid-auto-rows: minmax(0, auto);
 }
 
 .projects-view-grid {
@@ -3250,13 +3255,13 @@ textarea.field-input {
 
 @media (min-width: 1600px) {
   .projects-view-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(260px, 1fr));
   }
 }
 
 @media (max-width: 1279px) {
   .projects-view-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
   }
 }
 
@@ -3276,7 +3281,7 @@ textarea.field-input {
 .project-card-v2 {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: 0.95rem;
 }
 
 .project-row-v2 {
@@ -3284,7 +3289,7 @@ textarea.field-input {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: 0.82rem 0.95rem;
 }
 
 .project-card-v2:hover,
@@ -3360,12 +3365,14 @@ textarea.field-input {
 .project-v2-meta {
   font-size: 0.73rem;
   color: var(--text-muted);
+  line-height: 1.25;
 }
 
 .project-v2-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .project-open-button {
