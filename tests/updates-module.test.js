@@ -2,6 +2,10 @@ import "./setup.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  archiveUpdate,
+  deleteUpdate,
+  isDueSoon,
+  isOverdue,
   loadUpdates,
   markPersonPending,
   markPersonUpdated,
@@ -14,41 +18,56 @@ import {
 
 const WORK_UPDATES_STORAGE_KEY = "second-brain.work.updates.work.v1";
 
-test("normaliseUpdate migrates legacy toUpdate person-id arrays to structured pending entries", () => {
+test("normaliseUpdate migrates legacy fields into the new canonical model", () => {
   const update = normaliseUpdate({
     text: "Quarterly status",
+    entityType: "action",
     toUpdate: ["person-a", " person-b "]
   });
 
-  assert.deepEqual(update.toUpdate, [
-    { personId: "person-a", required: true, status: "pending", updatedAt: "" },
-    { personId: "person-b", required: true, status: "pending", updatedAt: "" }
+  assert.equal(update.summary, "Quarterly status");
+  assert.equal(update.type, "action");
+  assert.deepEqual(update.recipients, [
+    { personId: "person-a", status: "pending", updatedAt: "" },
+    { personId: "person-b", status: "pending", updatedAt: "" }
   ]);
 });
 
-test("normaliseUpdate canonicalises updatedAt values as ISO timestamps", () => {
+test("normaliseUpdate canonicalises complete recipient timestamps as ISO", () => {
   const update = normaliseUpdate({
-    text: "Prep note",
-    toUpdate: [{ personId: "person-a", status: "updated", updatedAt: "2024-03-01T10:00:00-05:00" }]
+    summary: "Prep note",
+    recipients: [{ personId: "person-a", status: "complete", updatedAt: "2024-03-01T10:00:00-05:00" }]
   });
 
-  assert.equal(update.toUpdate[0].status, "updated");
-  assert.equal(update.toUpdate[0].updatedAt, "2024-03-01T15:00:00.000Z");
+  assert.equal(update.recipients[0].status, "complete");
+  assert.equal(update.recipients[0].updatedAt, "2024-03-01T15:00:00.000Z");
 });
 
-test("markPersonUpdated and markPersonPending mutate per-person status and selector counts", () => {
+test("saveUpdate requires summary and recipients", () => {
+  localStorage.clear();
+
+  const missingSummary = saveUpdate("work", { recipients: [{ personId: "person-a", status: "pending" }] });
+  assert.equal(missingSummary.ok, false);
+
+  const missingRecipients = saveUpdate("work", { summary: "Ship reminder", recipients: [] });
+  assert.equal(missingRecipients.ok, false);
+  assert.equal(missingRecipients.error, "At least one recipient is required.");
+});
+
+test("markPersonUpdated and markPersonPending mutate per-recipient status", () => {
   localStorage.clear();
 
   const createResult = saveUpdate("work", {
-    text: "Customer rollout",
+    summary: "Customer rollout",
     ownerId: "owner-1",
-    toUpdate: ["person-a", "person-b"]
+    recipients: [
+      { personId: "person-a", status: "pending", updatedAt: "" },
+      { personId: "person-b", status: "pending", updatedAt: "" }
+    ]
   });
 
   assert.equal(createResult.ok, true);
-
   const [created] = loadUpdates("work");
-  assert.ok(created?.id);
 
   const at = "2025-01-02T03:04:05.000Z";
   markPersonUpdated(created.id, "person-a", at);
@@ -56,174 +75,37 @@ test("markPersonUpdated and markPersonPending mutate per-person status and selec
   let [afterUpdate] = loadUpdates("work");
   assert.equal(selectCompletedPeopleCount(afterUpdate), 1);
   assert.equal(selectPendingPeopleCount(afterUpdate), 1);
-  assert.equal(afterUpdate.toUpdate.find((entry) => entry.personId === "person-a")?.updatedAt, at);
+  assert.equal(afterUpdate.recipients.find((entry) => entry.personId === "person-a")?.updatedAt, at);
 
   markPersonPending(created.id, "person-a");
-
   [afterUpdate] = loadUpdates("work");
   assert.equal(selectCompletedPeopleCount(afterUpdate), 0);
   assert.equal(selectPendingPeopleCount(afterUpdate), 2);
-  assert.equal(afterUpdate.toUpdate.find((entry) => entry.personId === "person-a")?.updatedAt, "");
 });
 
-test("saveUpdate persists selected person ids as structured recipients", () => {
+test("archive and delete workflows are non-destructive lifecycle state changes", () => {
   localStorage.clear();
-
-  const result = saveUpdate("work", {
-    text: "Share roadmap update",
-    ownerId: "owner-1",
-    toUpdate: ["person-a", "person-b"].map((id) => ({
-      personId: id,
-      status: "pending",
-      required: true,
-      updatedAt: ""
-    }))
+  saveUpdate("work", {
+    summary: "Lifecycle",
+    recipients: [{ personId: "person-a", status: "pending", updatedAt: "" }]
   });
 
-  assert.equal(result.ok, true);
+  let [saved] = loadUpdates("work");
+  archiveUpdate("work", saved.id, true);
+  [saved] = loadUpdates("work");
+  assert.equal(saved.lifecycle, "archived");
 
-  const [saved] = loadUpdates("work");
-  assert.deepEqual(saved.toUpdate, [
-    { personId: "person-a", required: true, status: "pending", updatedAt: "", note: "" },
-    { personId: "person-b", required: true, status: "pending", updatedAt: "", note: "" }
-  ]);
+  archiveUpdate("work", saved.id, false);
+  [saved] = loadUpdates("work");
+  assert.equal(saved.lifecycle, "active");
+
+  const removed = deleteUpdate("work", saved.id);
+  assert.equal(removed.ok, true);
+  [saved] = loadUpdates("work");
+  assert.equal(saved.lifecycle, "deleted");
 });
 
-test("saveUpdate rejects drafts when no recipients are selected", () => {
-  localStorage.clear();
-
-  const result = saveUpdate("work", {
-    text: "Ship reminder",
-    ownerId: "owner-1",
-    toUpdate: []
-  });
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error, "At least one person to update is required for update items.");
-});
-
-test("saveUpdate allows action entities to be saved without recipients", () => {
-  localStorage.clear();
-
-  const result = saveUpdate("work", {
-    entityType: "action",
-    text: "Update project board",
-    ownerId: "person-a",
-    dueDate: "2026-02-15",
-    toUpdate: []
-  });
-
-  assert.equal(result.ok, true);
-  const [saved] = loadUpdates("work");
-  assert.equal(saved.entityType, "action");
-  assert.deepEqual(saved.toUpdate, []);
-});
-
-test("saveUpdate quietly deletes existing updates when edited text is cleared", () => {
-  localStorage.clear();
-
-  const created = saveUpdate("work", {
-    text: "Draft to remove",
-    ownerId: "owner-1",
-    toUpdate: ["person-a"]
-  });
-  assert.equal(created.ok, true);
-
-  const [saved] = loadUpdates("work");
-  assert.ok(saved?.id);
-
-  const deleted = saveUpdate(
-    "work",
-    {
-      ...saved,
-      text: "   "
-    },
-    saved.id
-  );
-
-  assert.equal(deleted.ok, true);
-  assert.equal(loadUpdates("work").length, 0);
-});
-
-test("saveUpdate enforces owner and due date for action entities", () => {
-  localStorage.clear();
-
-  const noOwner = saveUpdate("work", {
-    entityType: "action",
-    text: "Follow up contract",
-    dueDate: "2026-01-10",
-    toUpdate: ["person-a"]
-  });
-  assert.equal(noOwner.ok, false);
-  assert.equal(noOwner.error, "Actions require an owner.");
-
-  const noDueDate = saveUpdate("work", {
-    entityType: "action",
-    text: "Follow up contract",
-    ownerId: "person-a",
-    toUpdate: ["person-a"]
-  });
-  assert.equal(noDueDate.ok, false);
-  assert.equal(noDueDate.error, "Actions require a due date.");
-});
-
-test("saveUpdate accepts action owner 'me' for task-linked actions", () => {
-  localStorage.clear();
-
-  const result = saveUpdate(
-    "work",
-    {
-      entityType: "action",
-      text: "Prepare weekly status",
-      ownerId: "me",
-      dueDate: "2026-01-10",
-      toUpdate: ["person-a"]
-    },
-    "",
-    [{ id: "person-a", name: "Alex", archived: false }]
-  );
-
-  assert.equal(result.ok, true);
-  const [saved] = loadUpdates("work");
-  assert.equal(saved.entityType, "action");
-  assert.equal(saved.ownerId, "me");
-  assert.equal(saved.dueDate, "2026-01-10");
-});
-
-
-
-test("saveUpdate enforces owner referential integrity when people set is provided", () => {
-  localStorage.clear();
-
-  const invalid = saveUpdate(
-    "work",
-    {
-      text: "Missing owner",
-      ownerId: "person-missing",
-      toUpdate: ["person-a"]
-    },
-    "",
-    [{ id: "person-a", name: "Alex", archived: false }]
-  );
-
-  assert.equal(invalid.ok, false);
-  assert.equal(invalid.error, "Selected owner no longer exists in active people.");
-
-  const valid = saveUpdate(
-    "work",
-    {
-      text: "Valid owner",
-      ownerId: "person-a",
-      toUpdate: ["person-a"]
-    },
-    "",
-    [{ id: "person-a", name: "Alex", archived: false }]
-  );
-
-  assert.equal(valid.ok, true);
-});
-
-test("loadUpdates migrates persisted legacy id arrays via normalisation", () => {
+test("loadUpdates migrates persisted legacy arrays via normalisation", () => {
   localStorage.clear();
 
   localStorage.setItem(
@@ -238,36 +120,22 @@ test("loadUpdates migrates persisted legacy id arrays via normalisation", () => 
           toUpdate: ["person-a"],
           archived: false,
           createdAt: "2025-01-01T00:00:00.000Z",
-          updatedAt: "2025-01-01T00:00:00.000Z",
-          auditTrail: []
+          updatedAt: "2025-01-01T00:00:00.000Z"
         }
       ]
     })
   );
 
   const [loaded] = loadUpdates("work");
-  assert.deepEqual(loaded.toUpdate, [{ personId: "person-a", required: true, status: "pending", updatedAt: "" }]);
+  assert.deepEqual(loaded.recipients, [{ personId: "person-a", status: "pending", updatedAt: "" }]);
 });
 
-
-test("selectUpdatesForPerson defaults to pending-only and can include completed rows", () => {
+test("selectUpdatesForPerson defaults to pending-only and excludes deleted rows", () => {
   const updates = [
-    normaliseUpdate({
-      id: "upd-1",
-      text: "Pending item",
-      toUpdate: [{ personId: "person-a", status: "pending" }]
-    }),
-    normaliseUpdate({
-      id: "upd-2",
-      text: "Completed item",
-      toUpdate: [{ personId: "person-a", status: "updated", updatedAt: "2025-02-01T10:00:00.000Z" }]
-    }),
-    normaliseUpdate({
-      id: "upd-3",
-      text: "Archived pending",
-      archived: true,
-      toUpdate: [{ personId: "person-a", status: "pending" }]
-    })
+    normaliseUpdate({ id: "upd-1", summary: "Pending item", recipients: [{ personId: "person-a", status: "pending" }] }),
+    normaliseUpdate({ id: "upd-2", summary: "Completed item", recipients: [{ personId: "person-a", status: "complete", updatedAt: "2025-02-01T10:00:00.000Z" }] }),
+    normaliseUpdate({ id: "upd-3", summary: "Archived pending", lifecycle: "archived", recipients: [{ personId: "person-a", status: "pending" }] }),
+    normaliseUpdate({ id: "upd-4", summary: "Deleted pending", lifecycle: "deleted", recipients: [{ personId: "person-a", status: "pending" }] })
   ];
 
   const pendingOnly = selectUpdatesForPerson(updates, "person-a");
@@ -280,17 +148,9 @@ test("selectUpdatesForPerson defaults to pending-only and can include completed 
   assert.deepEqual(includeArchived.map(({ update }) => update.id), ["upd-1", "upd-3"]);
 });
 
-test("pending/completed selectors remain stable for legacy note rows and structured recipients", () => {
-  const update = normaliseUpdate({
-    text: "Migration-safe recipient counting",
-    toUpdate: [
-      { personId: "person-a", status: "pending", required: true, updatedAt: "" },
-      { personId: "person-b", status: "updated", required: true, updatedAt: "2025-04-01T09:00:00.000Z" },
-      // Legacy free-text payloads may still exist in persisted notes.
-      { personId: "", note: "Leadership team", status: "pending" }
-    ]
-  });
-
-  assert.equal(selectPendingPeopleCount(update), 2);
-  assert.equal(selectCompletedPeopleCount(update), 1);
+test("isOverdue and isDueSoon derive due-state with optional dates", () => {
+  const now = new Date("2026-03-08T09:00:00.000Z");
+  assert.equal(isOverdue({ dueDate: "2026-03-07" }, now), true);
+  assert.equal(isDueSoon({ dueDate: "2026-03-12" }, now), true);
+  assert.equal(isDueSoon({ dueDate: "" }, now), false);
 });

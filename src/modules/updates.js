@@ -1,7 +1,6 @@
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
 import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
 import { generateId } from "./id.js";
-import { createModalDismissGuard } from "./modal-dismiss-guard.js";
 
 const UPDATES_SCHEMA_VERSION = 1;
 const UPDATES_COLLECTION_KEY = "updates";
@@ -10,26 +9,40 @@ const UPDATE_ENTITY_TYPES = {
   UPDATE: "update",
   ACTION: "action"
 };
-const ACTION_OWNER_ME = "me";
-const PENDING_COUNT_BANDS = {
-  low: 1,
-  high: 3
+const UPDATE_LIFECYCLE = {
+  ACTIVE: "active",
+  ARCHIVED: "archived",
+  DELETED: "deleted"
 };
 
 /**
- * Renders the work updates module and keeps data dependencies explicit.
- *
- * Data flow:
- * - `people` and `meetings` are read-only dependency snapshots supplied by dashboard wiring.
- * - Updates are persisted only through `saveUpdate` / `archiveUpdate` in this module.
- * - Storage remains mode-scoped and versioned so migration boundaries stay local.
+ * Manual verification checklist for this module overhaul:
+ * 1) Create standalone update with 2 recipients; mark one complete and confirm pending count decrements live.
+ * 2) Create an update from Meetings and verify it appears here with the same recipients/type structure.
+ * 3) Edit summary/recipients/due date/owner/type and confirm persistence after refresh.
+ * 4) Archive and unarchive from table actions; confirm default view hides archived unless the Archived signal is selected.
+ * 5) Delete from table actions with confirmation; confirm item is removed from active/archived views without breaking linked refs.
  */
-export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [], focusCreateForm = false } = {}) {
+
+export function renderWorkUpdatesModule({ mode = "work", people = [], meetings = [], projects = [], focusCreateForm = false } = {}) {
   const state = {
-    expandedId: focusCreateForm ? "__new__" : "",
-    dirty: false,
-    focusTriggerId: "",
-    feedback: ""
+    editorId: focusCreateForm ? "__new__" : "",
+    expandedId: "",
+    feedback: "",
+    filters: {
+      search: "",
+      type: "all",
+      ownerId: "all",
+      recipientId: "all",
+      sort: "updated",
+      groupBy: "none",
+      showArchived: false,
+      overdueOnly: false,
+      dueSoonOnly: false,
+      needsAttentionOnly: false,
+      meetingLinkedOnly: false,
+      unlinkedOnly: false
+    }
   };
 
   const section = document.createElement("section");
@@ -37,620 +50,516 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
 
   const header = document.createElement("div");
   header.className = "meetings-header";
-
   const title = document.createElement("h1");
   title.textContent = "Work Updates";
-
-  const newUpdateButton = document.createElement("button");
-  newUpdateButton.type = "button";
-  newUpdateButton.className = "enter-mode-button";
-  newUpdateButton.textContent = "New update";
-  newUpdateButton.addEventListener("click", () => {
-    if (!openEditor("__new__")) {
-      return;
-    }
-    renderModule();
+  const createButton = document.createElement("button");
+  createButton.type = "button";
+  createButton.className = "enter-mode-button";
+  createButton.textContent = "New update";
+  createButton.addEventListener("click", () => {
+    state.editorId = "__new__";
+    render();
   });
-  header.append(title, newUpdateButton);
-
-  const intro = document.createElement("p");
-  intro.className = "module-intro";
-  intro.textContent =
-    "Capture meeting follow-ups as either updates or actions with owner/due-date controls and meeting context.";
-
-  const summary = document.createElement("p");
-  summary.className = "module-intro";
+  header.append(title, createButton);
 
   const feedback = document.createElement("p");
   feedback.className = "feedback";
 
+  const signalBar = document.createElement("div");
+  signalBar.className = "updates-signal-bar";
+
+  const filters = document.createElement("div");
+  filters.className = "updates-filter-row card";
+
   const tableWrap = document.createElement("div");
   tableWrap.className = "updates-table-wrap card";
-
   const table = document.createElement("table");
   table.className = "updates-table";
   table.innerHTML = `
-    <thead>
-      <tr>
-        <th scope="col">Type</th>
-        <th scope="col">Update</th>
-        <th scope="col">Owner</th>
-        <th scope="col">Meeting</th>
-        <th scope="col">Due date</th>
-        <th scope="col">Pending</th>
-        <th scope="col">Updated</th>
-        <th scope="col">Actions</th>
-      </tr>
-    </thead>
+    <thead><tr>
+      <th>Type</th><th>Summary</th><th>Owner</th><th>Recipients</th><th>Meeting</th><th>Due</th><th>Pending</th><th>Updated</th><th>Actions</th>
+    </tr></thead>
   `;
-  const body = document.createElement("tbody");
-  table.appendChild(body);
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
   tableWrap.appendChild(table);
 
-  section.append(header, intro, summary, feedback, tableWrap);
+  section.append(header, signalBar, filters, feedback, tableWrap);
 
-  function renderModule() {
+  const controls = buildFilterControls(filters, people, state.filters, () => render());
+
+  function render() {
     const updates = loadUpdates(mode);
-    const activeUpdates = updates.filter((update) => !update.archived);
-    const activePeople = selectActivePeople(people);
+    const visible = selectVisibleUpdates({ updates, meetings, people, filters: state.filters });
 
-    summary.textContent = [
-      `${activeUpdates.length} active update${activeUpdates.length === 1 ? "" : "s"}`,
-      `${people.length} available people`,
-      `${meetings.length} available meetings`
-    ].join(" · ");
+    renderSignalBar(signalBar, updates, state.filters, () => render());
+    controls.sync(people);
 
-    feedback.textContent = state.feedback;
     feedback.hidden = !state.feedback;
+    feedback.textContent = state.feedback;
 
-    body.innerHTML = "";
+    tbody.innerHTML = "";
 
-    if (state.expandedId === "__new__") {
-      body.appendChild(
-        createUpdateEditorRow({
-          update: null,
+    if (state.editorId === "__new__") {
+      tbody.appendChild(
+        buildEditorRow({
           people,
           meetings,
-          onDirty: () => {
-            state.dirty = true;
-          },
+          projects,
           onSave: (draft) => {
-            const result = saveUpdate(mode, draft, "", activePeople);
+            const result = saveUpdate(mode, draft, "", people);
             if (!result.ok) {
-              state.feedback = result.error || "Unable to save update.";
-              renderModule();
+              state.feedback = result.error || "Unable to create update.";
+              render();
               return;
             }
-
             state.feedback = "Update created.";
-            closeEditor();
-            renderModule();
+            state.editorId = "";
+            render();
           },
           onCancel: () => {
-            closeEditor();
-            renderModule();
+            state.editorId = "";
+            render();
           }
         })
       );
     }
 
-    if (!activeUpdates.length) {
-      const emptyRow = document.createElement("tr");
-      const emptyCell = document.createElement("td");
-      emptyCell.colSpan = 8;
-      emptyCell.className = "empty-state";
-      emptyCell.textContent = "No active updates yet. Add one from the updates workflow.";
-      emptyRow.appendChild(emptyCell);
-      body.appendChild(emptyRow);
+    if (!visible.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 9;
+      td.className = "empty-state";
+      td.textContent = "No updates match the current filters.";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
     }
 
-    for (const update of activeUpdates) {
-      const row = document.createElement("tr");
-      const dueDateState = getUpdateDueDateState(update.dueDate);
-      const pendingCount = selectPendingPeopleCount(update);
-      const pendingLoadState = getPendingLoadState(pendingCount);
-      row.className = [
-        "updates-row",
-        `updates-row-type-${update.entityType === UPDATE_ENTITY_TYPES.ACTION ? "action" : "update"}`,
-        `updates-row-due-${dueDateState}`,
-        `updates-row-pending-${pendingLoadState}`
-      ].join(" ");
+    for (const update of visible) {
+      const tr = document.createElement("tr");
+      tr.className = "updates-row";
 
-      const typeCell = document.createElement("td");
-      typeCell.appendChild(buildUpdateTypePill(update.entityType));
+      const type = document.createElement("td");
+      type.appendChild(buildUpdateTypePill(update.type));
 
-      const textCell = document.createElement("td");
-      textCell.className = "updates-text-cell";
-      textCell.textContent = update.text;
+      const summary = document.createElement("td");
+      summary.className = "updates-text-cell";
+      summary.textContent = update.summary || "(untitled update)";
 
-      const ownerCell = document.createElement("td");
-      ownerCell.textContent = resolveOwnerDisplayName(update, people);
+      const owner = document.createElement("td");
+      owner.textContent = resolvePersonName(update.ownerId, people, "No owner");
+
+      const recipientCell = document.createElement("td");
+      const pending = selectPendingPeopleCount(update);
+      recipientCell.textContent = `${update.recipients.length} recipients · ${pending} pending`;
 
       const meetingCell = document.createElement("td");
-      meetingCell.textContent = meetings.find((meeting) => meeting.id === update.meetingId)?.name || "No linked meeting";
+      const meeting = meetings.find((item) => item.id === update.meetingId);
+      if (meeting) {
+        const link = document.createElement("button");
+        link.type = "button";
+        link.className = "linkish-button";
+        link.textContent = meeting.name || meeting.id;
+        meetingCell.appendChild(link);
+      } else {
+        meetingCell.textContent = "—";
+      }
 
-      const dueDateCell = document.createElement("td");
-      dueDateCell.className = `updates-due-date-cell updates-due-date-${dueDateState}`;
-      dueDateCell.textContent = update.dueDate || "—";
+      const dueCell = document.createElement("td");
+      dueCell.textContent = update.dueDate || "—";
 
       const pendingCell = document.createElement("td");
-      pendingCell.className = `updates-pending-cell updates-pending-${pendingLoadState}`;
-      pendingCell.textContent = String(pendingCount);
+      pendingCell.textContent = String(pending);
 
       const updatedCell = document.createElement("td");
       updatedCell.textContent = formatUpdatedAt(update.updatedAt);
 
-      const actionCell = document.createElement("td");
-      actionCell.className = "tasks-row-actions";
-      const editButton = document.createElement("button");
-      editButton.type = "button";
-      editButton.className = "secondary-button task-edit-trigger";
-      editButton.dataset.updateEditTrigger = update.id;
-      editButton.setAttribute("aria-expanded", String(state.expandedId === update.id));
-      editButton.textContent = "Edit";
-      editButton.addEventListener("click", () => {
-        if (!openEditor(update.id)) {
+      const actions = document.createElement("td");
+      actions.className = "tasks-row-actions";
+      const detailsButton = smallButton("Details", () => {
+        state.expandedId = state.expandedId === update.id ? "" : update.id;
+        render();
+      });
+      detailsButton.setAttribute("aria-expanded", String(state.expandedId === update.id));
+      const editButton = smallButton("Edit", () => {
+        state.editorId = update.id;
+        render();
+      });
+      const archiveButton = smallButton(update.lifecycle === UPDATE_LIFECYCLE.ARCHIVED ? "Unarchive" : "Archive", () => {
+        archiveUpdate(mode, update.id, update.lifecycle !== UPDATE_LIFECYCLE.ARCHIVED);
+        state.feedback = update.lifecycle === UPDATE_LIFECYCLE.ARCHIVED ? "Update restored." : "Update archived.";
+        render();
+      });
+      const deleteButton = smallButton("Delete", () => {
+        if (!window.confirm("Delete this update? This can be recovered only from backup/sync history.")) {
           return;
         }
-        renderModule();
+        const result = deleteUpdate(mode, update.id);
+        state.feedback = result.ok ? "Update deleted." : result.error;
+        render();
       });
+      actions.append(detailsButton, editButton, archiveButton, deleteButton);
 
-      const menu = document.createElement("details");
-      menu.className = "task-row-menu";
-      const summaryButton = document.createElement("summary");
-      summaryButton.setAttribute("aria-label", `Update actions for ${update.text.slice(0, 40)}`);
-      summaryButton.textContent = "⋯";
-      const archiveButton = document.createElement("button");
-      archiveButton.type = "button";
-      archiveButton.className = "secondary-button";
-      archiveButton.textContent = "Archive";
-      archiveButton.addEventListener("click", () => {
-        menu.open = false;
-        archiveUpdate(mode, update.id, true);
-        state.feedback = "Update archived.";
-        if (state.expandedId === update.id) {
-          closeEditor(update.id);
-        }
-        renderModule();
-      });
-      menu.append(summaryButton, archiveButton);
-
-      actionCell.append(editButton, menu);
-      row.append(typeCell, textCell, ownerCell, meetingCell, dueDateCell, pendingCell, updatedCell, actionCell);
-      body.appendChild(row);
+      tr.append(type, summary, owner, recipientCell, meetingCell, dueCell, pendingCell, updatedCell, actions);
+      tbody.appendChild(tr);
 
       if (state.expandedId === update.id) {
-        body.appendChild(
-          createUpdateEditorRow({
+        tbody.appendChild(
+          buildRecipientDetailsRow({
             update,
             people,
+            onToggle: (personId, shouldComplete) => {
+              if (shouldComplete) {
+                markPersonUpdated(update.id, personId);
+              } else {
+                markPersonPending(update.id, personId);
+              }
+              render();
+            }
+          })
+        );
+      }
+
+      if (state.editorId === update.id) {
+        tbody.appendChild(
+          buildEditorRow({
+            people,
             meetings,
-            onDirty: () => {
-              state.dirty = true;
-            },
+            projects,
+            update,
             onSave: (draft) => {
-              const result = saveUpdate(mode, draft, update.id, activePeople);
+              const result = saveUpdate(mode, draft, update.id, people);
               if (!result.ok) {
                 state.feedback = result.error || "Unable to save update.";
-                renderModule();
+                render();
                 return;
               }
-
               state.feedback = "Update saved.";
-              closeEditor(update.id);
-              renderModule();
+              state.editorId = "";
+              render();
             },
             onCancel: () => {
-              closeEditor(update.id);
-              renderModule();
-            },
-            onToggleArchived: () => {
-              archiveUpdate(mode, update.id, !update.archived);
-              state.feedback = update.archived ? "Update restored." : "Update archived.";
-              closeEditor(update.id);
-              renderModule();
+              state.editorId = "";
+              render();
             }
           })
         );
       }
     }
-
-    if (state.focusTriggerId) {
-      section.querySelector(`[data-update-edit-trigger="${state.focusTriggerId}"]`)?.focus();
-      state.focusTriggerId = "";
-    }
   }
 
-  function openEditor(nextId) {
-    if (state.dirty && state.expandedId && state.expandedId !== nextId && !window.confirm("Discard unsaved update changes?")) {
-      return false;
-    }
-
-    state.expandedId = nextId;
-    state.dirty = false;
-    return true;
-  }
-
-  function closeEditor(focusId = "") {
-    state.expandedId = "";
-    state.dirty = false;
-    state.focusTriggerId = focusId;
-  }
-
-  renderModule();
+  render();
   return section;
 }
 
-/**
- * Builds recipient selector options from active people plus existing recipients that may
- * now be archived/deleted, so editing legacy updates does not silently drop recipients.
- */
-function buildUpdateRecipientOptions(activePeople, seedToUpdate) {
-  const options = new Map(
-    activePeople.map((person) => [person.id, person.name || person.id])
-  );
+function buildFilterControls(container, people, state, onChange) {
+  container.innerHTML = "";
+  const activePeople = selectActivePeople(people);
 
-  normaliseToUpdateList(seedToUpdate).forEach((entry) => {
-    if (!entry.personId || options.has(entry.personId)) {
-      return;
-    }
-    options.set(entry.personId, `${entry.personId} (archived/deleted)`);
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "field-input";
+  search.placeholder = "Search summary, notes, owner, recipients";
+  search.value = state.search;
+  search.addEventListener("input", () => {
+    state.search = search.value;
+    onChange();
   });
 
-  return Array.from(options.entries()).map(([value, label]) => ({ value, label }));
+  const type = buildSelect([
+    ["all", "All types"],
+    [UPDATE_ENTITY_TYPES.ACTION, "Action"],
+    [UPDATE_ENTITY_TYPES.UPDATE, "Update"]
+  ], state.type, (value) => {
+    state.type = value;
+    onChange();
+  });
+
+  const owner = buildSelect(
+    [["all", "All owners"], ...activePeople.map((person) => [person.id, person.name || person.id])],
+    state.ownerId,
+    (value) => {
+      state.ownerId = value;
+      onChange();
+    }
+  );
+
+  const recipient = buildSelect(
+    [["all", "All recipients"], ...activePeople.map((person) => [person.id, person.name || person.id])],
+    state.recipientId,
+    (value) => {
+      state.recipientId = value;
+      onChange();
+    }
+  );
+
+  const sort = buildSelect([
+    ["updated", "Sort: recently updated"],
+    ["due", "Sort: due date"],
+    ["pending", "Sort: pending count"]
+  ], state.sort, (value) => {
+    state.sort = value;
+    onChange();
+  });
+
+  const groupBy = buildSelect([
+    ["none", "Group: none"],
+    ["owner", "Group: owner"],
+    ["project", "Group: project"]
+  ], state.groupBy, (value) => {
+    state.groupBy = value;
+    onChange();
+  });
+
+  container.append(search, type, owner, recipient, sort, groupBy);
+
+  return {
+    sync(nextPeople) {
+      const owners = selectActivePeople(nextPeople);
+      syncSelectOptions(owner, [["all", "All owners"], ...owners.map((person) => [person.id, person.name || person.id])], state.ownerId);
+      syncSelectOptions(recipient, [["all", "All recipients"], ...owners.map((person) => [person.id, person.name || person.id])], state.recipientId);
+    }
+  };
 }
 
-/**
- * Builds a full inline update editor row that expands beneath the selected display row.
- */
-function createUpdateEditorRow({ update, people, meetings, onSave, onCancel, onDirty, onToggleArchived = null }) {
-  const row = document.createElement("tr");
-  row.className = "tasks-editor-row";
+function buildSelect(options, value, onChange) {
+  const select = document.createElement("select");
+  select.className = "field-input";
+  syncSelectOptions(select, options, value);
+  select.addEventListener("change", () => onChange(select.value));
+  return select;
+}
 
-  const cell = document.createElement("td");
-  cell.colSpan = 8;
+function syncSelectOptions(select, options, selectedValue) {
+  select.innerHTML = "";
+  for (const [optionValue, label] of options) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  select.value = options.some(([optionValue]) => optionValue === selectedValue) ? selectedValue : options[0]?.[0] || "";
+}
 
+function renderSignalBar(container, updates, filters, onChange) {
+  container.innerHTML = "";
+  const active = updates.filter((item) => item.lifecycle === UPDATE_LIFECYCLE.ACTIVE).length;
+  const archived = updates.filter((item) => item.lifecycle === UPDATE_LIFECYCLE.ARCHIVED).length;
+  const overdue = updates.filter((item) => isOverdue(item) && selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+  const dueSoon = updates.filter((item) => isDueSoon(item) && selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+  const needsAttention = updates.filter((item) => selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+  const meetingLinked = updates.filter((item) => item.meetingId && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+  const unlinked = updates.filter((item) => !item.meetingId && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+
+  const chips = [
+    [filters.showArchived ? "Archived" : "Active", filters.showArchived ? archived : active, () => {
+      filters.showArchived = !filters.showArchived;
+      onChange();
+    }],
+    ["Overdue", overdue, () => {
+      filters.overdueOnly = !filters.overdueOnly;
+      onChange();
+    }, filters.overdueOnly],
+    ["Due soon", dueSoon, () => {
+      filters.dueSoonOnly = !filters.dueSoonOnly;
+      onChange();
+    }, filters.dueSoonOnly],
+    ["Needs attention", needsAttention, () => {
+      filters.needsAttentionOnly = !filters.needsAttentionOnly;
+      onChange();
+    }, filters.needsAttentionOnly],
+    ["Meeting-linked", meetingLinked, () => {
+      filters.meetingLinkedOnly = !filters.meetingLinkedOnly;
+      if (filters.meetingLinkedOnly) {
+        filters.unlinkedOnly = false;
+      }
+      onChange();
+    }, filters.meetingLinkedOnly],
+    ["Unlinked", unlinked, () => {
+      filters.unlinkedOnly = !filters.unlinkedOnly;
+      if (filters.unlinkedOnly) {
+        filters.meetingLinkedOnly = false;
+      }
+      onChange();
+    }, filters.unlinkedOnly]
+  ];
+
+  for (const [label, count, onClick, isActive = false] of chips) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `metric-chip ${isActive ? "is-active" : ""}`;
+    chip.textContent = `${label}: ${count}`;
+    chip.addEventListener("click", onClick);
+    container.appendChild(chip);
+  }
+}
+
+function buildEditorRow({ people, meetings, projects, update = null, onSave, onCancel }) {
+  const tr = document.createElement("tr");
+  tr.className = "tasks-editor-row";
+  const td = document.createElement("td");
+  td.colSpan = 9;
   const form = document.createElement("form");
   form.className = "task-inline-editor";
 
-  const activePeople = selectActivePeople(people);
-  const seed = update || {
-    text: "",
-    entityType: UPDATE_ENTITY_TYPES.UPDATE,
-    ownerId: "",
-    meetingId: "",
-    dueDate: "",
-    toUpdate: []
-  };
-  entityTypeSelect.addEventListener("change", syncEditorRequirements);
-  syncEditorRequirements();
+  const seed = update || normaliseUpdate({});
 
-  const entityTypeLabel = document.createElement("label");
-  entityTypeLabel.className = "field-label";
-  entityTypeLabel.textContent = "Entity type";
-  const entityTypeSelect = document.createElement("select");
-  entityTypeSelect.className = "field-input";
-  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
-  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
-  entityTypeSelect.value = seed.entityType;
-  entityTypeLabel.appendChild(entityTypeSelect);
+  const type = buildSelect([
+    [UPDATE_ENTITY_TYPES.UPDATE, "Update"],
+    [UPDATE_ENTITY_TYPES.ACTION, "Action"]
+  ], seed.type, () => {});
 
-  const textLabel = document.createElement("label");
-  textLabel.className = "field-label";
-  textLabel.textContent = "Update";
-  const textInput = document.createElement("textarea");
-  textInput.className = "field-input field-textarea";
-  textInput.value = seed.text;
-  textLabel.appendChild(textInput);
+  const summary = document.createElement("input");
+  summary.className = "field-input";
+  summary.required = true;
+  summary.placeholder = "Summary";
+  summary.value = seed.summary;
 
-  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
-  const toUpdateField = buildEntityTokenMultiSelectField({
-    label: "People to update",
-    options: recipientOptions,
-    values: normaliseToUpdateList(seed.toUpdate)
-      .map((entry) => entry.personId)
-      .filter(Boolean),
-    emptyMessage: "Add people first to select update recipients.",
-    inputPlaceholder: "Search people to update"
+  const notes = document.createElement("textarea");
+  notes.className = "field-input field-textarea";
+  notes.placeholder = "Notes (optional)";
+  notes.value = seed.description;
+
+  const owner = buildSelect([["", "No owner"], ...selectActivePeople(people).map((person) => [person.id, person.name || person.id])], seed.ownerId, () => {});
+
+  const due = document.createElement("input");
+  due.type = "date";
+  due.className = "field-input";
+  due.value = seed.dueDate;
+
+  const meeting = buildSelect([["", "No meeting"], ...meetings.filter((item) => !item.archived).map((item) => [item.id, item.name || item.id])], seed.meetingId, () => {});
+  const project = buildSelect([["", "No project"], ...projects.filter((item) => !item.archived).map((item) => [item.id, item.name || item.id])], seed.projectId, () => {});
+
+  const recipientField = buildEntityTokenMultiSelectField({
+    label: "Recipients",
+    options: selectActivePeople(people).map((person) => ({ value: person.id, label: person.name || person.id })),
+    values: seed.recipients.map((item) => item.personId),
+    emptyMessage: "Create people records first.",
+    inputPlaceholder: "Search recipients"
   });
-
-  const ownerLabel = document.createElement("label");
-  ownerLabel.className = "field-label";
-  ownerLabel.textContent = "Owner (required for actions)";
-  const ownerSelect = document.createElement("select");
-  ownerSelect.className = "field-input";
-  for (const option of buildUpdateOwnerOptions(activePeople)) {
-    addOption(ownerSelect, option.value, option.label);
-  }
-  ownerSelect.value = seed.ownerId;
-  ownerLabel.appendChild(ownerSelect);
-
-  const meetingLabel = document.createElement("label");
-  meetingLabel.className = "field-label";
-  meetingLabel.textContent = "Linked meeting";
-  const meetingSelect = document.createElement("select");
-  meetingSelect.className = "field-input";
-  addOption(meetingSelect, "", "No linked meeting");
-  meetings.filter((meeting) => !meeting.archived).forEach((meeting) => addOption(meetingSelect, meeting.id, meeting.name));
-  if (Array.from(meetingSelect.options).some((option) => option.value === seed.meetingId)) {
-    meetingSelect.value = seed.meetingId;
-  }
-  meetingLabel.appendChild(meetingSelect);
-
-  const dueDateLabel = document.createElement("label");
-  dueDateLabel.className = "field-label";
-  dueDateLabel.textContent = "Due date (required for actions)";
-  const dueDateInput = document.createElement("input");
-  dueDateInput.type = "date";
-  dueDateInput.className = "field-input";
-  dueDateInput.value = seed.dueDate;
-  dueDateLabel.appendChild(dueDateInput);
-
-  const syncEditorRequirements = () => {
-    const isAction = entityTypeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
-    ownerSelect.required = isAction;
-    dueDateInput.required = isAction;
-    if (!isAction) {
-      dueDateInput.value = "";
-    }
-  };
-  entityTypeSelect.addEventListener("change", syncEditorRequirements);
-  syncEditorRequirements();
-
-  form.append(entityTypeLabel, textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel);
 
   const actions = document.createElement("div");
   actions.className = "task-inline-editor-actions";
-  const saveButton = document.createElement("button");
-  saveButton.type = "submit";
-  saveButton.className = "primary-button";
-  saveButton.textContent = update ? "Save" : "Create";
+  const cancel = smallButton("Cancel", onCancel);
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "primary-button";
+  save.textContent = update ? "Save" : "Create";
+  actions.append(cancel, save);
 
-  const cancelButton = document.createElement("button");
-  cancelButton.type = "button";
-  cancelButton.className = "secondary-button";
-  cancelButton.textContent = "Cancel";
-  cancelButton.addEventListener("click", onCancel);
-
-  actions.append(saveButton, cancelButton);
-  if (update && onToggleArchived) {
-    const archiveButton = document.createElement("button");
-    archiveButton.type = "button";
-    archiveButton.className = "secondary-button";
-    archiveButton.textContent = update.archived ? "Unarchive" : "Archive";
-    archiveButton.addEventListener("click", onToggleArchived);
-    actions.appendChild(archiveButton);
-  }
-
-  form.appendChild(actions);
-
-  [entityTypeSelect, textInput, ownerSelect, meetingSelect, dueDateInput].forEach((control) => {
-    control.addEventListener("input", onDirty);
-    control.addEventListener("change", onDirty);
-  });
-  toUpdateField.hiddenInput.addEventListener("change", onDirty);
+  form.append(labelWrap("Type", type), labelWrap("Summary", summary), labelWrap("Notes", notes), recipientField.wrapper, labelWrap("Owner", owner), labelWrap("Due", due), labelWrap("Meeting", meeting), labelWrap("Project", project), actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
+    const selectedRecipientIds = readEntityTokenHiddenValues(recipientField.hiddenInput);
+    if (!selectedRecipientIds.length) {
+      window.alert("At least one recipient is required.");
+      return;
+    }
+
+    const statusByPersonId = new Map(seed.recipients.map((entry) => [entry.personId, entry]));
+    const recipients = selectedRecipientIds.map((personId) => {
+      const existing = statusByPersonId.get(personId);
+      return {
+        personId,
+        status: existing?.status === "complete" ? "complete" : "pending",
+        updatedAt: existing?.status === "complete" ? existing.updatedAt : ""
+      };
+    });
+
     onSave({
-      text: textInput.value,
-      entityType: entityTypeSelect.value,
-      ownerId: ownerSelect.value,
-      meetingId: meetingSelect.value,
-      dueDate: dueDateInput.value,
-      toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
+      type: type.value,
+      summary: summary.value,
+      description: notes.value,
+      ownerId: owner.value,
+      dueDate: due.value,
+      meetingId: meeting.value,
+      projectId: project.value,
+      recipients
     });
   });
 
-  cell.appendChild(form);
-  row.appendChild(cell);
-  window.requestAnimationFrame(() => {
-    textInput.focus();
-  });
-  return row;
+  td.appendChild(form);
+  tr.appendChild(td);
+  return tr;
 }
 
-function formatUpdatedAt(updatedAt) {
-  const date = new Date(updatedAt);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function labelWrap(label, control) {
+  const wrap = document.createElement("label");
+  wrap.className = "field-label";
+  wrap.textContent = label;
+  wrap.appendChild(control);
+  return wrap;
 }
 
-function renderUpdateEditor({ update, people, meetings, onClose, onSave, focusTextInput = false }) {
-  const overlay = document.createElement("div");
-  overlay.className = "meeting-modal-overlay";
-  overlay.tabIndex = -1;
+function buildRecipientDetailsRow({ update, people, onToggle }) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = 9;
+  const list = document.createElement("div");
+  list.className = "updates-recipient-checklist";
 
-  const dismissGuard = createModalDismissGuard({ onClose });
-  const requestClose = () => dismissGuard.requestClose();
-
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) {
-      requestClose();
-    }
-  });
-  overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      requestClose();
-    }
-  });
-
-  const panel = document.createElement("section");
-  panel.className = "meeting-modal entity-editor-modal";
-
-  const isEditMode = Boolean(update);
-  const heading = document.createElement("h2");
-  heading.textContent = isEditMode ? "Edit update" : "New update";
-
-  // Edit mode can receive a stale ID if the row was removed before the modal rendered.
-  // Keep this fallback explicit so dismissal behaviour remains predictable.
-  if (!isEditMode && update !== null) {
-    const message = document.createElement("p");
-    message.className = "empty-state";
-    message.textContent = "The selected update could not be found. It may have been deleted.";
-
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.className = "module-button-secondary";
-    closeButton.textContent = "Close";
-    closeButton.addEventListener("click", requestClose);
-
-    panel.append(heading, message, closeButton);
-    overlay.appendChild(panel);
-    return overlay;
-  }
-
-  const activePeople = selectActivePeople(people);
-  const seed = update || {
-    text: "",
-    entityType: UPDATE_ENTITY_TYPES.UPDATE,
-    ownerId: "",
-    meetingId: "",
-    dueDate: "",
-    toUpdate: []
-  };
-
-  const form = document.createElement("form");
-  form.className = "updates-editor-form";
-
-  const textLabel = document.createElement("label");
-  textLabel.className = "field-label";
-  textLabel.textContent = "Update";
-  const textInput = document.createElement("textarea");
-  textInput.className = "field-input field-textarea";
-  // Clearing text during edit is interpreted as a quiet delete in `saveUpdate`.
-  textInput.required = false;
-  textInput.value = seed.text;
-  textLabel.appendChild(textInput);
-
-  const entityTypeLabel = document.createElement("label");
-  entityTypeLabel.className = "field-label";
-  entityTypeLabel.textContent = "Entity type";
-  const entityTypeSelect = document.createElement("select");
-  entityTypeSelect.className = "field-input";
-  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.UPDATE, "Update");
-  addOption(entityTypeSelect, UPDATE_ENTITY_TYPES.ACTION, "Action");
-  entityTypeSelect.value = seed.entityType;
-  entityTypeLabel.appendChild(entityTypeSelect);
-
-  const recipientOptions = buildUpdateRecipientOptions(activePeople, seed.toUpdate);
-  const toUpdateField = buildEntityTokenMultiSelectField({
-    label: "People to update",
-    options: recipientOptions,
-    values: normaliseToUpdateList(seed.toUpdate)
-      .map((entry) => entry.personId)
-      .filter(Boolean),
-    emptyMessage: "Add people first to select update recipients.",
-    inputPlaceholder: "Search people to update"
-  });
-
-  const ownerLabel = document.createElement("label");
-  ownerLabel.className = "field-label";
-  ownerLabel.textContent = "Owner (required for actions)";
-  const ownerSelect = document.createElement("select");
-  ownerSelect.className = "field-input";
-  for (const option of buildUpdateOwnerOptions(activePeople)) {
-    addOption(ownerSelect, option.value, option.label);
-  }
-  ownerSelect.value = seed.ownerId;
-  ownerLabel.appendChild(ownerSelect);
-
-  const meetingLabel = document.createElement("label");
-  meetingLabel.className = "field-label";
-  meetingLabel.textContent = "Linked meeting (optional)";
-  const meetingSelect = document.createElement("select");
-  meetingSelect.className = "field-input";
-  addOption(meetingSelect, "", "No linked meeting");
-  meetings.filter((meeting) => !meeting.archived).forEach((meeting) => addOption(meetingSelect, meeting.id, meeting.name));
-  if (Array.from(meetingSelect.options).some((option) => option.value === seed.meetingId)) {
-    meetingSelect.value = seed.meetingId;
-  }
-  meetingLabel.appendChild(meetingSelect);
-
-  const dueDateLabel = document.createElement("label");
-  dueDateLabel.className = "field-label";
-  dueDateLabel.textContent = "Due date (required for actions)";
-  const dueDateInput = document.createElement("input");
-  dueDateInput.type = "date";
-  dueDateInput.className = "field-input";
-  dueDateInput.value = seed.dueDate;
-  dueDateLabel.appendChild(dueDateInput);
-
-  // Create and edit share the same save path, so action-specific requirements
-  // are toggled from one helper to avoid workflow drift.
-  const syncEditorRequirements = () => {
-    const isAction = entityTypeSelect.value === UPDATE_ENTITY_TYPES.ACTION;
-    ownerSelect.required = isAction;
-    dueDateInput.required = isAction;
-    if (!isAction) {
-      dueDateInput.value = "";
-    }
-  };
-  entityTypeSelect.addEventListener("change", syncEditorRequirements);
-  syncEditorRequirements();
-
-  const actions = document.createElement("div");
-  actions.className = "tasks-row-actions";
-
-  const cancelButton = document.createElement("button");
-  cancelButton.type = "button";
-  cancelButton.className = "module-button-secondary";
-  cancelButton.textContent = "Cancel";
-  cancelButton.addEventListener("click", requestClose);
-
-  const saveButton = document.createElement("button");
-  saveButton.type = "submit";
-  saveButton.className = "enter-mode-button";
-  saveButton.textContent = isEditMode ? "Save update" : "Create update";
-
-  actions.append(cancelButton, saveButton);
-  form.append(entityTypeLabel, textLabel, toUpdateField.wrapper, ownerLabel, meetingLabel, dueDateLabel, actions);
-
-  // Always submit normalised recipient records so persistence retains canonical shape.
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const selectedIds = readEntityTokenHiddenValues(toUpdateField.hiddenInput);
-    onSave(
-      {
-        text: textInput.value,
-        entityType: entityTypeSelect.value,
-        ownerId: ownerSelect.value,
-        meetingId: meetingSelect.value,
-        dueDate: dueDateInput.value,
-        toUpdate: selectedIds.map((id) => ({ personId: id, status: "pending", required: true, updatedAt: "" }))
-      },
-      isEditMode ? seed.id : ""
-    );
-  });
-
-  // Dirty tracking ensures backdrop/cancel/Escape all enforce the same confirmation flow.
-  dismissGuard.bindDirtyTracking(form);
-
-  panel.append(heading, form);
-  overlay.appendChild(panel);
-
-  if (focusTextInput) {
-    window.requestAnimationFrame(() => {
-      textInput.focus();
+  for (const recipient of update.recipients) {
+    const row = document.createElement("div");
+    row.className = "updates-recipient-row";
+    const name = document.createElement("span");
+    name.textContent = resolvePersonName(recipient.personId, people, recipient.personId || "Unknown person");
+    const status = document.createElement("span");
+    status.className = `update-type-pill ${recipient.status === "complete" ? "is-action" : "is-update"}`;
+    status.textContent = recipient.status === "complete" ? "Complete" : "Pending";
+    const toggle = smallButton(recipient.status === "complete" ? "Mark pending" : "Mark updated", () => {
+      onToggle(recipient.personId, recipient.status !== "complete");
     });
+    row.append(name, status, toggle);
+    list.appendChild(row);
   }
 
-  return overlay;
+  td.appendChild(list);
+  tr.appendChild(td);
+  return tr;
 }
 
-/**
- * Loads mode-scoped updates from versioned local storage.
- */
+function selectVisibleUpdates({ updates, meetings, people, filters }) {
+  const today = new Date();
+  return updates
+    .filter((item) => item.lifecycle !== UPDATE_LIFECYCLE.DELETED)
+    .filter((item) => (filters.showArchived ? item.lifecycle === UPDATE_LIFECYCLE.ARCHIVED : item.lifecycle === UPDATE_LIFECYCLE.ACTIVE))
+    .filter((item) => (filters.type === "all" ? true : item.type === filters.type))
+    .filter((item) => (filters.ownerId === "all" ? true : item.ownerId === filters.ownerId))
+    .filter((item) => (filters.recipientId === "all" ? true : item.recipients.some((recipient) => recipient.personId === filters.recipientId)))
+    .filter((item) => (filters.overdueOnly ? isOverdue(item, today) && selectPendingPeopleCount(item) > 0 : true))
+    .filter((item) => (filters.dueSoonOnly ? isDueSoon(item, today) && selectPendingPeopleCount(item) > 0 : true))
+    .filter((item) => (filters.needsAttentionOnly ? selectPendingPeopleCount(item) > 0 : true))
+    .filter((item) => (filters.meetingLinkedOnly ? Boolean(item.meetingId) : true))
+    .filter((item) => (filters.unlinkedOnly ? !item.meetingId : true))
+    .filter((item) => {
+      const q = filters.search.trim().toLowerCase();
+      if (!q) {
+        return true;
+      }
+      const ownerName = resolvePersonName(item.ownerId, people, "").toLowerCase();
+      const recipientNames = item.recipients.map((recipient) => resolvePersonName(recipient.personId, people, recipient.personId)).join(" ").toLowerCase();
+      const meetingName = meetings.find((meeting) => meeting.id === item.meetingId)?.name?.toLowerCase() || "";
+      return [item.summary, item.description, ownerName, recipientNames, meetingName].join(" ").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (filters.sort === "due") {
+        const ad = a.dueDate || "9999-12-31";
+        const bd = b.dueDate || "9999-12-31";
+        return ad.localeCompare(bd);
+      }
+      if (filters.sort === "pending") {
+        return selectPendingPeopleCount(b) - selectPendingPeopleCount(a);
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+}
+
 export function loadUpdates(mode) {
   if (mode !== "work") {
     return [];
   }
-
   return loadVersionedCollection({
     storageKey: resolveUpdatesStorageKey(mode),
     collectionKey: UPDATES_COLLECTION_KEY,
@@ -660,167 +569,56 @@ export function loadUpdates(mode) {
   });
 }
 
-/**
- * Creates or updates an update record and appends an audit event.
- */
 export function saveUpdate(mode, draft, editingId = "", people = null) {
   if (mode !== "work") {
     return { ok: false, error: "Updates are currently supported only in work mode." };
   }
-
   const normalisedDraft = normaliseUpdate(draft);
-  const isAction = normalisedDraft.entityType === UPDATE_ENTITY_TYPES.ACTION;
-
-  // Quiet-delete semantics:
-  // - Editing with empty text removes the existing record.
-  // - Creating with empty text no-ops so accidental blank submits do not create noise.
-  if (!normalisedDraft.text) {
-    if (editingId) {
-      const updates = loadUpdates(mode);
-      const next = updates.filter((update) => update.id !== editingId);
-      if (next.length === updates.length) {
-        return { ok: false, error: "Update no longer exists." };
-      }
-      persistUpdates(mode, next);
-      return { ok: true, message: "Update deleted." };
-    }
-
-    return { ok: true, message: "Skipped empty update." };
+  if (!normalisedDraft.summary) {
+    return { ok: false, error: "Summary is required." };
   }
-
-  // Recipient requirements:
-  // - Updates are communication items and require at least one recipient.
-  // - Actions represent owned work and can exist without recipients.
-  if (!isAction && !normalisedDraft.toUpdate.length) {
-    return { ok: false, error: "At least one person to update is required for update items." };
+  if (!normalisedDraft.recipients.length) {
+    return { ok: false, error: "At least one recipient is required." };
   }
-
-  if (isAction && !normalisedDraft.ownerId) {
-    return { ok: false, error: "Actions require an owner." };
-  }
-  if (isAction && !normalisedDraft.dueDate) {
-    return { ok: false, error: "Actions require a due date." };
-  }
-
-  // Referential integrity: `ownerId` is a soft foreign key to People.
-  // We allow empty owner values for updates, but actions must have either an active person or "Me".
-  if (Array.isArray(people)) {
-    const validOwnerIds = new Set(
-      people
-        .filter((person) => person && !person.archived && typeof person.id === "string")
-        .map((person) => person.id)
-    );
-    if (normalisedDraft.ownerId && normalisedDraft.ownerId !== ACTION_OWNER_ME && !validOwnerIds.has(normalisedDraft.ownerId)) {
+  if (Array.isArray(people) && normalisedDraft.ownerId) {
+    const validIds = new Set(selectActivePeople(people).map((person) => person.id));
+    if (!validIds.has(normalisedDraft.ownerId)) {
       return { ok: false, error: "Selected owner no longer exists in active people." };
     }
   }
 
   const now = new Date().toISOString();
   const updates = loadUpdates(mode);
-
   if (editingId) {
-    const index = updates.findIndex((update) => update.id === editingId);
+    const index = updates.findIndex((item) => item.id === editingId);
     if (index < 0) {
       return { ok: false, error: "Update no longer exists." };
     }
-
     const current = updates[index];
     updates[index] = {
       ...current,
       ...normalisedDraft,
       id: current.id,
       createdAt: current.createdAt,
-      updatedAt: now,
-      auditTrail: [...current.auditTrail, { at: now, action: "updated" }]
+      updatedAt: now
     };
-
     persistUpdates(mode, updates);
-    return { ok: true, message: "Update saved." };
+    return { ok: true };
   }
 
   updates.push({
     ...normalisedDraft,
     id: buildId(),
     createdAt: now,
-    updatedAt: now,
-    auditTrail: [...normalisedDraft.auditTrail, { at: now, action: "created" }]
+    updatedAt: now
   });
-
   persistUpdates(mode, updates);
-  return { ok: true, message: "Update created." };
+  return { ok: true };
 }
 
-/**
- * Returns active people with stable, string-backed IDs.
- *
- * Keeping this helper centralised avoids per-screen filtering drift that could let
- * stale/deleted IDs slip into ownership references.
- */
-export function selectActivePeople(people = []) {
-  if (!Array.isArray(people)) {
-    return [];
-  }
-
-  return people.filter(
-    (person) => person && !person.archived && typeof person.id === "string" && person.id.trim()
-  );
-}
-
-/**
- * Builds update-owner select options with an explicit optional default.
- *
- * Reusing this across modules keeps referential integrity behaviour consistent
- * and prevents free-typed IDs from being accepted in one workflow but rejected in another.
- */
-export function buildUpdateOwnerOptions(people = []) {
-  const activePeople = selectActivePeople(people);
-  return [
-    { value: "", label: "No owner" },
-    { value: ACTION_OWNER_ME, label: "Me (create linked task)" },
-    ...activePeople.map((person) => ({ value: person.id, label: person.name || person.id }))
-  ];
-}
-
-function resolveOwnerDisplayName(update, people) {
-  if (!update.ownerId) {
-    return "No owner";
-  }
-  if (update.ownerId === ACTION_OWNER_ME) {
-    return "Me";
-  }
-
-  const owner = people.find((person) => person.id === update.ownerId);
-  if (!owner) {
-    return "Unknown (archived/deleted)";
-  }
-
-  return owner.name || update.ownerId;
-}
-
-function addOption(select, value, label) {
-  const option = document.createElement("option");
-  option.value = value;
-  option.textContent = label;
-  select.appendChild(option);
-}
-
-/**
- * Shared visual token for update/action type labels.
- */
-function buildUpdateTypePill(entityType) {
-  const pill = document.createElement("span");
-  const isAction = entityType === UPDATE_ENTITY_TYPES.ACTION;
-  pill.className = `update-type-pill ${isAction ? "is-action" : "is-update"}`;
-  pill.textContent = isAction ? "Action" : "Update";
-  return pill;
-}
-
-/**
- * Archives/restores an update while retaining immutable history.
- */
 export function archiveUpdate(mode, updateId, shouldArchive) {
   if (mode !== "work") {
-    return;
+    return { ok: false, error: "Updates are currently supported only in work mode." };
   }
 
   const now = new Date().toISOString();
@@ -828,275 +626,201 @@ export function archiveUpdate(mode, updateId, shouldArchive) {
     if (update.id !== updateId) {
       return update;
     }
-
     return {
       ...update,
+      lifecycle: shouldArchive ? UPDATE_LIFECYCLE.ARCHIVED : UPDATE_LIFECYCLE.ACTIVE,
       archived: Boolean(shouldArchive),
-      updatedAt: now,
-      auditTrail: [...update.auditTrail, { at: now, action: shouldArchive ? "archived" : "restored" }]
+      updatedAt: now
     };
   });
 
   persistUpdates(mode, updates);
+  return { ok: true };
 }
 
-/**
- * Marks one person as updated for a given update id.
- *
- * `toUpdate` tracks per-person state rather than a single update-level flag because
- * one update can fan out to multiple recipients that complete asynchronously.
- */
+export function deleteUpdate(mode, updateId) {
+  if (mode !== "work") {
+    return { ok: false, error: "Updates are currently supported only in work mode." };
+  }
+  const now = new Date().toISOString();
+  let found = false;
+  const updates = loadUpdates(mode).map((update) => {
+    if (update.id !== updateId) {
+      return update;
+    }
+    found = true;
+    return {
+      ...update,
+      lifecycle: UPDATE_LIFECYCLE.DELETED,
+      deletedAt: now,
+      updatedAt: now
+    };
+  });
+  if (!found) {
+    return { ok: false, error: "Update no longer exists." };
+  }
+  persistUpdates(mode, updates);
+  return { ok: true };
+}
+
 export function markPersonUpdated(updateId, personId, at = new Date().toISOString()) {
-  updatePersonStatus("work", updateId, personId, "updated", at);
+  updatePersonStatus("work", updateId, personId, "complete", at);
 }
 
-/**
- * Optionally un-toggles a person back to pending.
- */
 export function markPersonPending(updateId, personId) {
   updatePersonStatus("work", updateId, personId, "pending", "");
 }
 
-/**
- * Selector for how many recipients still need the update.
- */
 export function selectPendingPeopleCount(update) {
-  return normaliseToUpdateList(update?.toUpdate).filter((entry) => entry.status === "pending").length;
+  return normaliseRecipients(update?.recipients || update?.toUpdate).filter((entry) => entry.status === "pending").length;
 }
 
-/**
- * Selector for how many recipients were already updated.
- */
 export function selectCompletedPeopleCount(update) {
-  return normaliseToUpdateList(update?.toUpdate).filter((entry) => entry.status === "updated").length;
+  return normaliseRecipients(update?.recipients || update?.toUpdate).filter((entry) => entry.status === "complete").length;
 }
 
-/**
- * Buckets update due dates for urgency styling in table cells and row-level hooks.
- */
-function getUpdateDueDateState(dueDate) {
-  const dueTime = parseUpdateDateToMidnight(dueDate);
-  if (!dueTime) {
-    return "no-due-date";
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTime = today.getTime();
-  if (dueTime < todayTime) {
-    return "overdue";
-  }
-
-  if (dueTime === todayTime) {
-    return "due-today";
-  }
-
-  return "upcoming";
-}
-
-/**
- * Converts a pending recipient count into visual load bands.
- */
-function getPendingLoadState(pendingCount) {
-  if (pendingCount <= 0) {
-    return "zero";
-  }
-
-  if (pendingCount >= PENDING_COUNT_BANDS.high) {
-    return "high";
-  }
-
-  if (pendingCount >= PENDING_COUNT_BANDS.low) {
-    return "low";
-  }
-
-  return "zero";
-}
-
-/**
- * Parses yyyy-mm-dd update dates into local-midnight timestamps for day-level comparisons.
- */
-function parseUpdateDateToMidnight(dateValue) {
-  if (!dateValue) {
-    return null;
-  }
-
-  const [yearValue, monthValue, dayValue] = String(dateValue).split("-").map((segment) => Number(segment));
-  if (![yearValue, monthValue, dayValue].every((segment) => Number.isInteger(segment))) {
-    return null;
-  }
-
-  const parsedDate = new Date(yearValue, monthValue - 1, dayValue);
-  parsedDate.setHours(0, 0, 0, 0);
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate.getTime();
-}
-
-/**
- * Selects update rows that involve one specific person.
- *
- * Reuse guidance:
- * - Keep this selector as the single source of truth for person-centric filtering
- *   so list views, meeting prefill flows, and reminders do not drift in behaviour.
- * - By default, this returns only pending rows from non-archived updates because
- *   most UX surfaces focus on actionable items.
- * - Set `includeCompleted` when a screen needs historical visibility.
- */
 export function selectUpdatesForPerson(updates, personId, { includeCompleted = false, includeArchived = false } = {}) {
   if (!personId || !Array.isArray(updates)) {
     return [];
   }
 
   return updates.flatMap((update) => {
-    if (!includeArchived && update?.archived) {
+    if (!includeArchived && update?.lifecycle === UPDATE_LIFECYCLE.ARCHIVED) {
+      return [];
+    }
+    if (update?.lifecycle === UPDATE_LIFECYCLE.DELETED) {
       return [];
     }
 
-    const matchingEntries = normaliseToUpdateList(update?.toUpdate)
+    const matchingEntries = normaliseRecipients(update?.recipients || update?.toUpdate)
       .filter((entry) => entry.personId === personId)
       .filter((entry) => (includeCompleted ? true : entry.status === "pending"));
 
-    return matchingEntries.map((entry) => ({
-      update,
-      entry,
-    }));
+    return matchingEntries.map((entry) => ({ update, entry }));
   });
 }
 
-/**
- * Applies schema defaults and normalises nested `toUpdate` entries.
- */
+export function selectActivePeople(people = []) {
+  if (!Array.isArray(people)) {
+    return [];
+  }
+  return people.filter((person) => person && !person.archived && typeof person.id === "string" && person.id.trim());
+}
+
+export function buildUpdateOwnerOptions(people = []) {
+  return [{ value: "", label: "No owner" }, ...selectActivePeople(people).map((person) => ({ value: person.id, label: person.name || person.id }))];
+}
+
 export function normaliseUpdate(update) {
   const now = new Date().toISOString();
   const source = update && typeof update === "object" ? update : {};
+  const type = source.type === UPDATE_ENTITY_TYPES.ACTION || source.entityType === UPDATE_ENTITY_TYPES.ACTION
+    ? UPDATE_ENTITY_TYPES.ACTION
+    : UPDATE_ENTITY_TYPES.UPDATE;
+  const recipients = normaliseRecipients(source.recipients || source.toUpdate);
+  const lifecycle = normaliseLifecycle(source.lifecycle, source.archived);
 
   return {
     id: typeof source.id === "string" ? source.id : "",
-    text: typeof source.text === "string" ? source.text.trim() : "",
-    entityType: source.entityType === UPDATE_ENTITY_TYPES.ACTION ? UPDATE_ENTITY_TYPES.ACTION : UPDATE_ENTITY_TYPES.UPDATE,
+    type,
+    entityType: type,
+    summary: typeof source.summary === "string" ? source.summary.trim() : typeof source.text === "string" ? source.text.trim() : "",
+    text: typeof source.summary === "string" ? source.summary.trim() : typeof source.text === "string" ? source.text.trim() : "",
+    description: typeof source.description === "string" ? source.description.trim() : typeof source.notes === "string" ? source.notes.trim() : "",
+    notes: typeof source.description === "string" ? source.description.trim() : typeof source.notes === "string" ? source.notes.trim() : "",
     ownerId: typeof source.ownerId === "string" ? source.ownerId : "",
-    toUpdate: normaliseToUpdateList(source.toUpdate),
-    meetingId: typeof source.meetingId === "string" ? source.meetingId : "",
     dueDate: typeof source.dueDate === "string" ? source.dueDate : "",
-    archived: Boolean(source.archived),
+    meetingId: typeof source.meetingId === "string" ? source.meetingId : "",
+    projectId: typeof source.projectId === "string" ? source.projectId : "",
+    recipients,
+    toUpdate: recipients.map((entry) => ({
+      personId: entry.personId,
+      required: true,
+      status: entry.status === "complete" ? "updated" : "pending",
+      updatedAt: entry.updatedAt || "",
+      note: ""
+    })),
+    lifecycle,
+    archived: lifecycle === UPDATE_LIFECYCLE.ARCHIVED,
     createdAt: typeof source.createdAt === "string" ? source.createdAt : now,
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : now,
-    auditTrail: Array.isArray(source.auditTrail) ? source.auditTrail : []
+    deletedAt: typeof source.deletedAt === "string" ? source.deletedAt : ""
   };
 }
 
-function normaliseToUpdateList(toUpdate) {
-  if (!Array.isArray(toUpdate)) {
+function normaliseRecipients(entries) {
+  if (!Array.isArray(entries)) {
     return [];
   }
-
-  // Schema migration note:
-  // - Oldest payloads stored `toUpdate` as plain id arrays (`["person-1", "person-2"]`).
-  // - Transitional payloads from free-text forms stored note-only rows
-  //   (`[{ personId: "", note: "Team Alpha" }]`) without canonical ids.
-  //
-  // We normalise both legacy shapes into the same structured recipient list so selectors,
-  // counters, and persistence always operate on one stable schema. Note-only rows are
-  // intentionally retained (when non-empty) to remain migration-safe for existing notes.
-  return toUpdate
+  return entries
     .map((entry) => {
       if (typeof entry === "string") {
         const personId = entry.trim();
-        return personId
-          ? {
-              personId,
-              required: true,
-              status: "pending",
-              updatedAt: ""
-            }
-          : null;
+        if (!personId) {
+          return null;
+        }
+        return { personId, status: "pending", updatedAt: "" };
       }
-
       if (!entry || typeof entry !== "object") {
         return null;
       }
-
-      const personId = typeof entry.personId === "string" ? entry.personId : "";
-      const note = typeof entry.note === "string" ? entry.note.trim() : "";
-      const required = typeof entry.required === "boolean" ? entry.required : true;
-      const status = entry.status === "updated" ? "updated" : "pending";
-      const updatedAt = status === "updated" ? ensureIsoTimestamp(entry.updatedAt) : "";
-
-      if (!personId && !note) {
+      const personId = typeof entry.personId === "string" ? entry.personId.trim() : "";
+      if (!personId) {
         return null;
       }
-
+      const status = entry.status === "complete" || entry.status === "updated" ? "complete" : "pending";
       return {
         personId,
-        required,
         status,
-        updatedAt,
-        note,
+        updatedAt: status === "complete" ? ensureIsoTimestamp(entry.updatedAt, "") : ""
       };
     })
     .filter(Boolean);
 }
 
+function normaliseLifecycle(lifecycle, archived) {
+  if (lifecycle === UPDATE_LIFECYCLE.ARCHIVED || lifecycle === UPDATE_LIFECYCLE.DELETED) {
+    return lifecycle;
+  }
+  return archived ? UPDATE_LIFECYCLE.ARCHIVED : UPDATE_LIFECYCLE.ACTIVE;
+}
+
 function updatePersonStatus(mode, updateId, personId, status, at) {
-  if (mode !== "work" || !updateId || !personId) {
+  if (mode !== "work") {
     return;
   }
-
+  const now = new Date().toISOString();
   const updates = loadUpdates(mode).map((update) => {
     if (update.id !== updateId) {
       return update;
     }
-
-    const now = new Date().toISOString();
-    const targetAt = status === "updated" ? ensureIsoTimestamp(at, now) : "";
-    const entries = normaliseToUpdateList(update.toUpdate);
-    const existingIndex = entries.findIndex((entry) => entry.personId === personId);
-
-    if (existingIndex >= 0) {
-      const current = entries[existingIndex];
-      entries[existingIndex] = {
-        ...current,
-        status,
-        updatedAt: targetAt,
-      };
-    } else {
-      entries.push({
+    const recipients = normaliseRecipients(update.recipients || update.toUpdate);
+    const index = recipients.findIndex((entry) => entry.personId === personId);
+    if (index >= 0) {
+      recipients[index] = {
         personId,
-        required: true,
         status,
-        updatedAt: targetAt,
-      });
+        updatedAt: status === "complete" ? ensureIsoTimestamp(at, now) : ""
+      };
     }
 
-    return {
+    return normaliseUpdate({
       ...update,
-      toUpdate: entries,
-      updatedAt: now,
-      auditTrail: [...update.auditTrail, { at: now, action: status === "updated" ? "person-updated" : "person-pending", personId }]
-    };
+      recipients,
+      updatedAt: now
+    });
   });
-
   persistUpdates(mode, updates);
 }
 
-function ensureIsoTimestamp(value, fallback = "") {
-  if (typeof value !== "string") {
-    return fallback;
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return fallback;
-  }
-
-  // Canonical ISO output keeps timestamps deterministic during sync/merge.
-  return parsed.toISOString();
+function resolveUpdatesStorageKey(mode) {
+  return mode === "work" ? WORK_UPDATES_STORAGE_KEY : `second-brain.work.updates.${mode}.v${UPDATES_SCHEMA_VERSION}`;
 }
 
 function persistUpdates(mode, updates) {
   if (mode !== "work") {
     return;
   }
-
   persistVersionedCollection({
     storageKey: resolveUpdatesStorageKey(mode),
     collectionKey: UPDATES_COLLECTION_KEY,
@@ -1105,16 +829,70 @@ function persistUpdates(mode, updates) {
   });
 }
 
-function resolveUpdatesStorageKey(mode) {
-  // Dedicated and explicitly versioned collection key required by feature spec.
-  if (mode === "work") {
-    return WORK_UPDATES_STORAGE_KEY;
+function resolvePersonName(personId, people, fallback = "") {
+  if (!personId) {
+    return fallback;
   }
+  return people.find((person) => person.id === personId)?.name || fallback || personId;
+}
 
-  return `second-brain.work.updates.${mode}.v${UPDATES_SCHEMA_VERSION}`;
+function smallButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function buildUpdateTypePill(type) {
+  const pill = document.createElement("span");
+  pill.className = `update-type-pill ${type === UPDATE_ENTITY_TYPES.ACTION ? "is-action" : "is-update"}`;
+  pill.textContent = type === UPDATE_ENTITY_TYPES.ACTION ? "Action" : "Update";
+  return pill;
+}
+
+function formatUpdatedAt(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleString();
+}
+
+export function isOverdue(update, now = new Date()) {
+  if (!update?.dueDate) {
+    return false;
+  }
+  const due = new Date(`${update.dueDate}T00:00:00`);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() < today.getTime();
+}
+
+export function isDueSoon(update, now = new Date()) {
+  if (!update?.dueDate) {
+    return false;
+  }
+  const due = new Date(`${update.dueDate}T00:00:00`);
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return due.getTime() >= start.getTime() && due.getTime() <= end.getTime();
+}
+
+function ensureIsoTimestamp(value, fallback = "") {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toISOString();
 }
 
 function buildId() {
-  // Keep `upd-` prefix for quick diagnostics while delegating UUID/fallback logic to shared helper.
   return generateId("upd-");
 }
