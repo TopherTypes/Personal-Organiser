@@ -240,6 +240,15 @@ export function normaliseProject(project) {
             roles: Array.isArray(entry.roles) ? entry.roles.filter(Boolean) : []
           }))
       : [],
+    updates: Array.isArray(project.updates)
+      ? project.updates
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            id: entry.id || generateId("project-update"),
+            text: typeof entry.text === "string" ? entry.text : "",
+            createdAt: entry.createdAt || new Date().toISOString()
+          }))
+      : [],
     createdAt: project.createdAt || new Date().toISOString(),
     updatedAt: project.updatedAt || new Date().toISOString(),
     lastUpdatedByField:

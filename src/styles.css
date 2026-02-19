@@ -4028,3 +4028,24 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* Projects overhaul: radar cards, command panel, and project drawer ergonomics. */
+.project-health-pill { display:inline-flex; align-items:center; gap:0.35rem; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.75rem; font-weight:700; }
+.project-health-pill.healthy { background:rgba(75,181,107,.2); color:#8cf3ae; }
+.project-health-pill.at_risk { background:rgba(243,180,77,.18); color:#f6cd78; }
+.project-health-pill.overdue { background:rgba(240,95,95,.2); color:#ff9c9c; }
+.project-health-tooltip-icon { font-size:0.72rem; opacity:.85; }
+.project-freshness-line { margin:0.25rem 0 0.5rem; color:var(--text-muted); font-size:0.85rem; }
+.project-task-summary-strip { display:flex; gap:0.45rem; flex-wrap:wrap; margin-bottom:0.7rem; }
+.project-needs-attention { border-color: rgba(255,136,80,.55); box-shadow: 0 0 0 1px rgba(255,136,80,.25); }
+.project-command-panel { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:1rem; }
+.project-command-actions { display:flex; gap:0.5rem; flex-wrap:wrap; }
+.project-command-badges { display:flex; gap:0.5rem; margin-top:0.45rem; }
+.project-health-summary-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem; margin:0.9rem 0; }
+.project-detail-section { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:0.9rem; margin-bottom:0.9rem; }
+.project-task-list, .project-updates-list { margin:0; padding-left:1rem; display:grid; gap:0.4rem; }
+.project-editor-overlay { align-items:stretch; justify-content:flex-end; }
+.project-editor-drawer { width:min(720px, 96vw); height:100vh; max-height:100vh; border-radius:0; }
+.project-editor-section { border:1px solid var(--border); border-radius:10px; padding:0.25rem 0.6rem 0.6rem; background:var(--panel-soft); }
+.project-editor-section > summary { cursor:pointer; font-weight:600; margin-bottom:0.55rem; }
+.project-editor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0.7rem; }
