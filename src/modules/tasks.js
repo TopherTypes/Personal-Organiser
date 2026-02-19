@@ -96,9 +96,10 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
   section.className = "mode-dashboard tasks-module";
 
   const header = document.createElement("div");
-  header.className = "meetings-header";
+  header.className = "meetings-header module-header";
 
   const headingWrap = document.createElement("div");
+  headingWrap.className = "module-header-copy";
   const title = document.createElement("h1");
   const isPersonalMode = state.mode === "personal";
   title.textContent = isPersonalMode ? "Personal Tasks" : "Work Tasks";
@@ -131,7 +132,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
   });
 
   const headerActions = document.createElement("div");
-  headerActions.className = "tasks-header-actions";
+  headerActions.className = "tasks-header-actions module-header-actions";
   headerActions.append(addButton, archiveDoneButton);
 
   header.append(headingWrap, headerActions);
@@ -140,7 +141,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
   feedback.className = "feedback";
 
   const controls = document.createElement("div");
-  controls.className = "people-controls tasks-toolbar";
+  controls.className = "people-controls tasks-toolbar module-toolbar";
 
   const list = document.createElement("div");
   list.className = "tasks-list";
@@ -157,7 +158,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
 
     controls.innerHTML = "";
     const filtersWrap = document.createElement("div");
-    filtersWrap.className = "tasks-toolbar-filters";
+    filtersWrap.className = "tasks-toolbar-filters module-toolbar-group";
     filtersWrap.append(
       createSelectFilter("Status", state.statusFilter, [
         { value: "all", label: "All statuses" },
@@ -184,7 +185,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
     controls.appendChild(filtersWrap);
 
     const archiveToggleWrap = document.createElement("label");
-    archiveToggleWrap.className = "field-label";
+    archiveToggleWrap.className = "field-label module-checkbox";
     archiveToggleWrap.textContent = "Include archived";
     const archiveToggle = document.createElement("input");
     archiveToggle.type = "checkbox";
@@ -195,7 +196,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
     });
     archiveToggleWrap.appendChild(archiveToggle);
     const actionsWrap = document.createElement("div");
-    actionsWrap.className = "tasks-toolbar-actions";
+    actionsWrap.className = "tasks-toolbar-actions module-toolbar-group module-toolbar-actions";
     actionsWrap.appendChild(archiveToggleWrap);
 
     const hasActiveFilters = state.statusFilter !== "all"
@@ -243,7 +244,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false, dra
 
     if (filtered.length === 0) {
       const empty = document.createElement("p");
-      empty.className = "empty-state";
+      empty.className = "empty-state module-empty-state";
       empty.textContent = "No tasks match your current filters.";
       list.appendChild(empty);
     } else {
