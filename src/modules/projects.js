@@ -228,11 +228,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     }
     updatesSection.append(updatesTitle, updatesList);
 
-<<<<<<< codex/overhaul-projects-module-ui/ux-design
     wrap.append(back, command, summary, taskSection, updatesSection, buildLinkedEntitiesCard(project, people));
-=======
-    wrap.append(back, command, summary, taskSection, updatesSection, buildLinkedEntitiesCard(project));
->>>>>>> main
     return wrap;
   }
 
