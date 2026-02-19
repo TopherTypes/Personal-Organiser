@@ -422,7 +422,7 @@ export function renderWorkMeetingsModule({
     projectWrap.textContent = "Project";
     const projectSelect = document.createElement("select");
     projectSelect.className = "field-input";
-    addOption(projectSelect, "", "No project link");
+    addOption(projectSelect, "", "Not linked to a project.");
     projects.forEach((project) => {
       addOption(projectSelect, project.id, project.title);
     });
@@ -640,7 +640,7 @@ export function renderWorkMeetingsModule({
         const nextValue = `${notesInput.value}${notesInput.value ? "\n" : ""}${template}`;
         notesInput.value = nextValue;
         state.draft.notes = nextValue;
-        notesPreview.textContent = nextValue || "No notes yet.";
+        notesPreview.textContent = nextValue || "No notes added.";
         syncRenderedReviewNotes();
       });
       notesQuickActions.appendChild(button);
@@ -667,7 +667,7 @@ export function renderWorkMeetingsModule({
 
     const notesPreview = document.createElement("pre");
     notesPreview.className = "notes-preview";
-    notesPreview.textContent = state.draft.notes || "No notes yet.";
+    notesPreview.textContent = state.draft.notes || "No notes added.";
 
     notesWrap.append(notesQuickActions, notesInput, lockInfo, toggleLabel, notesPreview);
 
@@ -684,7 +684,7 @@ export function renderWorkMeetingsModule({
 
     const syncRenderedReviewNotes = () => {
       reviewNotesRendered.innerHTML = "";
-      reviewNotesRendered.appendChild(renderSimpleMarkdown(state.draft.notes || "No notes yet."));
+      reviewNotesRendered.appendChild(renderSimpleMarkdown(state.draft.notes || "No notes added."));
     };
     syncRenderedReviewNotes();
 
@@ -1282,7 +1282,7 @@ export function renderWorkMeetingsModule({
       if (!notesInput.disabled) {
         state.draft.notes = notesInput.value;
       }
-      notesPreview.textContent = state.draft.notes || "No notes yet.";
+      notesPreview.textContent = state.draft.notes || "No notes added.";
       syncRenderedReviewNotes();
       renderOneOnOneUpdatesPanel();
       state.dirtyDraft = true;
@@ -1800,7 +1800,7 @@ function renderCalendarMeetingDetails(selectedMeeting, people, projects, { onOpe
 
   const metadata = document.createElement("span");
   metadata.className = `meeting-calendar-details-meta ${resolveMeetingStatusClass(selectedMeeting.status)}`;
-  const projectName = projects.find((project) => project.id === selectedMeeting.projectId)?.title || "No project link";
+  const projectName = projects.find((project) => project.id === selectedMeeting.projectId)?.title || "Not linked to a project.";
   const outputSummary = buildMeetingOutputsSummary(selectedMeeting, loadUpdates("work"));
   metadata.textContent = [
     `${formatNonNullText(selectedMeeting.startTime, "Time TBC")}${selectedMeeting.endTime ? `–${selectedMeeting.endTime}` : ""}`,
@@ -1865,7 +1865,7 @@ function renderMeetingRow(meeting, people, projects, { onOpen, onArchiveToggle }
     attendeeNames ? `Attendees: ${attendeeNames}` : "No attendees",
     meeting.projectId
       ? `Project: ${projects.find((project) => project.id === meeting.projectId)?.title || meeting.projectId}`
-      : "No project link"
+      : "Not linked to a project."
   ].join(" · ");
 
   const trail = document.createElement("small");

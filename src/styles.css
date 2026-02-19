@@ -4363,3 +4363,150 @@ button {
   border-radius: 0;
   background: transparent;
 }
+
+
+/*
+ * System polish layer: shared timing, spacing rhythm, and premium interaction affordances.
+ * The selectors target existing markup contracts to avoid module rewrites.
+ */
+:root {
+  --space-7: 2.5rem;
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 170ms;
+  --motion-duration-slow: 220ms;
+  --motion-ease-premium: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.button,
+.enter-mode-button,
+.secondary-button,
+.ghost-button,
+.field-input,
+.quick-actions-item,
+.quick-actions-trigger,
+.module-button,
+.updates-table tbody tr,
+.card,
+.card-muted {
+  transition: all var(--motion-duration-base) var(--motion-ease-premium);
+}
+
+.button:active,
+.enter-mode-button:active,
+.secondary-button:active,
+.quick-actions-trigger:active {
+  transform: scale(0.98);
+}
+
+.content {
+  gap: var(--space-6);
+}
+
+.mode-dashboard {
+  padding: var(--space-6);
+}
+
+.card,
+.card-muted,
+.updates-table-wrap {
+  border-color: color-mix(in srgb, var(--border) 74%, transparent);
+}
+
+.updates-table td,
+.updates-table th {
+  padding: 0.62rem 0.7rem;
+}
+
+.updates-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent-soft) 42%, transparent);
+}
+
+.quick-actions-menu {
+  transform-origin: bottom right;
+  animation: quick-actions-pop var(--motion-duration-base) var(--motion-ease-premium);
+}
+
+.quick-actions-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.quick-actions-item-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent-soft) 54%, transparent);
+}
+
+.quick-actions-item-body {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.quick-actions-item-label {
+  font-weight: 600;
+}
+
+.quick-actions-item-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.interactions-composer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-soft) 72%, transparent);
+  padding: var(--space-4);
+  animation: module-fade-slide var(--motion-duration-slow) var(--motion-ease-premium);
+}
+
+.interactions-composer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.interactions-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.interaction-timeline {
+  gap: var(--space-3);
+}
+
+.interaction-timeline-entry {
+  border-left: none;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  animation: module-fade-slide var(--motion-duration-base) var(--motion-ease-premium);
+}
+
+.interaction-timeline-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.interaction-timeline-note {
+  color: var(--text);
+}
+
+.interaction-row-menu {
+  justify-self: end;
+}
+
+@keyframes quick-actions-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

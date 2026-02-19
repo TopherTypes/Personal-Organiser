@@ -49,7 +49,23 @@ export function renderQuickActions({
     item.type = "button";
     item.className = "quick-actions-item";
     item.setAttribute("role", "menuitem");
-    item.textContent = action.label;
+    const icon = document.createElement("span");
+    icon.className = "quick-actions-item-icon";
+    icon.textContent = action.icon;
+
+    const body = document.createElement("span");
+    body.className = "quick-actions-item-body";
+
+    const label = document.createElement("span");
+    label.className = "quick-actions-item-label";
+    label.textContent = action.label;
+
+    const hint = document.createElement("span");
+    hint.className = "quick-actions-item-hint";
+    hint.textContent = action.hint;
+
+    body.append(label, hint);
+    item.append(icon, body);
     item.setAttribute("aria-label", action.ariaLabel || action.label);
 
     item.addEventListener("click", () => {
@@ -144,24 +160,26 @@ export function renderQuickActions({
 function buildQuickActionConfig(mode) {
   if (mode === "work") {
     return [
-      { label: "New task", moduleKey: "tasks", createIntent: "task", ariaLabel: "Create a new work task" },
-      { label: "New project", moduleKey: "projects", createIntent: "project", ariaLabel: "Create a new work project" },
-      { label: "New meeting", moduleKey: "meetings", createIntent: "meeting", ariaLabel: "Create a new work meeting" },
-      { label: "New update", moduleKey: "updates", createIntent: "update", ariaLabel: "Create a new work update" },
-      { label: "New note", moduleKey: "notes", createIntent: "note", ariaLabel: "Create a new work note" }
+      { label: "New task", icon: "✓", hint: "Capture a personal to-do", moduleKey: "tasks", createIntent: "task", ariaLabel: "Create a new work task" },
+      { label: "New project", icon: "◫", hint: "Start a scoped initiative", moduleKey: "projects", createIntent: "project", ariaLabel: "Create a new work project" },
+      { label: "New meeting", icon: "◷", hint: "Schedule and prep an agenda", moduleKey: "meetings", createIntent: "meeting", ariaLabel: "Create a new work meeting" },
+      { label: "New update", icon: "↗", hint: "Log progress for stakeholders", moduleKey: "updates", createIntent: "update", ariaLabel: "Create a new work update" },
+      { label: "New note", icon: "✎", hint: "Write down context fast", moduleKey: "notes", createIntent: "note", ariaLabel: "Create a new work note" }
     ];
   }
 
   return [
-    { label: "New task", moduleKey: "tasks", createIntent: "task", ariaLabel: "Create a new personal task" },
-    { label: "New project", moduleKey: "projects", createIntent: "project", ariaLabel: "Create a new personal project" },
+    { label: "New task", icon: "✓", hint: "Capture something to do", moduleKey: "tasks", createIntent: "task", ariaLabel: "Create a new personal task" },
+    { label: "New project", icon: "◫", hint: "Track a goal or plan", moduleKey: "projects", createIntent: "project", ariaLabel: "Create a new personal project" },
     {
       label: "New calendar event",
+      icon: "◷",
+      hint: "Block time with context",
       moduleKey: "calendar",
       createIntent: "calendar-event",
       ariaLabel: "Create a new personal calendar event"
     },
-    { label: "New note", moduleKey: "notes", createIntent: "note", ariaLabel: "Create a new personal note" }
+    { label: "New note", icon: "✎", hint: "Capture an idea quickly", moduleKey: "notes", createIntent: "note", ariaLabel: "Create a new personal note" }
   ];
 }
 
