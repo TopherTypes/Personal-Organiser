@@ -3804,6 +3804,27 @@ button {
 }
 
 /* Tasks refresh: dense scanning + drawer editing without horizontal overflow. */
+.tasks-module {
+  /*
+   * Keep the tasks surface anchored from top-to-bottom so controls remain at
+   * the top while the list area expands to consume the remaining vertical
+   * space of the module container.
+   */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.tasks-module > * {
+  /*
+   * Children keep full-width line flow even with `align-items:flex-start`,
+   * avoiding narrow content columns while preserving top-start alignment.
+   */
+  width: 100%;
+}
+
 .tasks-toolbar {
   display: flex;
   justify-content: space-between;
@@ -3833,8 +3854,14 @@ button {
 
 .tasks-table-wrap {
   overflow: auto;
-  max-height: min(66vh, calc(100vh - 240px));
+  max-height: min(74vh, calc(100vh - 210px));
   border-radius: 0.75rem;
+}
+
+.tasks-list {
+  /* Prioritise table real estate by allowing the list block to grow. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .tasks-table {
