@@ -287,9 +287,9 @@ function computeNeedsAttentionScore(health) {
 
 function renderProjectsHeader({ mode, onCreateProject }) {
   const header = document.createElement("header");
-  header.className = "projects-header-v2";
+  header.className = "projects-header-v2 module-header";
   const titleWrap = document.createElement("div");
-  titleWrap.className = "projects-header-copy";
+  titleWrap.className = "projects-header-copy module-header-copy";
   const title = document.createElement("h1");
   title.textContent = mode === "personal" ? "Personal Projects" : "Work Projects";
   const subtitle = document.createElement("p");
@@ -307,7 +307,7 @@ function renderProjectsHeader({ mode, onCreateProject }) {
 
 function renderProjectsToolbar({ state, onChange, onViewModeChange }) {
   const toolbar = document.createElement("div");
-  toolbar.className = "projects-toolbar";
+  toolbar.className = "projects-toolbar module-toolbar";
   const search = document.createElement("input");
   search.type = "search";
   search.className = "field-input";
@@ -331,7 +331,7 @@ function renderProjectsToolbar({ state, onChange, onViewModeChange }) {
   health.addEventListener("change", (event) => onChange({ healthFilter: event.target.value }));
 
   const overdueToggle = document.createElement("label");
-  overdueToggle.className = "field-label";
+  overdueToggle.className = "field-label module-checkbox";
   overdueToggle.textContent = "Has overdue tasks";
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
@@ -372,7 +372,7 @@ function renderProjectsResultsSummary(projects) {
 
 function renderProjectsEmptyState({ hasFilter, onClearFilters }) {
   const empty = document.createElement("div");
-  empty.className = "empty-state projects-empty-state";
+  empty.className = "empty-state projects-empty-state module-empty-state";
   empty.textContent = hasFilter ? "No projects match current filters." : "No projects yet.";
   if (hasFilter) {
     const clear = document.createElement("button");

@@ -4272,3 +4272,94 @@ button {
   justify-content: space-between;
   gap: 0.55rem;
 }
+
+/*
+ * Cross-module consistency layer:
+ * Align shared interaction patterns (header, toolbar, checkbox labels, empty states)
+ * so Tasks, Meetings, and Projects present equivalent controls with the same visual rhythm.
+ */
+.module-header {
+  align-items: flex-start;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.module-header-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.module-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.module-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.module-toolbar-group {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.module-toolbar-actions {
+  margin-left: auto;
+}
+
+.module-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.module-checkbox input[type="checkbox"] {
+  margin: 0;
+}
+
+.module-empty-state {
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 90%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--bg-muted) 66%, transparent);
+}
+
+@media (max-width: 920px) {
+  .module-toolbar-actions {
+    margin-left: 0;
+  }
+}
+
+/*
+ * Projects used a rigid multi-column control grid while Tasks/Meetings used wrapping rows.
+ * This override normalises all module toolbars to the same flexible behavior.
+ */
+.projects-toolbar.module-toolbar {
+  position: static;
+  display: flex;
+  padding: 0 0 var(--space-2);
+}
+
+.projects-toolbar.module-toolbar > .projects-view-toggle {
+  margin-left: auto;
+}
+
+.projects-toolbar.module-toolbar > .field-input {
+  min-width: 170px;
+}
+
+.meetings-controls.module-toolbar {
+  position: static;
+  padding: 0 0 var(--space-2);
+  border-radius: 0;
+  background: transparent;
+}

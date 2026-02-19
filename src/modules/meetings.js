@@ -56,9 +56,10 @@ export function renderWorkMeetingsModule({
   section.className = "mode-dashboard meetings-module";
 
   const header = document.createElement("div");
-  header.className = "meetings-header";
+  header.className = "meetings-header module-header";
 
   const titleWrap = document.createElement("div");
+  titleWrap.className = "module-header-copy";
   const title = document.createElement("h1");
   title.textContent = "Work Meetings";
 
@@ -70,7 +71,7 @@ export function renderWorkMeetingsModule({
   titleWrap.append(title, intro);
 
   const actions = document.createElement("div");
-  actions.className = "meetings-header-actions";
+  actions.className = "meetings-header-actions module-header-actions";
 
   const newMeetingButton = document.createElement("button");
   newMeetingButton.type = "button";
@@ -84,7 +85,7 @@ export function renderWorkMeetingsModule({
   header.append(titleWrap, actions);
 
   const controls = document.createElement("div");
-  controls.className = "meetings-controls";
+  controls.className = "meetings-controls module-toolbar";
 
   const viewSelect = document.createElement("select");
   viewSelect.className = "field-input";
@@ -129,7 +130,7 @@ export function renderWorkMeetingsModule({
   });
 
   const showCompletedLabel = document.createElement("label");
-  showCompletedLabel.className = "meeting-toggle-label";
+  showCompletedLabel.className = "meeting-toggle-label module-checkbox";
 
   const showCompletedToggle = document.createElement("input");
   showCompletedToggle.type = "checkbox";
