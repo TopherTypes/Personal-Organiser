@@ -1587,13 +1587,25 @@ function clampTaskScaleValue(value, fallbackValue = 5) {
 }
 
 function computePriorityScore(task) {
+  // Defensive defaults allow lightweight UI previews (for example live drawer
+  // priority updates) to pass partial task objects without triggering runtime
+  // errors while still producing deterministic score output.
+  const safeTask = {
+    dueDate: task?.dueDate || "",
+    status: task?.status || "Backlog",
+    recurrence: task?.recurrence || "none",
+    blockedByTaskIds: Array.isArray(task?.blockedByTaskIds) ? task.blockedByTaskIds : [],
+    impact: clampTaskScaleValue(task?.impact, 5),
+    effort: clampTaskScaleValue(task?.effort, 5)
+  };
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   // Weight due dates more heavily so urgent/overdue work naturally rises to the top.
   let dueDateWeight = 50;
-  if (task.dueDate) {
-    const due = new Date(task.dueDate);
+  if (safeTask.dueDate) {
+    const due = new Date(safeTask.dueDate);
     due.setHours(0, 0, 0, 0);
     const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
     if (diffDays <= 0) {
@@ -1603,12 +1615,12 @@ function computePriorityScore(task) {
     }
   }
 
-  const statusWeight = task.status === "Blocked" ? 8 : task.status === "In Progress" ? 12 : 0;
-  const dependencyWeight = task.blockedByTaskIds.length > 0 ? -6 : 0;
-  const recurrenceWeight = task.recurrence !== "none" ? 5 : 0;
+  const statusWeight = safeTask.status === "Blocked" ? 8 : safeTask.status === "In Progress" ? 12 : 0;
+  const dependencyWeight = safeTask.blockedByTaskIds.length > 0 ? -6 : 0;
+  const recurrenceWeight = safeTask.recurrence !== "none" ? 5 : 0;
 
   return Math.round(
-    dueDateWeight + task.impact * 6 - task.effort * 2 + statusWeight + dependencyWeight + recurrenceWeight
+    dueDateWeight + safeTask.impact * 6 - safeTask.effort * 2 + statusWeight + dependencyWeight + recurrenceWeight
   );
 }
 
