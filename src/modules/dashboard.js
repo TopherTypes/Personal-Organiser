@@ -1351,6 +1351,16 @@ function renderWorkPeopleModule(uiContext = {}) {
           }
           renderPeopleModule();
         },
+        onUpdateInteraction: ({ interactionId, payload }) => {
+          const updateResult = updatePersonInteraction(state.mode, selectedPerson.id, interactionId, payload);
+          state.feedback = updateResult.ok ? `Updated interaction for ${selectedPerson.name}.` : updateResult.error;
+          renderPeopleModule();
+        },
+        onArchiveInteraction: (interactionId) => {
+          const updateResult = archivePersonInteraction(state.mode, selectedPerson.id, interactionId);
+          state.feedback = updateResult.ok ? `Archived interaction for ${selectedPerson.name}.` : updateResult.error;
+          renderPeopleModule();
+        },
         onSaveCadence: ({ cadenceInterval, cadenceUnit }) => {
           const saveResult = savePersonCadence(state.mode, selectedPerson.id, cadenceInterval, cadenceUnit);
           state.feedback = saveResult.ok ? `Updated cadence for ${selectedPerson.name}.` : saveResult.error;
@@ -1592,6 +1602,8 @@ function createPersonDetailsPanel(
     onSelectTab,
     onToggleInteractionForm,
     onSaveInteraction,
+    onUpdateInteraction,
+    onArchiveInteraction,
     onSaveCadence,
     onToggleShowCompletedUpdates,
     onMarkUpdateStatus,
@@ -1699,7 +1711,7 @@ function createPersonDetailsPanel(
     summary.textContent = `Type: ${person.personType || "Not set"} · Email: ${person.email || "-"} · Phone: ${person.phone || "-"}`;
     const notes = document.createElement("p");
     notes.className = "person-note";
-    notes.textContent = person.notes || "No notes yet.";
+    notes.textContent = person.notes || "No notes added.";
     content.append(summary, notes);
   }
 
@@ -1721,7 +1733,7 @@ function createPersonDetailsPanel(
 
     if (interactionFormOpen) {
       const form = document.createElement("form");
-      form.className = "quick-update";
+      form.className = "quick-update interactions-composer";
       const occurredAt = createField("Occurred at", "datetime-local", toDateTimeLocalValue(new Date().toISOString()));
       const typeField = document.createElement("label");
       typeField.className = "field-row";
@@ -1731,17 +1743,45 @@ function createPersonDetailsPanel(
       const typeControl = document.createElement("select");
       typeControl.className = "field-input";
       ["chat", "call", "email", "meeting", "teams", "other"].forEach((value) => addOption(typeControl, value, value));
-      const note = createField("Note", "textarea", "");
-      note.control.rows = 2;
+      const note = createField("Notes", "textarea", "");
+      note.control.rows = 4;
       const duration = createField("Duration (minutes)", "number", "", false);
       duration.control.min = "0";
       const tags = createField("Tags (comma separated)", "text", "");
-      const linkedMeeting = createField("Linked meeting ID (optional)", "text", "");
+      const linkedMeeting = createField("Linked meeting", "text", "", false);
+      const meetingsList = document.createElement("datalist");
+      meetingsList.id = `interaction-linked-meeting-${person.id}`;
+      meetings
+        .slice()
+        .sort((first, second) => (second.date || "").localeCompare(first.date || ""))
+        .forEach((meeting) => {
+          const option = document.createElement("option");
+          option.value = meeting.id;
+          option.label = `${meeting.title || "Untitled meeting"} • ${meeting.date || "No date"}`;
+          meetingsList.appendChild(option);
+        });
+      linkedMeeting.control.setAttribute("list", meetingsList.id);
+      linkedMeeting.control.placeholder = meetings.length
+        ? "Search by linked meeting ID"
+        : "No meetings available to link";
+
+      const rowGroup = document.createElement("div");
+      rowGroup.className = "interactions-composer-grid";
+      rowGroup.append(occurredAt.row, typeField, duration.row, tags.row, linkedMeeting.row);
+
+      const formActions = document.createElement("div");
+      formActions.className = "interactions-composer-actions";
       const submit = document.createElement("button");
       submit.type = "submit";
       submit.className = "button button-primary";
       submit.textContent = "Save interaction";
-      form.append(occurredAt.row, typeField, note.row, duration.row, tags.row, linkedMeeting.row, submit);
+      const clear = document.createElement("button");
+      clear.type = "reset";
+      clear.className = "button button-secondary";
+      clear.textContent = "Clear";
+      formActions.append(submit, clear);
+
+      form.append(note.row, rowGroup, formActions, meetingsList);
       typeField.append(typeLabel, typeControl);
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -1758,15 +1798,87 @@ function createPersonDetailsPanel(
     }
 
     const timeline = document.createElement("ul");
-    timeline.className = "contact-trail";
-    if (!person.interactions.length) {
+    timeline.className = "contact-trail interaction-timeline";
+    const visibleInteractions = person.interactions.filter((entry) => !entry.archivedAt);
+    if (!visibleInteractions.length) {
       const empty = document.createElement("li");
-      empty.textContent = "No interactions logged yet.";
+      empty.className = "empty-state";
+      empty.textContent = "No interactions yet.";
+      const hint = document.createElement("small");
+      hint.className = "person-meta";
+      hint.textContent = "Log a quick interaction to start the timeline.";
+      empty.appendChild(hint);
       timeline.appendChild(empty);
     } else {
-      person.interactions.slice().sort((a, b) => (b.occurredAt || "").localeCompare(a.occurredAt || "")).forEach((entry) => {
+      visibleInteractions
+        .slice()
+        .sort((a, b) => (b.occurredAt || "").localeCompare(a.occurredAt || ""))
+        .forEach((entry) => {
         const row = document.createElement("li");
-        row.innerHTML = `<strong>${entry.type}</strong> <span>${formatDateTime(entry.occurredAt)} · ${entry.note || "No note"}</span>`;
+        row.className = "interaction-timeline-entry";
+        const top = document.createElement("div");
+        top.className = "interaction-timeline-head";
+
+        const badge = document.createElement("span");
+        badge.className = "status-badge";
+        badge.textContent = entry.type;
+
+        const timestamp = document.createElement("span");
+        timestamp.className = "person-meta";
+        timestamp.textContent = formatDateTime(entry.occurredAt);
+
+        const actionsMenu = document.createElement("details");
+        actionsMenu.className = "task-row-menu interaction-row-menu";
+        const summaryMenu = document.createElement("summary");
+        summaryMenu.setAttribute("aria-label", "Interaction actions");
+        summaryMenu.textContent = "⋯";
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "secondary-button";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => {
+          actionsMenu.open = false;
+          onUpdateInteraction({
+            interactionId: entry.id,
+            payload: {
+              occurredAt: entry.occurredAt,
+              type: entry.type,
+              note: window.prompt("Edit interaction note", entry.note || "") ?? entry.note,
+              durationMinutes: entry.durationMinutes,
+              tags: entry.tags,
+              linkedMeetingId: entry.linkedMeetingId
+            }
+          });
+        });
+        const archive = document.createElement("button");
+        archive.type = "button";
+        archive.className = "secondary-button";
+        archive.textContent = "Archive";
+        archive.addEventListener("click", () => {
+          actionsMenu.open = false;
+          onArchiveInteraction(entry.id);
+        });
+        actionsMenu.append(summaryMenu, edit, archive);
+        top.append(badge, timestamp, actionsMenu);
+
+        const notePreview = document.createElement("span");
+        notePreview.className = "interaction-timeline-note";
+        notePreview.textContent = entry.note || "No note added.";
+
+        const meta = document.createElement("span");
+        meta.className = "person-meta";
+        meta.textContent = [
+          entry.durationMinutes ? `${entry.durationMinutes} min` : "",
+          Array.isArray(entry.tags) && entry.tags.length ? `Tags: ${entry.tags.join(", ")}` : "",
+          entry.linkedMeetingId ? `Meeting: ${entry.linkedMeetingId}` : ""
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        row.append(top, notePreview);
+        if (meta.textContent) {
+          row.appendChild(meta);
+        }
         timeline.appendChild(row);
       });
     }
@@ -2331,6 +2443,70 @@ function logPersonInteraction(mode, personId, payload) {
 
 
 /**
+ * Updates an existing interaction entry while preserving cadence metadata.
+ */
+function updatePersonInteraction(mode, personId, interactionId, payload) {
+  const loaded = loadPeopleForMutation(mode);
+  if (!loaded.ok) {
+    return loaded;
+  }
+
+  let updatedInteraction = false;
+  const now = new Date().toISOString();
+  const updated = loaded.people.map((person) => {
+    if (person.id !== personId) {
+      return person;
+    }
+
+    const interactions = person.interactions.map((entry) => {
+      if (entry.id !== interactionId) {
+        return entry;
+      }
+
+      updatedInteraction = true;
+      return {
+        ...entry,
+        occurredAt: payload.occurredAt ? new Date(payload.occurredAt).toISOString() : entry.occurredAt,
+        type: payload.type || entry.type,
+        note: typeof payload.note === "string" ? payload.note : entry.note,
+        durationMinutes: payload.durationMinutes ? Number(payload.durationMinutes) : entry.durationMinutes,
+        tags: Array.isArray(payload.tags)
+          ? payload.tags
+          : typeof payload.tags === "string"
+            ? payload.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+            : entry.tags,
+        linkedMeetingId: payload.linkedMeetingId || entry.linkedMeetingId || "",
+        archivedAt: payload.archivedAt || entry.archivedAt || "",
+        updatedAt: now
+      };
+    });
+
+    return computePersonCadence({
+      ...person,
+      interactions,
+      updatedAt: now
+    });
+  });
+
+  if (!updatedInteraction) {
+    return { ok: false, error: "Unable to find the selected interaction." };
+  }
+
+  if (!persistPeople(mode, updated)) {
+    return { ok: false, error: "Unable to save interaction changes." };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Soft archives an interaction so timeline history remains recoverable for audit trails.
+ */
+function archivePersonInteraction(mode, personId, interactionId) {
+  return updatePersonInteraction(mode, personId, interactionId, { archivedAt: new Date().toISOString() });
+}
+
+/**
  * Finds an entity by ID and returns null when missing.
  */
 function findPersonById(mode, id) {
@@ -2446,7 +2622,19 @@ function normalisePerson(person) {
     notes: person.notes || "",
     archived: Boolean(person.archived),
     contactTrail: Array.isArray(person.contactTrail) ? person.contactTrail : [],
-    interactions: Array.isArray(person.interactions) ? person.interactions : [],
+    interactions: Array.isArray(person.interactions)
+      ? person.interactions.map((entry) => ({
+          id: entry?.id || buildId(),
+          personId: entry?.personId || person.id || "",
+          occurredAt: entry?.occurredAt || "",
+          type: entry?.type || "other",
+          durationMinutes: Number.isFinite(Number(entry?.durationMinutes)) ? Number(entry.durationMinutes) : null,
+          note: entry?.note || "",
+          tags: Array.isArray(entry?.tags) ? entry.tags : [],
+          linkedMeetingId: entry?.linkedMeetingId || "",
+          archivedAt: entry?.archivedAt || ""
+        }))
+      : [],
     createdAt: person.createdAt || new Date().toISOString(),
     updatedAt: person.updatedAt || new Date().toISOString(),
     lastUpdatedByField:

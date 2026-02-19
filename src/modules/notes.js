@@ -123,7 +123,7 @@ export function renderNotesModule({ mode = "work", openComposer = false } = {}) 
       empty.className = "empty-state";
       empty.textContent =
         notes.length === 0
-          ? "No notes yet. Create your first note to capture ideas, decisions, or reminders."
+          ? "No notes added. Create your first note to capture ideas, decisions, or reminders."
           : "No notes match your filters. Try clearing search text/date filters.";
       list.appendChild(empty);
     } else {
