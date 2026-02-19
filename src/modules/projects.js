@@ -228,7 +228,11 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     }
     updatesSection.append(updatesTitle, updatesList);
 
+<<<<<<< codex/overhaul-projects-module-ui/ux-design
+    wrap.append(back, command, summary, taskSection, updatesSection, buildLinkedEntitiesCard(project, people));
+=======
     wrap.append(back, command, summary, taskSection, updatesSection, buildLinkedEntitiesCard(project));
+>>>>>>> main
     return wrap;
   }
 
@@ -674,7 +678,11 @@ function buildOverviewCard(label, value) {
   return card;
 }
 
+<<<<<<< codex/overhaul-projects-module-ui/ux-design
+function buildLinkedEntitiesCard(project, people = []) {
+=======
 function buildLinkedEntitiesCard(project) {
+>>>>>>> main
   const detailsCard = document.createElement("article");
   detailsCard.className = "person-card";
   const peopleHeading = document.createElement("h2");
@@ -687,9 +695,18 @@ function buildLinkedEntitiesCard(project) {
     empty.textContent = "No linked people yet.";
     peopleList.appendChild(empty);
   } else {
+<<<<<<< codex/overhaul-projects-module-ui/ux-design
+    // Resolve persisted person IDs to human-readable names for scanability.
+    const peopleById = new Map(people.map((person) => [person.id, person.name || person.id]));
+    project.peopleLinks.forEach((entry) => {
+      const item = document.createElement("li");
+      const displayName = peopleById.get(entry.personId) || entry.personId;
+      item.textContent = `${displayName} (${entry.roles.join(", ") || "linked"})`;
+=======
     project.peopleLinks.forEach((entry) => {
       const item = document.createElement("li");
       item.textContent = `${entry.personId} (${entry.roles.join(", ") || "linked"})`;
+>>>>>>> main
       peopleList.appendChild(item);
     });
   }
