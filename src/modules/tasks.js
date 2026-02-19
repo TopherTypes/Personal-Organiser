@@ -79,13 +79,16 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     assigneeFilter: "all",
     projectFilter: "all",
     includeArchived: false,
-    createModalOpen: openComposer,
+    drawerOpen: openComposer,
+    drawerTaskId: "",
+    drawerInitialSection: "core",
     // Keep a single active inline editing row to preserve table density.
     editingTaskId: "",
     hasInlineEdits: false,
     // Persisted focus-return target improves keyboard workflow when collapsing rows.
     focusEditButtonTaskId: "",
-    feedback: ""
+    feedback: "",
+    newlyCreatedTaskId: ""
   };
 
   const section = document.createElement("section");
@@ -110,7 +113,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   addButton.className = "enter-mode-button";
   addButton.textContent = "New task";
   addButton.addEventListener("click", () => {
-    state.createModalOpen = true;
+    openTaskDrawer();
     renderModule();
   });
 
@@ -136,7 +139,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   feedback.className = "feedback";
 
   const controls = document.createElement("div");
-  controls.className = "people-controls";
+  controls.className = "people-controls tasks-toolbar";
 
   const list = document.createElement("div");
   list.className = "tasks-list";
@@ -152,7 +155,9 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     const tasks = loadTasks(state.mode);
 
     controls.innerHTML = "";
-    controls.append(
+    const filtersWrap = document.createElement("div");
+    filtersWrap.className = "tasks-toolbar-filters";
+    filtersWrap.append(
       createSelectFilter("Status", state.statusFilter, [
         { value: "all", label: "All statuses" },
         ...TASK_STATUSES.map((status) => ({ value: status, label: toTitleCase(status) }))
@@ -175,6 +180,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
         renderModule();
       })
     );
+    controls.appendChild(filtersWrap);
 
     const archiveToggleWrap = document.createElement("label");
     archiveToggleWrap.className = "field-label";
@@ -187,7 +193,29 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       renderModule();
     });
     archiveToggleWrap.appendChild(archiveToggle);
-    controls.appendChild(archiveToggleWrap);
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "tasks-toolbar-actions";
+    actionsWrap.appendChild(archiveToggleWrap);
+
+    const hasActiveFilters = state.statusFilter !== "all"
+      || state.assigneeFilter !== "all"
+      || state.projectFilter !== "all"
+      || state.includeArchived;
+    if (hasActiveFilters) {
+      const clearFiltersButton = document.createElement("button");
+      clearFiltersButton.type = "button";
+      clearFiltersButton.className = "secondary-button clear-filters";
+      clearFiltersButton.textContent = "Clear filters";
+      clearFiltersButton.addEventListener("click", () => {
+        state.statusFilter = "all";
+        state.assigneeFilter = "all";
+        state.projectFilter = "all";
+        state.includeArchived = false;
+        renderModule();
+      });
+      actionsWrap.appendChild(clearFiltersButton);
+    }
+    controls.appendChild(actionsWrap);
 
     const filtered = tasks
       .filter((task) => (state.includeArchived ? true : !task.archived))
@@ -223,12 +251,14 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
 
       const taskById = new Map(tasks.map((entry) => [entry.id, entry]));
       for (const task of filtered) {
+        const dependencyState = resolveDependencyState(task, taskById);
         tableBody.appendChild(
           createTaskTableRow(task, {
             isEditing: state.editingTaskId === task.id,
             people,
             projects,
-            dependencyStateLabel: buildDependencyStateLabel(task, taskById),
+            dependencyState,
+            isNewlyCreated: state.newlyCreatedTaskId === task.id,
             onOpenEditor: () => {
               if (!requestInlineEditorSwitch(task.id)) {
                 return;
@@ -243,6 +273,14 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
             onToggleArchived: () => {
               updateTaskInline(state.mode, task.id, { archived: !task.archived });
               state.feedback = task.archived ? "Task unarchived." : "Task archived.";
+              renderModule();
+            },
+            onOpenFullEditor: () => {
+              openTaskDrawer(task.id);
+              renderModule();
+            },
+            onOpenDependencies: () => {
+              openTaskDrawer(task.id, "dependencies");
               renderModule();
             },
             onSaveInline: (payload) => {
@@ -265,27 +303,40 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       }
     }
 
-    if (state.createModalOpen) {
+    if (state.drawerOpen) {
+      const activeTask = state.drawerTaskId ? tasks.find((item) => item.id === state.drawerTaskId) : null;
       modalHost.appendChild(
-        createTaskForm({
-          task: null,
+        createTaskDrawer({
+          task: activeTask,
           tasks,
           people,
           projects,
+          initialSection: state.drawerInitialSection,
           onSave: (payload) => {
-            const result = saveTask(state.mode, payload);
+            const result = saveTask(state.mode, payload, activeTask?.id || "");
             if (!result.ok) {
               state.feedback = result.error;
               renderModule();
               return;
             }
 
-            state.feedback = "Task created.";
-            state.createModalOpen = false;
+            const reloadedTasks = loadTasks(state.mode);
+            if (!activeTask) {
+              const created = reloadedTasks[reloadedTasks.length - 1];
+              state.newlyCreatedTaskId = created?.id || "";
+            }
+            state.feedback = activeTask ? "Task updated." : "Task created.";
+            closeTaskDrawer();
             renderModule();
+            if (state.newlyCreatedTaskId) {
+              setTimeout(() => {
+                state.newlyCreatedTaskId = "";
+                renderModule();
+              }, 1400);
+            }
           },
           onCancel: () => {
-            state.createModalOpen = false;
+            closeTaskDrawer();
             renderModule();
           }
         })
@@ -324,6 +375,18 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     state.focusEditButtonTaskId = focusTaskId;
   }
 
+  function openTaskDrawer(taskId = "", initialSection = "core") {
+    state.drawerOpen = true;
+    state.drawerTaskId = taskId;
+    state.drawerInitialSection = initialSection;
+  }
+
+  function closeTaskDrawer() {
+    state.drawerOpen = false;
+    state.drawerTaskId = "";
+    state.drawerInitialSection = "core";
+  }
+
   renderModule();
   return section;
 }
@@ -339,7 +402,7 @@ function createTaskTable() {
   table.className = "tasks-table";
 
   const headRow = document.createElement("tr");
-  ["Task", "Status", "Assignee", "Project", "Schedule", "Due", "Priority", "Dependencies", "Actions"].forEach((labelText) => {
+  ["Title", "Status", "Due date", "Priority", "Actions"].forEach((labelText) => {
     const cell = document.createElement("th");
     cell.scope = "col";
     cell.textContent = labelText;
@@ -362,27 +425,26 @@ function createTaskTableRow(task, {
   isEditing,
   people,
   projects,
-  dependencyStateLabel,
+  dependencyState,
+  isNewlyCreated,
   onOpenEditor,
+  onOpenFullEditor,
+  onOpenDependencies,
   onCancelEdit,
   onToggleArchived,
   onSaveInline,
   onEditDirty
 }) {
   const row = document.createElement("tr");
-  row.className = "task-table-row";
+  row.className = `task-table-row${isNewlyCreated ? " task-table-row-new" : ""}`;
 
   if (!isEditing) {
     row.append(
-      createTableTextCell(task.title),
+      createTaskTitleCell(task, dependencyState, onOpenDependencies),
       createTableStatusCell(task.status),
-      createTableTextCell(people.find((person) => person.id === task.assigneeId)?.name || "Unassigned"),
-      createTableTextCell(projects.find((project) => project.id === task.projectId)?.title || "No project"),
-      createTableTextCell(formatTaskDateDisplay(task.scheduleDate)),
       createTableDueDateCell(task.dueDate),
       createTablePriorityCell(task.priorityScore),
-      createTableTextCell(dependencyStateLabel),
-      createTaskActionsCell({ task, onOpenEditor, onToggleArchived })
+      createTaskActionsCell({ task, onOpenEditor, onOpenFullEditor, onToggleArchived })
     );
     return row;
   }
@@ -397,23 +459,6 @@ function createTaskTableRow(task, {
   status.className = "field-input";
   TASK_STATUSES.forEach((value) => addOption(status, value, value));
   status.value = task.status || "Backlog";
-
-  const assignee = document.createElement("select");
-  assignee.className = "field-input";
-  addOption(assignee, "", "Unassigned");
-  people.forEach((person) => addOption(assignee, person.id, person.name));
-  assignee.value = task.assigneeId || "";
-
-  const project = document.createElement("select");
-  project.className = "field-input";
-  addOption(project, "", "No project");
-  projects.forEach((entry) => addOption(project, entry.id, entry.title));
-  project.value = task.projectId || "";
-
-  const scheduleDate = document.createElement("input");
-  scheduleDate.className = "field-input";
-  scheduleDate.type = "date";
-  scheduleDate.value = task.scheduleDate || "";
 
   const dueDate = document.createElement("input");
   dueDate.className = "field-input";
@@ -434,12 +479,6 @@ function createTaskTableRow(task, {
   impact.max = "10";
   impact.value = String(task.impact || 5);
 
-  const dependencies = document.createElement("input");
-  dependencies.className = "field-input";
-  dependencies.type = "text";
-  dependencies.placeholder = "Comma-separated IDs";
-  dependencies.value = (task.blockedByTaskIds || []).join(", ");
-
   const actions = document.createElement("td");
   actions.className = "tasks-table-actions";
 
@@ -457,11 +496,11 @@ function createTaskTableRow(task, {
       effort: clampTaskScaleValue(effort.value, task.effort || 5),
       impact: clampTaskScaleValue(impact.value, task.impact || 5),
       status: status.value,
-      assigneeId: assignee.value,
-      projectId: project.value,
-      scheduleDate: scheduleDate.value,
+      assigneeId: task.assigneeId || "",
+      projectId: task.projectId || "",
+      scheduleDate: task.scheduleDate || "",
       dueDate: dueDate.value,
-      blockedByTaskIds: parseTaskIdList(dependencies.value),
+      blockedByTaskIds: task.blockedByTaskIds || [],
       blockingTaskIds: task.blockingTaskIds || [],
       recurrence: task.recurrence || "none",
       customRecurrence: task.customRecurrence || "",
@@ -483,10 +522,17 @@ function createTaskTableRow(task, {
   actions.append(saveButton, cancelButton);
 
   // Any user input marks the row dirty so editor-switch confirmation can protect unsaved changes.
-  [title, status, assignee, project, scheduleDate, dueDate, effort, impact, dependencies].forEach((field) => {
+  const inlineFields = [title, status, dueDate, effort, impact];
+  inlineFields.forEach((field) => {
     field.addEventListener("input", onEditDirty);
     field.addEventListener("change", onEditDirty);
     field.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancelEdit();
+        return;
+      }
+
       if (event.key !== "Enter") {
         return;
       }
@@ -497,19 +543,62 @@ function createTaskTableRow(task, {
   });
 
   row.append(
-    createTableInputCell(title),
+    createTableInputCell(createInlineTitleCell(title, dependencyState, onOpenDependencies)),
     createTableInputCell(status),
-    createTableInputCell(assignee),
-    createTableInputCell(project),
-    createTableInputCell(scheduleDate),
     createTableInputCell(dueDate),
     createTableInputCell(createInlinePriorityFields(effort, impact)),
-    createTableInputCell(dependencies),
     actions
   );
 
   setTimeout(() => title.focus(), 0);
   return row;
+}
+
+
+function createTaskTitleCell(task, dependencyState, onOpenDependencies) {
+  const cell = document.createElement("td");
+  const wrap = document.createElement("div");
+  wrap.className = "task-title-cell-wrap";
+
+  const title = document.createElement("span");
+  title.className = "task-title-clamp";
+  title.textContent = task.title || "Untitled task";
+  title.title = task.title || "Untitled task";
+
+  wrap.appendChild(title);
+
+  if (dependencyState.hasDependencies) {
+    const indicator = document.createElement("button");
+    indicator.type = "button";
+    indicator.className = `task-dependency-indicator${dependencyState.isBlocked ? " is-blocked" : ""}`;
+    indicator.textContent = dependencyState.isBlocked ? "⛓ Blocked" : "⛓";
+    indicator.title = dependencyState.tooltip;
+    indicator.setAttribute("aria-label", dependencyState.tooltip);
+    indicator.addEventListener("click", onOpenDependencies);
+    wrap.appendChild(indicator);
+  }
+
+  cell.appendChild(wrap);
+  return cell;
+}
+
+function createInlineTitleCell(titleInput, dependencyState, onOpenDependencies) {
+  const wrap = document.createElement("div");
+  wrap.className = "task-title-cell-wrap";
+  wrap.appendChild(titleInput);
+
+  if (dependencyState.hasDependencies) {
+    const indicator = document.createElement("button");
+    indicator.type = "button";
+    indicator.className = `task-dependency-indicator${dependencyState.isBlocked ? " is-blocked" : ""}`;
+    indicator.textContent = dependencyState.isBlocked ? "⛓ Blocked" : "⛓";
+    indicator.title = dependencyState.tooltip;
+    indicator.setAttribute("aria-label", dependencyState.tooltip);
+    indicator.addEventListener("click", onOpenDependencies);
+    wrap.appendChild(indicator);
+  }
+
+  return wrap;
 }
 
 function createTableTextCell(value) {
@@ -612,25 +701,32 @@ function getPriorityScoreBand(priorityScore) {
   return "low";
 }
 
-function createTaskActionsCell({ task, onOpenEditor, onToggleArchived }) {
+function createTaskActionsCell({ task, onOpenEditor, onOpenFullEditor, onToggleArchived }) {
   const cell = document.createElement("td");
   cell.className = "tasks-table-actions";
 
-  const editButton = document.createElement("button");
-  editButton.type = "button";
-  editButton.className = "secondary-button";
+  const editButton = createIconButton("✏", "Inline edit task", "task-icon-button");
   editButton.dataset.taskEditTrigger = task.id;
-  editButton.textContent = "Edit";
   editButton.addEventListener("click", onOpenEditor);
 
-  const archiveButton = document.createElement("button");
-  archiveButton.type = "button";
-  archiveButton.className = "secondary-button";
-  archiveButton.textContent = task.archived ? "Unarchive" : "Archive";
+  const drawerButton = createIconButton("▦", "Open full task editor", "task-icon-button");
+  drawerButton.addEventListener("click", onOpenFullEditor);
+
+  const archiveButton = createIconButton("🗄", task.archived ? "Unarchive task" : "Archive task", "task-icon-button");
   archiveButton.addEventListener("click", onToggleArchived);
 
-  cell.append(editButton, archiveButton);
+  cell.append(editButton, drawerButton, archiveButton);
   return cell;
+}
+
+function createIconButton(icon, label, className = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = icon;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  return button;
 }
 
 function createTableInputCell(content) {
@@ -661,9 +757,10 @@ function createInlinePriorityFields(effort, impact) {
   return wrap;
 }
 
-function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
+function createTaskDrawer({ task, tasks, people, projects, initialSection = "core", onSave, onCancel }) {
+  const isEditMode = Boolean(task);
   const overlay = document.createElement("div");
-  overlay.className = "meeting-modal-overlay";
+  overlay.className = "task-drawer-overlay";
   overlay.tabIndex = -1;
 
   const dismissGuard = createModalDismissGuard({ onClose: onCancel });
@@ -682,23 +779,25 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   });
 
   const form = document.createElement("form");
-  form.className = "meeting-modal meeting-form entity-editor-modal task-form";
+  form.className = "task-drawer";
 
+  const header = document.createElement("header");
+  header.className = "task-drawer-header";
+  const headingWrap = document.createElement("div");
   const heading = document.createElement("h2");
-  heading.textContent = task ? "Edit task" : "New task";
+  heading.textContent = isEditMode ? "Edit task" : "New task";
+  const priorityNote = document.createElement("p");
+  priorityNote.className = "task-drawer-priority";
+  headingWrap.append(heading, priorityNote);
+
+  const closeButton = createIconButton("✕", "Close task editor", "task-icon-button");
+  closeButton.addEventListener("click", requestClose);
+  header.append(headingWrap, closeButton);
+
+  const body = document.createElement("div");
+  body.className = "task-drawer-body";
 
   const title = createField("Title", "text", task?.title || "", true);
-  const effort = createField("Effort", "number", String(task?.effort || 5), true, {
-    min: "1",
-    max: "10"
-  });
-  const impact = createField("Impact", "number", String(task?.impact || 5), true, {
-    min: "1",
-    max: "10"
-  });
-  const dueDate = createField("Due date", "date", task?.dueDate || "", false);
-  const scheduleDate = createField("Schedule date", "date", task?.scheduleDate || "", false);
-
   const statusWrap = document.createElement("label");
   statusWrap.className = "field-label";
   statusWrap.textContent = "Status";
@@ -710,15 +809,17 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   status.value = task?.status || "Backlog";
   statusWrap.appendChild(status);
 
+  const dueDate = createField("Due date", "date", task?.dueDate || "", false);
+  const effort = createField("Effort", "number", String(task?.effort || 5), true, { min: "1", max: "10" });
+  const impact = createField("Impact", "number", String(task?.impact || 5), true, { min: "1", max: "10" });
+
   const assigneeWrap = document.createElement("label");
   assigneeWrap.className = "field-label";
   assigneeWrap.textContent = "Assignee";
   const assignee = document.createElement("select");
   assignee.className = "field-input";
   addOption(assignee, "", "Unassigned");
-  for (const person of people) {
-    addOption(assignee, person.id, person.name);
-  }
+  for (const person of people) addOption(assignee, person.id, person.name);
   assignee.value = task?.assigneeId || "";
   assigneeWrap.appendChild(assignee);
 
@@ -728,165 +829,144 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
   const project = document.createElement("select");
   project.className = "field-input";
   addOption(project, "", "No project");
-  for (const entry of projects) {
-    addOption(project, entry.id, entry.title);
-  }
+  for (const entry of projects) addOption(project, entry.id, entry.title);
   project.value = task?.projectId || "";
   projectWrap.appendChild(project);
 
-  const recurrenceWrap = document.createElement("label");
-  recurrenceWrap.className = "field-label";
-  recurrenceWrap.textContent = "Recurrence";
+  const coreSection = document.createElement("section");
+  coreSection.className = "task-drawer-section";
+  coreSection.dataset.section = "core";
+  const coreTitle = document.createElement("h3");
+  coreTitle.textContent = "Core";
+  const coreGrid = document.createElement("div");
+  coreGrid.className = "task-drawer-grid";
+  const effortImpactRow = document.createElement("div");
+  effortImpactRow.className = "task-drawer-grid task-drawer-grid-2";
+  effortImpactRow.append(effort.wrap, impact.wrap);
+  coreGrid.append(title.wrap, statusWrap, dueDate.wrap, effortImpactRow, assigneeWrap, projectWrap);
+  coreSection.append(coreTitle, coreGrid);
+
   const recurrence = document.createElement("select");
   recurrence.className = "field-input";
-  for (const value of RECURRENCE_OPTIONS) {
-    addOption(recurrence, value, toTitleCase(value));
-  }
+  for (const value of RECURRENCE_OPTIONS) addOption(recurrence, value, toTitleCase(value));
   recurrence.value = task?.recurrence || "none";
+  const recurrenceWrap = document.createElement("label");
+  recurrenceWrap.className = "field-label";
+  recurrenceWrap.textContent = "Recurrence type";
   recurrenceWrap.appendChild(recurrence);
+  const recurrenceInterval = createField("Recurrence interval", "number", String(task?.recurrenceMeta?.interval || 1), false, { min: "1", step: "1" });
+  const customRecurrence = createField("Notes about recurrence", "text", task?.customRecurrence || "", false);
+  const recurrenceFields = document.createElement("div");
+  recurrenceFields.className = "task-drawer-grid task-drawer-grid-2";
+  recurrenceFields.append(recurrenceInterval.wrap, customRecurrence.wrap);
 
-  const customRecurrence = createField(
-    "Custom recurrence",
-    "text",
-    task?.customRecurrence || "",
-    false,
-    {
-      placeholder: "e.g. every 2 weeks"
-    }
-  );
-
-  const recurrenceInterval = createField(
-    "Recurrence interval",
-    "number",
-    String(task?.recurrenceMeta?.interval || 1),
-    false,
-    {
-      min: "1",
-      step: "1"
-    }
-  );
-
-  const notes = createField("Notes", "textarea", task?.notes || "", false);
+  const recurrenceSection = document.createElement("details");
+  recurrenceSection.className = "task-drawer-collapsible";
+  const recurrenceSummary = document.createElement("summary");
+  recurrenceSummary.textContent = "Recurrence";
+  recurrenceSection.append(recurrenceSummary, recurrenceWrap, recurrenceFields);
 
   const blockedByTaskIds = buildTaskDependencyPickerField({
-    label: "Blocked by",
-    tasks,
-    people,
-    projects,
-    currentTaskId: task?.id || "",
-    selectedIds: parseTaskIdList(task?.blockedByTaskIds),
-    primaryAssigneeId: task?.assigneeId || "",
-    primaryProjectId: task?.projectId || "",
-    emptyMessage: "Create another task first to link dependencies."
+    label: "Blocked by", tasks, people, projects, currentTaskId: task?.id || "", selectedIds: parseTaskIdList(task?.blockedByTaskIds), primaryAssigneeId: task?.assigneeId || "", primaryProjectId: task?.projectId || "", emptyMessage: "Create another task first to link dependencies."
   });
   const blockingTaskIds = buildTaskDependencyPickerField({
-    label: "Blocking",
-    tasks,
-    people,
-    projects,
-    currentTaskId: task?.id || "",
-    selectedIds: parseTaskIdList(task?.blockingTaskIds),
-    primaryAssigneeId: task?.assigneeId || "",
-    primaryProjectId: task?.projectId || "",
-    emptyMessage: "Create another task first to link dependencies."
+    label: "Blocking", tasks, people, projects, currentTaskId: task?.id || "", selectedIds: parseTaskIdList(task?.blockingTaskIds), primaryAssigneeId: task?.assigneeId || "", primaryProjectId: task?.projectId || "", emptyMessage: "Create another task first to link dependencies."
+  });
+  const dependencyGrid = document.createElement("div");
+  dependencyGrid.className = "task-drawer-grid task-drawer-grid-2 task-drawer-dependency-grid";
+  dependencyGrid.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
+
+  const dependencyOpenToggleWrap = document.createElement("label");
+  dependencyOpenToggleWrap.className = "field-label";
+  dependencyOpenToggleWrap.textContent = "Open tasks only";
+  const dependencyOpenToggle = document.createElement("input");
+  dependencyOpenToggle.type = "checkbox";
+  dependencyOpenToggle.checked = true;
+  dependencyOpenToggleWrap.appendChild(dependencyOpenToggle);
+  dependencyOpenToggle.addEventListener("change", () => {
+    const filter = dependencyOpenToggle.checked ? "open" : "all";
+    blockedByTaskIds.applyFilter(filter);
+    blockingTaskIds.applyFilter(filter);
   });
 
-  const actions = document.createElement("div");
-  actions.className = "meeting-actions";
-  actions.append(button(task ? "Save changes" : "Create task", null, "submit"), button("Cancel", requestClose));
+  const dependencySection = document.createElement("details");
+  dependencySection.className = "task-drawer-collapsible";
+  dependencySection.dataset.section = "dependencies";
+  const dependencySummary = document.createElement("summary");
+  dependencySummary.textContent = "Dependencies";
+  dependencySection.append(dependencySummary, dependencyOpenToggleWrap, dependencyGrid);
 
-  /**
-   * Builds a small, title-only section so the editor stays scanable without
-   * adding explanatory copy that increases modal height.
-   */
-  const createFormSection = (titleText, ...content) => {
-    const section = document.createElement("section");
-    section.className = "task-form-section";
+  const notes = createField("Notes", "textarea", task?.notes || "", false);
+  const notesSection = document.createElement("details");
+  notesSection.className = "task-drawer-collapsible";
+  const notesSummary = document.createElement("summary");
+  notesSummary.textContent = "Notes";
+  notesSection.append(notesSummary, notes.wrap);
 
-    const sectionHeading = document.createElement("h3");
-    sectionHeading.className = "task-form-section-title";
-    sectionHeading.textContent = titleText;
+  const footer = document.createElement("footer");
+  footer.className = "task-drawer-footer";
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = isEditMode ? "Save changes" : "Create task";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", requestClose);
+  footer.append(saveButton, cancelButton);
 
-    section.appendChild(sectionHeading);
+  body.append(coreSection, recurrenceSection, dependencySection, notesSection);
+  form.append(header, body, footer);
 
-    section.append(...content);
-    return section;
+  const refreshPriority = () => {
+    const priority = computePriorityScore({
+      dueDate: dueDate.input.value,
+      effort: clampTaskScaleValue(effort.input.value, 5),
+      impact: clampTaskScaleValue(impact.input.value, 5)
+    });
+    priorityNote.textContent = `Priority: ${priority} (ℹ Priority is calculated from Effort, Impact, and Due date.)`;
   };
+  [dueDate.input, effort.input, impact.input].forEach((field) => {
+    field.addEventListener("input", refreshPriority);
+    field.addEventListener("change", refreshPriority);
+  });
+  refreshPriority();
 
-  /**
-   * Uses native <details> semantics for lower-priority fields so power users still get
-   * full control without forcing every edit session to scroll through bulky sections.
-   */
-  const createCollapsibleFormSection = (titleText, isOpen, ...content) => {
-    const section = document.createElement("details");
-    section.className = "task-form-collapsible";
-    section.open = isOpen;
+  const initialPayloadBaseline = JSON.stringify({
+    status: status.value,
+    dueDate: dueDate.input.value,
+    effort: effort.input.value,
+    impact: impact.input.value
+  });
 
-    const summary = document.createElement("summary");
-    summary.className = "task-form-collapsible-title";
-    summary.textContent = titleText;
-    section.appendChild(summary);
-
-    const sectionBody = document.createElement("div");
-    sectionBody.className = "task-form-collapsible-body";
-    sectionBody.append(...content);
-    section.appendChild(sectionBody);
-    return section;
-  };
-
-  // Keep high-frequency task planning controls grouped at the top of the modal.
-  // Title gets a dedicated full-width row because it is the longest user-entered field
-  // and benefits from uninterrupted horizontal space.
-  const titleRow = document.createElement("div");
-  titleRow.className = "task-form-grid";
-  titleRow.append(title.wrap);
-
-  const primaryDetailsRow = document.createElement("div");
-  primaryDetailsRow.className = "task-form-grid task-form-grid-3";
-  primaryDetailsRow.append(statusWrap, assigneeWrap, projectWrap);
-
-  const timelineRow = document.createElement("div");
-  timelineRow.className = "task-form-grid task-form-grid-4";
-  timelineRow.append(scheduleDate.wrap, dueDate.wrap, effort.wrap, impact.wrap);
-
-  const recurrenceRow = document.createElement("div");
-  recurrenceRow.className = "task-form-grid task-form-grid-3";
-  recurrenceRow.append(recurrenceWrap, customRecurrence.wrap, recurrenceInterval.wrap);
-
-  const dependencyRow = document.createElement("div");
-  dependencyRow.className = "task-form-grid task-form-grid-2";
-  dependencyRow.append(blockedByTaskIds.wrapper, blockingTaskIds.wrapper);
-
-  const primarySection = createFormSection("Task", titleRow, primaryDetailsRow, timelineRow);
-  const recurrenceSection = createFormSection("Recurrence", recurrenceRow);
-  const hasDependencies = blockedByTaskIds.hiddenInput.value || blockingTaskIds.hiddenInput.value;
-  const dependenciesSection = createCollapsibleFormSection("Dependencies", Boolean(hasDependencies), dependencyRow);
-  const notesSection = createCollapsibleFormSection("Notes", Boolean((task?.notes || "").trim()), notes.wrap);
-
-  form.append(
-    heading,
-    primarySection,
-    recurrenceSection,
-    dependenciesSection,
-    notesSection,
-    actions
-  );
+  title.input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || isEditMode) return;
+    const currentBaseline = JSON.stringify({
+      status: status.value,
+      dueDate: dueDate.input.value,
+      effort: effort.input.value,
+      impact: impact.input.value
+    });
+    if (currentBaseline !== initialPayloadBaseline) return;
+    event.preventDefault();
+    form.requestSubmit();
+  });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     onSave({
       title: title.input.value.trim(),
-      effort: Number(effort.input.value),
-      impact: Number(impact.input.value),
+      effort: clampTaskScaleValue(effort.input.value, task?.effort || 5),
+      impact: clampTaskScaleValue(impact.input.value, task?.impact || 5),
       status: status.value,
       assigneeId: assignee.value,
       projectId: project.value,
-      scheduleDate: scheduleDate.input.value,
+      scheduleDate: task?.scheduleDate || "",
       dueDate: dueDate.input.value,
       recurrence: recurrence.value,
       customRecurrence: customRecurrence.input.value.trim(),
       recurrenceInterval: Number(recurrenceInterval.input.value) || 1,
-      // Dependency IDs still flow through parseTaskIdList during save, preserving canonical validation.
       blockedByTaskIds: readDependencyPickerHiddenValues(blockedByTaskIds.hiddenInput),
       blockingTaskIds: readDependencyPickerHiddenValues(blockingTaskIds.hiddenInput),
       notes: notes.input.value.trim(),
@@ -894,10 +974,17 @@ function createTaskForm({ task, tasks, people, projects, onSave, onCancel }) {
     });
   });
 
-  // Treat any field mutation as draft edits so dismiss guards prevent silent loss.
   dismissGuard.bindDirtyTracking(form);
-
   overlay.appendChild(form);
+
+  if (initialSection === "dependencies") {
+    dependencySection.open = true;
+  }
+
+  setTimeout(() => {
+    title.input.focus();
+  }, 0);
+
   return overlay;
 }
 
@@ -1145,7 +1232,14 @@ function buildTaskDependencyPickerField({
     filterSelect.disabled = true;
   }
 
-  return { wrapper, hiddenInput };
+  return {
+    wrapper,
+    hiddenInput,
+    applyFilter: (value) => {
+      filterSelect.value = value;
+      renderSuggestions();
+    }
+  };
 }
 
 /**
@@ -1777,6 +1871,27 @@ function parseTaskIdList(value) {
   // Migration-safe fallback: legacy records persisted dependency IDs as comma-separated strings.
   const values = Array.isArray(value) ? value : String(value || "").split(",");
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function resolveDependencyState(task, taskById) {
+  const blockedByOpenCount = (task.blockedByTaskIds || []).filter((id) => {
+    const dependency = taskById.get(id);
+    return dependency && !["Done", "Cancelled"].includes(dependency.status);
+  }).length;
+  const blockingCount = (task.blockingTaskIds || []).length;
+  const blockedByCount = (task.blockedByTaskIds || []).length;
+  const hasDependencies = blockedByCount > 0 || blockingCount > 0;
+  const isBlocked = blockedByOpenCount > 0;
+  const tooltipParts = [];
+  if (blockedByCount > 0) tooltipParts.push(`Blocked by: ${blockedByCount} tasks`);
+  if (blockingCount > 0) tooltipParts.push(`Blocking: ${blockingCount} tasks`);
+  if (isBlocked) tooltipParts.push("Blocked");
+  return {
+    hasDependencies,
+    isBlocked,
+    blockedByOpenCount,
+    tooltip: tooltipParts.join(" • ") || "No dependencies"
+  };
 }
 
 function buildDependencyStateLabel(task, taskById) {
