@@ -72,7 +72,7 @@ const TASK_DEPENDENCY_RECENT_LIMIT = 6;
 /**
  * Renders the work task module with CRUD, archive, filtering, and score-based ordering.
  */
-export function renderWorkTasksModule({ mode = "work", openComposer = false } = {}) {
+export function renderWorkTasksModule({ mode = "work", openComposer = false, draftProjectId = "" } = {}) {
   const state = {
     mode,
     statusFilter: "all",
@@ -82,6 +82,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     drawerOpen: openComposer,
     drawerTaskId: "",
     drawerInitialSection: "core",
+    drawerDraftProjectId: draftProjectId || "",
     // Keep a single active inline editing row to preserve table density.
     editingTaskId: "",
     hasInlineEdits: false,
@@ -113,7 +114,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
   addButton.className = "enter-mode-button";
   addButton.textContent = "New task";
   addButton.addEventListener("click", () => {
-    openTaskDrawer();
+    openTaskDrawer("", "core", draftProjectId || "");
     renderModule();
   });
 
@@ -307,7 +308,7 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
       const activeTask = state.drawerTaskId ? tasks.find((item) => item.id === state.drawerTaskId) : null;
       modalHost.appendChild(
         createTaskDrawer({
-          task: activeTask,
+          task: activeTask || (state.drawerDraftProjectId ? { projectId: state.drawerDraftProjectId } : null),
           tasks,
           people,
           projects,
@@ -375,16 +376,18 @@ export function renderWorkTasksModule({ mode = "work", openComposer = false } = 
     state.focusEditButtonTaskId = focusTaskId;
   }
 
-  function openTaskDrawer(taskId = "", initialSection = "core") {
+  function openTaskDrawer(taskId = "", initialSection = "core", preselectedProjectId = "") {
     state.drawerOpen = true;
     state.drawerTaskId = taskId;
     state.drawerInitialSection = initialSection;
+    state.drawerDraftProjectId = preselectedProjectId || "";
   }
 
   function closeTaskDrawer() {
     state.drawerOpen = false;
     state.drawerTaskId = "";
     state.drawerInitialSection = "core";
+    state.drawerDraftProjectId = "";
   }
 
   renderModule();

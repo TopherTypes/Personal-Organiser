@@ -106,7 +106,8 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
   if (mode === "work" && activeModule === "tasks") {
     return renderWorkTasksModule({
       mode,
-      openComposer: uiContext.quickAction?.moduleKey === "tasks" && uiContext.quickAction?.createIntent === "task"
+      openComposer: uiContext.quickAction?.moduleKey === "tasks" && uiContext.quickAction?.createIntent === "task",
+      draftProjectId: uiContext.taskPrefillProjectId || ""
     });
   }
 
@@ -115,7 +116,8 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
       mode,
       people: loadPeople("work"),
       meetings: loadMeetings("work"),
-      openComposer: uiContext.quickAction?.moduleKey === "projects" && uiContext.quickAction?.createIntent === "project"
+      openComposer: uiContext.quickAction?.moduleKey === "projects" && uiContext.quickAction?.createIntent === "project",
+      onNavigate: uiContext.onNavigate
     });
   }
 

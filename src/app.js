@@ -34,6 +34,10 @@ const state = {
     work: "",
     personal: ""
   },
+  taskPrefillByMode: {
+    work: "",
+    personal: ""
+  },
   quickActionByMode: {
     work: null,
     personal: null
@@ -197,6 +201,7 @@ function renderApp() {
           meetingFocusId: state.meetingFocusByMode[state.activeMode],
           onScheduleOneOnOne: handleScheduleOneOnOne,
           onNavigate: handleDashboardNavigate,
+          taskPrefillProjectId: state.taskPrefillByMode[state.activeMode],
           quickAction: state.quickActionByMode[state.activeMode],
           onSettingsChange: handleSettingsChange,
           onDataRestore: handleDataRestore,
@@ -229,6 +234,7 @@ function renderApp() {
 
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = "";
+  state.taskPrefillByMode[state.activeMode] = "";
   state.quickActionByMode[state.activeMode] = null;
 }
 
@@ -483,6 +489,7 @@ function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
   state.activeModuleByMode[state.activeMode] = moduleKey;
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = focus.meetingId || "";
+  state.taskPrefillByMode[state.activeMode] = moduleKey === "tasks" ? focus.projectId || "" : "";
   renderApp();
 }
 
@@ -497,6 +504,7 @@ function handleQuickAction(action) {
   const mode = state.activeMode;
   state.activeModuleByMode[mode] = action.moduleKey;
   state.meetingFocusByMode[mode] = "";
+  state.taskPrefillByMode[mode] = "";
   state.meetingPrefillByMode[mode] = action.createIntent === "meeting" ? {} : null;
   state.quickActionByMode[mode] = {
     moduleKey: action.moduleKey,
