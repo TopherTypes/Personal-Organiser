@@ -4049,3 +4049,68 @@ button {
 .project-editor-section { border:1px solid var(--border); border-radius:10px; padding:0.25rem 0.6rem 0.6rem; background:var(--panel-soft); }
 .project-editor-section > summary { cursor:pointer; font-weight:600; margin-bottom:0.55rem; }
 .project-editor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0.7rem; }
+
+/* Meetings UX overhaul: sticky controls, compact filters, and month focus panel. */
+.meetings-controls {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--panel, #131826);
+  padding: 0.5rem;
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  border-radius: 0.75rem;
+}
+
+.meeting-month-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 0.75rem;
+}
+
+.meeting-day-focus-panel {
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.meeting-modal-overlay { align-items: center; }
+.meeting-modal {
+  width: min(1100px, 95vw);
+  max-height: 90vh;
+  display: flex;
+}
+.meeting-form { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.meeting-modal-header { position: sticky; top: 0; z-index: 2; background: inherit; padding-bottom: 0.5rem; }
+.meeting-modal-body { overflow: auto; min-height: 0; padding-right: 0.25rem; }
+.meeting-modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: inherit;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+}
+
+.meeting-notes-quick-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+
+.entity-token-field,
+.token-multi-select-suggestions {
+  position: relative;
+  z-index: 40;
+}
+.token-multi-select-suggestions {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.entity-type-pill-decision { background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.45); }
+
+@media (max-width: 1100px) {
+  .meeting-month-layout { grid-template-columns: 1fr; }
+}
