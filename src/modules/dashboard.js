@@ -1144,11 +1144,9 @@ function renderWorkPeopleModule(uiContext = {}) {
   const sort = document.createElement("select");
   sort.className = "field-input";
   sort.setAttribute("aria-label", "Sort people");
-  addOption(sort, "updated-desc", "Recently updated");
+  addOption(sort, "needs-attention", "Needs attention");
   addOption(sort, "name-asc", "Name A → Z");
-  addOption(sort, "name-desc", "Name Z → A");
-  addOption(sort, "contact-desc", "Last contact newest");
-  addOption(sort, "contact-asc", "Last contact oldest");
+  addOption(sort, "contact-desc", "Recently contacted");
   sort.value = state.sort;
   sort.addEventListener("change", (event) => {
     state.sort = event.target.value;
@@ -1162,7 +1160,7 @@ function renderWorkPeopleModule(uiContext = {}) {
   clearFilters.addEventListener("click", () => {
     state.search = "";
     state.filter = "active";
-    state.sort = "name-asc";
+    state.sort = "needs-attention";
     renderPeopleModule();
   });
 
@@ -1213,7 +1211,9 @@ function renderWorkPeopleModule(uiContext = {}) {
     metrics.append(
       createMetricChip("Total", counts.total),
       createMetricChip("Active", counts.active),
-      createMetricChip("Archived", counts.archived)
+      createMetricChip("Archived", counts.archived),
+      createMetricChip("Overdue", counts.overdue),
+      createMetricChip("Due soon", counts.due)
     );
 
     message.textContent = state.feedback || `Showing ${result.length} contact(s).`;
@@ -1222,7 +1222,7 @@ function renderWorkPeopleModule(uiContext = {}) {
     filter.value = state.filter;
     sort.value = state.sort;
 
-    const hasActiveFilters = state.search.trim() || state.filter !== "active" || state.sort !== "name-asc";
+    const hasActiveFilters = state.search.trim() || state.filter !== "active" || state.sort !== "needs-attention";
     clearFilters.hidden = !hasActiveFilters;
 
     if (!state.selectedPersonId && result.length > 0) {
@@ -1240,7 +1240,7 @@ function renderWorkPeopleModule(uiContext = {}) {
         onClear: () => {
           state.search = "";
           state.filter = "active";
-          state.sort = "name-asc";
+          state.sort = "needs-attention";
           renderPeopleModule();
         },
         onAdd: () => {
@@ -1261,6 +1261,8 @@ function renderWorkPeopleModule(uiContext = {}) {
             selected: state.selectedPersonId === person.id,
             onSelect: () => {
               state.selectedPersonId = person.id;
+              state.selectedTab = "overview";
+              state.interactionFormOpen = false;
               state.feedback = "";
               renderPeopleModule();
             }
@@ -1312,10 +1314,48 @@ function renderWorkPeopleModule(uiContext = {}) {
     const selectedPerson = state.selectedPersonId ? findPersonById(state.mode, state.selectedPersonId) : null;
     const updates = loadUpdates(state.mode);
 
+    const personProjectLinks = selectedPerson
+      ? loadPersonProjectLinks(state.mode, selectedPerson.id).map((link) => {
+          const project = loadProjects(state.mode).find((entry) => entry.id === link.projectId);
+          return { ...link, projectTitle: project?.title || link.projectId };
+        })
+      : [];
+    const personMeetings = selectedPerson
+      ? loadMeetings(state.mode).filter((meeting) => (meeting.attendeeIds || []).includes(selectedPerson.id))
+      : [];
+
     detailPanel.appendChild(
       createPersonDetailsPanel(selectedPerson, {
+        selectedTab: state.selectedTab,
+        interactionFormOpen: state.interactionFormOpen,
         showCompletedUpdates: state.showCompletedUpdates,
         personUpdates: selectedPerson ? selectUpdatesForPerson(updates, selectedPerson.id, { includeCompleted: true }) : [],
+        meetings: personMeetings,
+        projectLinks: personProjectLinks,
+        onSelectTab: (tab) => {
+          state.selectedTab = tab;
+          renderPeopleModule();
+        },
+        onToggleInteractionForm: () => {
+          state.interactionFormOpen = !state.interactionFormOpen;
+          renderPeopleModule();
+        },
+        onSaveInteraction: (payload) => {
+          const updateResult = logPersonInteraction(state.mode, selectedPerson.id, payload);
+          if (updateResult.ok) {
+            state.feedback = `Logged interaction for ${selectedPerson.name}.`;
+            state.interactionFormOpen = false;
+            setToast("Interaction logged successfully.");
+          } else {
+            state.feedback = updateResult.error;
+          }
+          renderPeopleModule();
+        },
+        onSaveCadence: ({ cadenceInterval, cadenceUnit }) => {
+          const saveResult = savePersonCadence(state.mode, selectedPerson.id, cadenceInterval, cadenceUnit);
+          state.feedback = saveResult.ok ? `Updated cadence for ${selectedPerson.name}.` : saveResult.error;
+          renderPeopleModule();
+        },
         onToggleShowCompletedUpdates: () => {
           state.showCompletedUpdates = !state.showCompletedUpdates;
           renderPeopleModule();
@@ -1362,16 +1402,6 @@ function renderWorkPeopleModule(uiContext = {}) {
           state.feedback = nextArchivedValue
             ? `Archived ${selectedPerson.name}.`
             : `Restored ${selectedPerson.name}.`;
-          renderPeopleModule();
-        },
-        onQuickUpdate: (payload) => {
-          const updateResult = quickUpdateContact(state.mode, selectedPerson.id, payload);
-          if (updateResult.ok) {
-            state.feedback = `Logged contact update for ${selectedPerson.name}.`;
-            setToast("Contact logged successfully.");
-          } else {
-            state.feedback = updateResult.error;
-          }
           renderPeopleModule();
         }
       })
@@ -1424,11 +1454,13 @@ function createPeopleUiState(mode) {
     mode,
     search: "",
     filter: "active",
-    // Directory-style modules default to alphabetical order for fast scanning.
-    sort: "name-asc",
+    // People now default to action-oriented sorting so overdue stakeholders surface first.
+    sort: "needs-attention",
     isFormOpen: false,
     editingId: null,
     selectedPersonId: null,
+    selectedTab: "overview",
+    interactionFormOpen: false,
     showCompletedUpdates: false,
     feedback: "",
     toastTimer: null
@@ -1451,11 +1483,47 @@ function createMetricChip(label, value) {
 function getPeopleCounts(mode) {
   const people = loadPeople(mode);
   const archived = people.filter((person) => person.archived).length;
+  const attentionCounts = people.reduce(
+    (acc, person) => {
+      if (person.relationshipHealth === "overdue") {
+        acc.overdue += 1;
+      } else if (person.relationshipHealth === "due") {
+        acc.due += 1;
+      }
+      return acc;
+    },
+    { overdue: 0, due: 0 }
+  );
   return {
     total: people.length,
     archived,
-    active: people.length - archived
+    active: people.length - archived,
+    overdue: attentionCounts.overdue,
+    due: attentionCounts.due
   };
+}
+
+/**
+ * Human-readable relationship health copy used in both list cards and detail panes.
+ */
+function describeRelationshipHealth(person) {
+  if (!person.cadenceInterval || !person.cadenceUnit || !person.lastContactAt || !person.nextContactDueAt) {
+    return { tone: "unknown", text: "Cadence not set" };
+  }
+
+  const now = Date.now();
+  const dueMs = Date.parse(person.nextContactDueAt);
+  const deltaDays = Math.ceil(Math.abs(dueMs - now) / 86400000);
+
+  if (person.relationshipHealth === "overdue") {
+    return { tone: "overdue", text: `Overdue ${deltaDays}d` };
+  }
+
+  if (person.relationshipHealth === "due") {
+    return { tone: "due", text: `Due in ${deltaDays}d` };
+  }
+
+  return { tone: "on-track", text: "On track" };
 }
 
 /**
@@ -1485,27 +1553,29 @@ function createPersonListItem(person, { selected, onSelect }) {
   const name = document.createElement("strong");
   name.textContent = person.name;
 
-  const status = document.createElement("span");
-  status.className = person.archived ? "status-badge archived" : "status-badge active";
-  status.textContent = person.archived ? "Archived" : "Active";
+  const type = document.createElement("span");
+  type.className = "status-badge";
+  type.textContent = person.personType || (person.archived ? "Archived" : "Unclassified");
 
   const orgRole = document.createElement("p");
   orgRole.className = "person-meta";
   orgRole.textContent = `${person.organisation || "No organisation"} · ${person.role || "No role"}`;
 
-  const relationship = document.createElement("p");
-  relationship.className = "person-meta";
-  relationship.textContent = `Relationship: ${person.relationship || "Not set"}`;
+  const health = describeRelationshipHealth(person);
+  const healthMeta = document.createElement("p");
+  healthMeta.className = `person-meta health-${health.tone}`;
+  healthMeta.textContent = health.text;
 
-  const lastContact = document.createElement("p");
-  lastContact.className = "person-meta";
-  lastContact.textContent = `Last contact: ${person.lastContactDate || "Not logged"}`;
+  const badges = document.createElement("p");
+  badges.className = "person-meta";
+  badges.textContent = `Pending updates: ${person.pendingUpdatesCount || 0} · Active projects: ${person.activeProjectsCount || 0}`;
 
-  header.append(name, status);
-  button.append(header, orgRole, relationship, lastContact);
+  header.append(name, type);
+  button.append(header, orgRole, healthMeta, badges);
   item.appendChild(button);
   return item;
 }
+
 
 /**
  * Renders right-side details view for selected person.
@@ -1513,13 +1583,20 @@ function createPersonListItem(person, { selected, onSelect }) {
 function createPersonDetailsPanel(
   person,
   {
+    selectedTab = "overview",
+    interactionFormOpen = false,
     showCompletedUpdates = false,
     personUpdates = [],
+    meetings = [],
+    projectLinks = [],
+    onSelectTab,
+    onToggleInteractionForm,
+    onSaveInteraction,
+    onSaveCadence,
     onToggleShowCompletedUpdates,
     onMarkUpdateStatus,
     onEdit,
     onArchiveToggle,
-    onQuickUpdate,
     onScheduleOneOnOne
   }
 ) {
@@ -1530,6 +1607,7 @@ function createPersonDetailsPanel(
     return empty;
   }
 
+  const healthSummary = describeRelationshipHealth(person);
   const wrap = document.createElement("div");
   wrap.className = "people-details";
 
@@ -1537,202 +1615,239 @@ function createPersonDetailsPanel(
   header.className = "person-detail-header";
 
   const identity = document.createElement("div");
-
   const name = document.createElement("h2");
   name.textContent = person.name;
-
   const meta = document.createElement("p");
   meta.className = "person-meta";
   meta.textContent = `${person.role || "No role"} · ${person.organisation || "No organisation"}`;
-
   const relationship = document.createElement("p");
   relationship.className = "person-meta";
   relationship.textContent = `Relationship: ${person.relationship || "Not set"}`;
-
-  const status = document.createElement("span");
-  status.className = person.archived ? "status-badge archived" : "status-badge active";
-  status.textContent = person.archived ? "Archived" : "Active";
-
   identity.append(name, meta, relationship);
-  header.append(identity, status);
+
+  const healthCard = document.createElement("div");
+  healthCard.className = "card-muted person-health-widget";
+  const healthPill = document.createElement("span");
+  healthPill.className = `status-badge ${healthSummary.tone}`;
+  healthPill.textContent = healthSummary.text;
+  const healthMeta = document.createElement("p");
+  healthMeta.className = "person-meta";
+  healthMeta.textContent = `Last: ${formatDateTime(person.lastContactAt)} · Next due: ${formatDateTime(person.nextContactDueAt)}`;
+
+  const cadenceForm = document.createElement("div");
+  cadenceForm.className = "person-cadence-inline";
+  const cadenceInterval = document.createElement("input");
+  cadenceInterval.type = "number";
+  cadenceInterval.min = "1";
+  cadenceInterval.className = "field-input";
+  cadenceInterval.placeholder = "Interval";
+  cadenceInterval.value = person.cadenceInterval || "";
+  const cadenceUnit = document.createElement("select");
+  cadenceUnit.className = "field-input";
+  addOption(cadenceUnit, "", "Unit");
+  addOption(cadenceUnit, "weeks", "Weeks");
+  addOption(cadenceUnit, "months", "Months");
+  cadenceUnit.value = person.cadenceUnit || "";
+  const cadenceSave = document.createElement("button");
+  cadenceSave.type = "button";
+  cadenceSave.className = "button button-secondary";
+  cadenceSave.textContent = "Save cadence";
+  cadenceSave.addEventListener("click", () => onSaveCadence({
+    cadenceInterval: cadenceInterval.value,
+    cadenceUnit: cadenceUnit.value
+  }));
+  cadenceForm.append(cadenceInterval, cadenceUnit, cadenceSave);
+  healthCard.append(healthPill, healthMeta, cadenceForm);
 
   const actions = document.createElement("div");
   actions.className = "person-actions";
-
-  const logContact = document.createElement("button");
-  logContact.type = "button";
-  logContact.className = "button button-primary";
-  logContact.textContent = "Log contact";
-  logContact.addEventListener("click", () => {
-    const dateField = wrap.querySelector(".quick-update-date");
-    const noteField = wrap.querySelector(".quick-update-note");
-    if (!dateField || !noteField) {
-      return;
-    }
-
-    onQuickUpdate({
-      date: dateField.value,
-      note: noteField.value.trim()
-    });
+  [["Schedule 1:1", "button-secondary", () => onScheduleOneOnOne(person)], ["Edit", "button-secondary", onEdit], [person.archived ? "Restore" : "Archive", "button-danger-subtle", onArchiveToggle]].forEach(([label, klass, handler]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `button ${klass}`;
+    button.textContent = label;
+    button.addEventListener("click", handler);
+    actions.appendChild(button);
   });
 
-  const scheduleOneOnOne = document.createElement("button");
-  scheduleOneOnOne.type = "button";
-  scheduleOneOnOne.className = "button button-secondary";
-  scheduleOneOnOne.textContent = "Schedule 1:1";
-  scheduleOneOnOne.addEventListener("click", () => onScheduleOneOnOne(person));
+  header.append(identity, healthCard, actions);
 
-  const editButton = document.createElement("button");
-  editButton.type = "button";
-  editButton.className = "button button-secondary";
-  editButton.textContent = "Edit";
-  editButton.addEventListener("click", onEdit);
-
-  const archiveButton = document.createElement("button");
-  archiveButton.type = "button";
-  archiveButton.className = "button button-danger-subtle";
-  archiveButton.textContent = person.archived ? "Restore" : "Archive";
-  archiveButton.addEventListener("click", onArchiveToggle);
-
-  actions.append(logContact, scheduleOneOnOne, editButton, archiveButton);
-
-  const channels = document.createElement("p");
-  channels.className = "person-meta";
-  channels.textContent = `Email: ${person.email || "-"} · Phone: ${person.phone || "-"}`;
-
-  const quickUpdate = document.createElement("div");
-  quickUpdate.className = "quick-update card-muted";
-
-  const quickTitle = document.createElement("h3");
-  quickTitle.textContent = "Log interaction";
-
-  const quickDescription = document.createElement("p");
-  quickDescription.className = "person-meta";
-  quickDescription.textContent = "Add the latest engagement touchpoint and note.";
-
-  const dateInput = document.createElement("input");
-  dateInput.type = "date";
-  dateInput.className = "field-input quick-update-date";
-  dateInput.value = isoDateToday();
-  dateInput.setAttribute("aria-label", `Interaction date for ${person.name}`);
-
-  const noteInput = document.createElement("input");
-  noteInput.type = "text";
-  noteInput.className = "field-input quick-update-note";
-  noteInput.placeholder = "Add a concise summary of this touchpoint";
-  noteInput.setAttribute("aria-label", `Interaction note for ${person.name}`);
-
-  quickUpdate.append(quickTitle, quickDescription, dateInput, noteInput);
-
-  const timeline = document.createElement("section");
-  timeline.className = "engagement-timeline";
-
-  const timelineHeading = document.createElement("h3");
-  timelineHeading.textContent = "Engagement timeline";
-
-  const trailList = document.createElement("ul");
-  trailList.className = "contact-trail";
-  if (person.contactTrail.length === 0) {
-    const empty = document.createElement("li");
-    empty.textContent = "No contact trail yet.";
-    trailList.appendChild(empty);
-  } else {
-    for (const entry of person.contactTrail.slice().reverse()) {
-      const line = document.createElement("li");
-      const entryDate = document.createElement("strong");
-      entryDate.textContent = entry.date;
-
-      const entryNote = document.createElement("span");
-      entryNote.textContent = entry.note || "No note";
-
-      line.append(entryDate, entryNote);
-      trailList.appendChild(line);
-    }
-  }
-
-  timeline.append(timelineHeading, trailList);
-
-  const updatesPanel = document.createElement("section");
-  updatesPanel.className = "engagement-timeline";
-
-  const updatesHeading = document.createElement("h3");
-  updatesHeading.textContent = "Person updates";
-
-  const updatesDescription = document.createElement("p");
-  updatesDescription.className = "person-meta";
-  updatesDescription.textContent = "Track pending and completed stakeholder updates linked to this person.";
-
-  const updatesToggleLabel = document.createElement("label");
-  updatesToggleLabel.className = "person-meta";
-
-  const updatesToggle = document.createElement("input");
-  updatesToggle.type = "checkbox";
-  updatesToggle.checked = showCompletedUpdates;
-  updatesToggle.addEventListener("change", () => {
-    if (typeof onToggleShowCompletedUpdates === "function") {
-      onToggleShowCompletedUpdates();
-    }
+  const tabs = document.createElement("div");
+  tabs.className = "people-tabs";
+  const tabItems = [
+    ["overview", "Overview"],
+    ["interactions", "Interactions"],
+    ["updates", "Updates"],
+    ["projects", "Projects & roles"],
+    ["meetings", "Meetings"]
+  ];
+  tabItems.forEach(([value, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `button ${selectedTab === value ? "button-primary" : "button-secondary"}`;
+    button.textContent = label;
+    button.addEventListener("click", () => onSelectTab(value));
+    tabs.appendChild(button);
   });
 
-  const updatesToggleText = document.createElement("span");
-  updatesToggleText.textContent = " Show completed updates";
-  updatesToggleLabel.append(updatesToggle, updatesToggleText);
+  const content = document.createElement("section");
+  content.className = "card-muted";
 
-  // Panel default is action-oriented (pending only). Toggling completed items gives
-  // quick historical context without changing the underlying selector contract.
-  const visiblePersonUpdates = personUpdates.filter(({ entry }) => showCompletedUpdates || entry.status === "pending");
-  const updatesList = document.createElement("ul");
-  updatesList.className = "contact-trail";
-
-  if (visiblePersonUpdates.length === 0) {
-    const emptyUpdates = document.createElement("li");
-    emptyUpdates.textContent = showCompletedUpdates
-      ? "No updates linked to this person yet."
-      : "No pending updates for this person.";
-    updatesList.appendChild(emptyUpdates);
-  } else {
-    for (const { update, entry } of visiblePersonUpdates) {
-      const updateRow = document.createElement("li");
-
-      const summary = document.createElement("span");
-      const completedAt = entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : "";
-      summary.textContent = entry.status === "updated"
-        ? `${update.text} · Completed ${completedAt || "recently"}`
-        : update.text;
-
-      const rowAction = document.createElement("button");
-      rowAction.type = "button";
-      rowAction.className = "button button-secondary";
-
-      if (entry.status === "pending") {
-        rowAction.textContent = "Mark updated";
-        rowAction.addEventListener("click", () => {
-          onMarkUpdateStatus({
-            updateId: update.id,
-            personId: person.id,
-            status: "updated"
-          });
-        });
-      } else {
-        rowAction.textContent = "Undo";
-        rowAction.addEventListener("click", () => {
-          onMarkUpdateStatus({
-            updateId: update.id,
-            personId: person.id,
-            status: "pending"
-          });
-        });
-      }
-
-      updateRow.append(summary, rowAction);
-      updatesList.appendChild(updateRow);
-    }
+  if (selectedTab === "overview") {
+    const summary = document.createElement("p");
+    summary.className = "person-meta";
+    summary.textContent = `Type: ${person.personType || "Not set"} · Email: ${person.email || "-"} · Phone: ${person.phone || "-"}`;
+    const notes = document.createElement("p");
+    notes.className = "person-note";
+    notes.textContent = person.notes || "No notes yet.";
+    content.append(summary, notes);
   }
 
-  updatesPanel.append(updatesHeading, updatesDescription, updatesToggleLabel, updatesList);
-  wrap.append(header, actions, channels, quickUpdate, updatesPanel, timeline);
+  if (selectedTab === "interactions") {
+    const cardHeader = document.createElement("div");
+    cardHeader.className = "people-list-item-head";
+    const title = document.createElement("h3");
+    title.textContent = "Interactions";
+    const summary = document.createElement("p");
+    summary.className = "person-meta";
+    summary.textContent = `Last contact ${formatDistanceFromNow(person.lastContactAt)} • ${healthSummary.text}`;
+    const logButton = document.createElement("button");
+    logButton.type = "button";
+    logButton.className = "button button-primary";
+    logButton.textContent = interactionFormOpen ? "Cancel" : "Log interaction";
+    logButton.addEventListener("click", onToggleInteractionForm);
+    cardHeader.append(title, logButton);
+    content.append(cardHeader, summary);
+
+    if (interactionFormOpen) {
+      const form = document.createElement("form");
+      form.className = "quick-update";
+      const occurredAt = createField("Occurred at", "datetime-local", toDateTimeLocalValue(new Date().toISOString()));
+      const typeField = document.createElement("label");
+      typeField.className = "field-row";
+      const typeLabel = document.createElement("span");
+      typeLabel.className = "field-label";
+      typeLabel.textContent = "Type";
+      const typeControl = document.createElement("select");
+      typeControl.className = "field-input";
+      ["chat", "call", "email", "meeting", "teams", "other"].forEach((value) => addOption(typeControl, value, value));
+      const note = createField("Note", "textarea", "");
+      note.control.rows = 2;
+      const duration = createField("Duration (minutes)", "number", "", false);
+      duration.control.min = "0";
+      const tags = createField("Tags (comma separated)", "text", "");
+      const linkedMeeting = createField("Linked meeting ID (optional)", "text", "");
+      const submit = document.createElement("button");
+      submit.type = "submit";
+      submit.className = "button button-primary";
+      submit.textContent = "Save interaction";
+      form.append(occurredAt.row, typeField, note.row, duration.row, tags.row, linkedMeeting.row, submit);
+      typeField.append(typeLabel, typeControl);
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        onSaveInteraction({
+          occurredAt: occurredAt.control.value,
+          type: typeControl.value,
+          note: note.control.value.trim(),
+          durationMinutes: duration.control.value,
+          tags: tags.control.value,
+          linkedMeetingId: linkedMeeting.control.value.trim()
+        });
+      });
+      content.appendChild(form);
+    }
+
+    const timeline = document.createElement("ul");
+    timeline.className = "contact-trail";
+    if (!person.interactions.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No interactions logged yet.";
+      timeline.appendChild(empty);
+    } else {
+      person.interactions.slice().sort((a, b) => (b.occurredAt || "").localeCompare(a.occurredAt || "")).forEach((entry) => {
+        const row = document.createElement("li");
+        row.innerHTML = `<strong>${entry.type}</strong> <span>${formatDateTime(entry.occurredAt)} · ${entry.note || "No note"}</span>`;
+        timeline.appendChild(row);
+      });
+    }
+    content.appendChild(timeline);
+  }
+
+  if (selectedTab === "updates") {
+    const link = document.createElement("a");
+    link.href = "#";
+    link.className = "person-meta";
+    link.textContent = "View in Updates module";
+    const updatesToggleLabel = document.createElement("label");
+    updatesToggleLabel.className = "person-meta";
+    const updatesToggle = document.createElement("input");
+    updatesToggle.type = "checkbox";
+    updatesToggle.checked = showCompletedUpdates;
+    updatesToggle.addEventListener("change", onToggleShowCompletedUpdates);
+    updatesToggleLabel.append(updatesToggle, document.createTextNode(" Show completed"));
+    const updatesList = document.createElement("ul");
+    updatesList.className = "contact-trail";
+    const visible = personUpdates.filter(({ entry }) => showCompletedUpdates || entry.status === "pending");
+    if (!visible.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No updates for this person.";
+      updatesList.appendChild(empty);
+    } else {
+      visible.forEach(({ update, entry }) => {
+        const row = document.createElement("li");
+        const dueText = update.dueDate ? ` · Due ${update.dueDate}` : "";
+        const summary = document.createElement("span");
+        summary.textContent = `${update.type || "update"}: ${update.text}${dueText}`;
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "button button-secondary";
+        action.textContent = entry.status === "pending" ? "Mark complete" : "Undo";
+        action.addEventListener("click", () => onMarkUpdateStatus({ updateId: update.id, personId: person.id, status: entry.status === "pending" ? "updated" : "pending" }));
+        row.append(summary, action);
+        updatesList.appendChild(row);
+      });
+    }
+    content.append(link, updatesToggleLabel, updatesList);
+  }
+
+  if (selectedTab === "projects") {
+    const list = document.createElement("ul");
+    list.className = "contact-trail";
+    if (!projectLinks.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No project roles linked yet.";
+      list.appendChild(empty);
+    } else {
+      projectLinks.forEach((link) => {
+        const row = document.createElement("li");
+        row.textContent = `${link.projectTitle} · ${link.roles.join(", ") || "No role"}`;
+        list.appendChild(row);
+      });
+    }
+    content.appendChild(list);
+  }
+
+  if (selectedTab === "meetings") {
+    const list = document.createElement("ul");
+    list.className = "contact-trail";
+    if (!meetings.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No meetings linked to this person.";
+      list.appendChild(empty);
+    } else {
+      meetings.forEach((meeting) => {
+        const row = document.createElement("li");
+        row.textContent = `${meeting.date || "No date"} · ${meeting.title || "Untitled meeting"}`;
+        list.appendChild(row);
+      });
+    }
+    content.appendChild(list);
+  }
+
+  wrap.append(header, tabs, content);
   return wrap;
 }
+
 
 /**
  * Renders empty states for no contacts and no search matches.
@@ -1786,36 +1901,59 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
 
   const fields = {
     name: createField("Name", "text", person?.name || "", true),
-    role: createField("Role/title", "text", person?.role || ""),
     organisation: createField("Organisation", "text", person?.organisation || ""),
-    relationship: createField("Relationship to work", "text", person?.relationship || ""),
-    email: createField("Email", "email", person?.email || ""),
-    phone: createField("Phone", "text", person?.phone || ""),
-    lastContactDate: createField(
-      "Last contact date",
-      "date",
-      person?.lastContactDate || isoDateToday()
-    ),
-    notes: createField("Notes", "textarea", person?.notes || "")
+    role: createField("Job role", "text", person?.role || ""),
+    relationship: createField("Relationship", "text", person?.relationship || "")
   };
+
+  const personTypeRow = document.createElement("label");
+  personTypeRow.className = "field-row";
+  const personTypeLabel = document.createElement("span");
+  personTypeLabel.className = "field-label";
+  personTypeLabel.textContent = "Person type";
+  const personTypeControl = document.createElement("select");
+  personTypeControl.className = "field-input";
+  addOption(personTypeControl, "", "Not set");
+  addOption(personTypeControl, "internal", "Internal");
+  addOption(personTypeControl, "external", "External");
+  personTypeControl.value = person?.personType || "";
+  personTypeRow.append(personTypeLabel, personTypeControl);
 
   for (const field of Object.values(fields)) {
     form.appendChild(field.row);
   }
+  form.appendChild(personTypeRow);
 
-  const projectLinksField = document.createElement("div");
-  projectLinksField.className = "field-row";
+  const governance = document.createElement("details");
+  const governanceSummary = document.createElement("summary");
+  governanceSummary.textContent = "Governance";
+  governance.appendChild(governanceSummary);
+  const cadenceInterval = createField("Cadence interval", "number", person?.cadenceInterval || "");
+  cadenceInterval.control.min = "1";
+  const cadenceUnitRow = document.createElement("label");
+  cadenceUnitRow.className = "field-row";
+  const cadenceUnitLabel = document.createElement("span");
+  cadenceUnitLabel.className = "field-label";
+  cadenceUnitLabel.textContent = "Cadence unit";
+  const cadenceUnit = document.createElement("select");
+  cadenceUnit.className = "field-input";
+  addOption(cadenceUnit, "", "Not set");
+  addOption(cadenceUnit, "weeks", "Weeks");
+  addOption(cadenceUnit, "months", "Months");
+  cadenceUnit.value = person?.cadenceUnit || "";
+  cadenceUnitRow.append(cadenceUnitLabel, cadenceUnit);
+  governance.append(cadenceInterval.row, cadenceUnitRow);
+  form.appendChild(governance);
 
-  const projectLabel = document.createElement("span");
-  projectLabel.className = "field-label";
-  projectLabel.textContent = "Project links and roles";
-
+  const projectsSection = document.createElement("details");
+  const projectsSummary = document.createElement("summary");
+  projectsSummary.textContent = "Projects & roles";
+  projectsSection.appendChild(projectsSummary);
   const projects = loadProjects(mode);
   const existingLinks = person ? loadPersonProjectLinks(mode, person.id) : [];
   const linkControls = buildPersonProjectLinkControls(projects, existingLinks);
-
-  projectLinksField.append(projectLabel, linkControls.wrap);
-  form.appendChild(projectLinksField);
+  projectsSection.appendChild(linkControls.wrap);
+  form.appendChild(projectsSection);
 
   const actions = document.createElement("div");
   actions.className = "person-actions";
@@ -1839,13 +1977,12 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
     onSave({
       person: {
         name: fields.name.control.value.trim(),
-        role: fields.role.control.value.trim(),
         organisation: fields.organisation.control.value.trim(),
+        role: fields.role.control.value.trim(),
         relationship: fields.relationship.control.value.trim(),
-        email: fields.email.control.value.trim(),
-        phone: fields.phone.control.value.trim(),
-        lastContactDate: fields.lastContactDate.control.value,
-        notes: fields.notes.control.value.trim()
+        personType: personTypeControl.value || null,
+        cadenceInterval: cadenceInterval.control.value ? Number(cadenceInterval.control.value) : null,
+        cadenceUnit: cadenceUnit.value || null
       },
       projectLinks: linkControls.read()
     });
@@ -1853,6 +1990,7 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
 
   return form;
 }
+
 
 /**
  * Creates a labeled field row and control.
@@ -1947,6 +2085,8 @@ function applyPersonProjectLinks(mode, personId, projectLinks) {
  */
 function queryPeople(state) {
   const people = loadPeople(state.mode);
+  const projects = loadProjects(state.mode);
+  const updates = loadUpdates(state.mode);
 
   const searched = people.filter((person) => {
     const haystack = [
@@ -1956,7 +2096,8 @@ function queryPeople(state) {
       person.relationship,
       person.notes,
       person.email,
-      person.phone
+      person.phone,
+      person.personType
     ]
       .join(" ")
       .toLowerCase();
@@ -1972,8 +2113,17 @@ function queryPeople(state) {
     return state.filter === "archived" ? person.archived : !person.archived;
   });
 
-  return filtered.sort((first, second) => sortPeople(first, second, state.sort));
+  return filtered
+    .map((person) => ({
+      ...person,
+      pendingUpdatesCount: selectUpdatesForPerson(updates, person.id).length,
+      activeProjectsCount: projects.filter(
+        (project) => !project.archived && Array.isArray(project.people) && project.people.some((entry) => entry.personId === person.id)
+      ).length
+    }))
+    .sort((first, second) => sortPeople(first, second, state.sort));
 }
+
 
 /**
  * Stores a create/update operation while preserving contact history.
@@ -1998,7 +2148,7 @@ function savePerson(mode, payload, editingId) {
     }
 
     const existing = people[index];
-    const updated = {
+    const updated = computePersonCadence({
       ...existing,
       ...payload,
       updatedAt: now,
@@ -2010,10 +2160,12 @@ function savePerson(mode, payload, editingId) {
         relationship: now,
         email: now,
         phone: now,
-        lastContactDate: now,
+        cadenceInterval: now,
+        cadenceUnit: now,
+        personType: now,
         notes: now
       }
-    };
+    });
 
     people[index] = updated;
     if (!persistPeople(mode, people)) {
@@ -2025,13 +2177,12 @@ function savePerson(mode, payload, editingId) {
     return { ok: true, wasEdit: true, person: updated };
   }
 
-  const nextPerson = {
+  const nextPerson = computePersonCadence({
     id: buildId(),
     ...payload,
     archived: false,
-    contactTrail: payload.lastContactDate
-      ? [{ date: payload.lastContactDate, note: payload.notes || "Created record" }]
-      : [],
+    contactTrail: [],
+    interactions: [],
     createdAt: now,
     updatedAt: now,
     lastUpdatedByField: {
@@ -2041,11 +2192,13 @@ function savePerson(mode, payload, editingId) {
       relationship: now,
       email: now,
       phone: now,
-      lastContactDate: now,
+      cadenceInterval: now,
+      cadenceUnit: now,
+      personType: now,
       notes: now,
       archived: now
     }
-  };
+  });
 
   people.push(nextPerson);
   if (!persistPeople(mode, people)) {
@@ -2099,9 +2252,43 @@ function archivePerson(mode, personId, archivedValue) {
 /**
  * Lightweight update path for common stakeholder touchpoint logging.
  */
-function quickUpdateContact(mode, personId, { date, note }) {
-  if (!date) {
-    return { ok: false, error: "Contact date is required for quick updates." };
+function savePersonCadence(mode, personId, cadenceInterval, cadenceUnit) {
+  const loaded = loadPeopleForMutation(mode);
+  if (!loaded.ok) {
+    return loaded;
+  }
+
+  const intervalValue = cadenceInterval ? Number(cadenceInterval) : null;
+  if (intervalValue !== null && (!Number.isFinite(intervalValue) || intervalValue <= 0)) {
+    return { ok: false, error: "Cadence interval must be a positive number." };
+  }
+
+  const now = new Date().toISOString();
+  const updated = loaded.people.map((person) => {
+    if (person.id !== personId) {
+      return person;
+    }
+
+    return computePersonCadence({
+      ...person,
+      cadenceInterval: intervalValue,
+      cadenceUnit: cadenceUnit || null,
+      updatedAt: now
+    });
+  });
+
+  if (!persistPeople(mode, updated)) {
+    return { ok: false, error: "Unable to save cadence." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Unified interaction logger updates timeline entries and cadence-derived fields.
+ */
+function logPersonInteraction(mode, personId, payload) {
+  if (!payload.occurredAt || !payload.type) {
+    return { ok: false, error: "Occurred date/time and interaction type are required." };
   }
 
   const loaded = loadPeopleForMutation(mode);
@@ -2109,37 +2296,39 @@ function quickUpdateContact(mode, personId, { date, note }) {
     return loaded;
   }
 
-  const people = loaded.people;
   const now = new Date().toISOString();
-
-  const updated = people.map((person) => {
+  const updated = loaded.people.map((person) => {
     if (person.id !== personId) {
       return person;
     }
 
-    return {
-      ...person,
-      lastContactDate: date,
-      notes: note || person.notes,
-      updatedAt: now,
-      contactTrail: [...person.contactTrail, { date, note }],
-      lastUpdatedByField: {
-        ...person.lastUpdatedByField,
-        lastContactDate: now,
-        notes: now
-      }
+    const interaction = {
+      id: buildId(),
+      personId,
+      occurredAt: new Date(payload.occurredAt).toISOString(),
+      type: payload.type,
+      durationMinutes: payload.durationMinutes ? Number(payload.durationMinutes) : null,
+      note: payload.note || "",
+      tags: payload.tags ? payload.tags.split(",").map((entry) => entry.trim()).filter(Boolean) : [],
+      linkedMeetingId: payload.linkedMeetingId || ""
     };
+
+    return computePersonCadence({
+      ...person,
+      interactions: [...person.interactions, interaction],
+      lastContactAt: interaction.occurredAt,
+      updatedAt: now,
+      contactTrail: [...person.contactTrail, { date: interaction.occurredAt.slice(0, 10), note: interaction.note }]
+    });
   });
 
   if (!persistPeople(mode, updated)) {
-    return {
-      ok: false,
-      error: "Unable to save contact update because local storage is full or unavailable."
-    };
+    return { ok: false, error: "Unable to save interaction update because local storage is full or unavailable." };
   }
 
   return { ok: true };
 }
+
 
 /**
  * Finds an entity by ID and returns null when missing.
@@ -2240,7 +2429,7 @@ function reclaimStorageFromOldBackups() {
  * Ensures records remain backwards-compatible as fields evolve.
  */
 function normalisePerson(person) {
-  return {
+  const base = {
     id: person.id || buildId(),
     name: person.name || "",
     role: person.role || "",
@@ -2248,10 +2437,16 @@ function normalisePerson(person) {
     relationship: person.relationship || "",
     email: person.email || "",
     phone: person.phone || "",
-    lastContactDate: person.lastContactDate || "",
+    personType: person.personType === "internal" || person.personType === "external" ? person.personType : null,
+    cadenceInterval: Number.isFinite(Number(person.cadenceInterval)) && Number(person.cadenceInterval) > 0 ? Number(person.cadenceInterval) : null,
+    cadenceUnit: person.cadenceUnit === "weeks" || person.cadenceUnit === "months" ? person.cadenceUnit : null,
+    lastContactAt: person.lastContactAt || person.lastContactDate || "",
+    nextContactDueAt: person.nextContactDueAt || "",
+    relationshipHealth: person.relationshipHealth || "unknown",
     notes: person.notes || "",
     archived: Boolean(person.archived),
     contactTrail: Array.isArray(person.contactTrail) ? person.contactTrail : [],
+    interactions: Array.isArray(person.interactions) ? person.interactions : [],
     createdAt: person.createdAt || new Date().toISOString(),
     updatedAt: person.updatedAt || new Date().toISOString(),
     lastUpdatedByField:
@@ -2259,6 +2454,92 @@ function normalisePerson(person) {
         ? person.lastUpdatedByField
         : {}
   };
+
+  return computePersonCadence(base);
+}
+
+/**
+ * Computes cadence-derived fields while preserving compatibility for records without cadence.
+ */
+function computePersonCadence(person) {
+  const interval = Number(person.cadenceInterval);
+  const hasCadence = Number.isFinite(interval) && interval > 0 && (person.cadenceUnit === "weeks" || person.cadenceUnit === "months");
+
+  if (!hasCadence || !person.lastContactAt) {
+    return {
+      ...person,
+      nextContactDueAt: "",
+      relationshipHealth: "unknown"
+    };
+  }
+
+  const last = new Date(person.lastContactAt);
+  const due = new Date(last);
+  if (person.cadenceUnit === "weeks") {
+    due.setDate(due.getDate() + interval * 7);
+  } else {
+    due.setMonth(due.getMonth() + interval);
+  }
+
+  const cadenceMs = due.getTime() - last.getTime();
+  const elapsed = Date.now() - last.getTime();
+  let health = "on_track";
+  if (elapsed >= cadenceMs) {
+    health = "overdue";
+  } else if (elapsed >= cadenceMs * 0.8) {
+    health = "due";
+  }
+
+  return {
+    ...person,
+    nextContactDueAt: due.toISOString(),
+    relationshipHealth: health
+  };
+}
+
+function getHealthSortWeight(person) {
+  switch (person.relationshipHealth) {
+    case "overdue":
+      return 0;
+    case "due":
+      return 1;
+    case "on_track":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Not set";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Not set";
+  }
+  return parsed.toLocaleString();
+}
+
+function formatDistanceFromNow(value) {
+  if (!value) {
+    return "not logged";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "not logged";
+  }
+  const days = Math.floor((Date.now() - parsed.getTime()) / 86400000);
+  return days <= 0 ? "today" : `${days}d ago`;
+}
+
+function toDateTimeLocalValue(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  const offsetMs = parsed.getTimezoneOffset() * 60000;
+  return new Date(parsed.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 /**
@@ -2266,19 +2547,20 @@ function normalisePerson(person) {
  */
 function sortPeople(first, second, sortMode) {
   switch (sortMode) {
+    case "needs-attention":
+      return getHealthSortWeight(first) - getHealthSortWeight(second)
+        || (second.pendingUpdatesCount || 0) - (first.pendingUpdatesCount || 0)
+        || first.name.localeCompare(second.name);
     case "name-asc":
       return first.name.localeCompare(second.name);
-    case "name-desc":
-      return second.name.localeCompare(first.name);
     case "contact-desc":
-      return (second.lastContactDate || "").localeCompare(first.lastContactDate || "");
-    case "contact-asc":
-      return (first.lastContactDate || "").localeCompare(second.lastContactDate || "");
+      return (second.lastContactAt || "").localeCompare(first.lastContactAt || "");
     case "updated-desc":
     default:
       return (second.updatedAt || "").localeCompare(first.updatedAt || "");
   }
 }
+
 
 /**
  * Adds a select option element in a terse reusable way.
