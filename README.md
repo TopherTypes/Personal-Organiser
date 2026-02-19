@@ -148,3 +148,12 @@ Then visit:
 - Not multi-user
 - Not trying to replicate existing tools (it may resemble them, but it’s built to fit my needs exactly)
 - No custom backend / no server-side app (static hosting + Google Drive only)
+
+## DEV-NOTES: Meetings UX (Work mode)
+- Meetings modal now prioritises **Attend** tab and keeps actions in a sticky footer so Save/Close stay visible.
+- Weekly and monthly calendar cards now surface lightweight output counters (Actions/Updates/Decisions).
+- Monthly view uses a right-side **Day focus panel** with compact/detailed density toggle.
+- Meeting review supports a lightweight **Decision** output type (meeting-local storage).
+- Keyboard shortcuts in modal: **Esc** closes (with unsaved confirmation) and **Ctrl/Cmd + Enter** saves.
+- Meetings toolbar now includes **Archive completed meetings** for one-click cleanup of completed records.
+- Edit modal now includes a **Delete meeting** action with mandatory confirmation for permanent removal.
