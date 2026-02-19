@@ -882,8 +882,8 @@ export function renderWorkMeetingsModule({
         linkedUpdateValidationMessage.textContent = "Actions require a due date.";
         return;
       }
-      if (row.entityType === "update" && !row.recipientIds.length) {
-        linkedUpdateValidationMessage.textContent = "Update items require at least one recipient.";
+      if (row.entityType !== "decision" && !row.recipientIds.length) {
+        linkedUpdateValidationMessage.textContent = "Updates and actions require at least one recipient.";
         return;
       }
 
@@ -1328,8 +1328,8 @@ export function renderWorkMeetingsModule({
         if (!row.text) {
           return;
         }
-        if (row.entityType === "update" && !row.recipientIds.length) {
-          validationErrors.push(`Linked update ${index + 1}: select at least one recipient for update items.`);
+        if (row.entityType !== "decision" && !row.recipientIds.length) {
+          validationErrors.push(`Linked update ${index + 1}: select at least one recipient for updates/actions.`);
         }
         if (row.ownerId && row.ownerId !== "me" && !activeOwnerIds.has(row.ownerId)) {
           validationErrors.push(`Linked update ${index + 1}: choose an owner from active people, Me, or No owner.`);
