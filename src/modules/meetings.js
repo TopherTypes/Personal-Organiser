@@ -78,7 +78,7 @@ export function renderWorkMeetingsModule({
   newMeetingButton.className = "enter-mode-button";
   newMeetingButton.textContent = "New meeting";
   newMeetingButton.addEventListener("click", () => {
-    openEditor(buildDefaultMeeting(state.anchorDate), { source: "header-button" });
+    openEditor(buildDefaultMeeting(state.anchorDate), { source: "header-button", tab: "plan" });
   });
 
   actions.append(newMeetingButton);
@@ -223,7 +223,7 @@ export function renderWorkMeetingsModule({
       }) : null,
       isWeeklyView
         ? renderWeeklyCalendar(state, meetings, allMeetings, range, onSelectCalendarMeeting, state.selectedCalendarMeetingId, {
-            onOpenMeeting: (meeting) => openEditor(meeting, { source: "calendar-entry" })
+            onOpenMeeting: (meeting, options = {}) => openEditor(meeting, { source: "calendar-entry", ...options })
           })
         : renderMonthlyCalendar(state, meetings, allMeetings, range, {
             onOpenEditor: (meeting) => openEditor(meeting, { source: "calendar-entry" }),
@@ -303,7 +303,7 @@ export function renderWorkMeetingsModule({
     };
   }
 
-  function openEditor(meeting, { source, tab = "attend", noteTemplate = "" }) {
+  function openEditor(meeting, { source, tab = "plan", noteTemplate = "" }) {
     // Preserve trigger focus so keyboard users return to their previous context
     // when the modal closes.
     state.returnFocusElement = document.activeElement instanceof HTMLElement
@@ -332,6 +332,10 @@ export function renderWorkMeetingsModule({
   }
 
   function closeEditor() {
+    // Closing the modal is treated as an explicit discard action for any
+    // local autosave snapshot. This prevents stale drafts from re-opening
+    // unexpectedly the next time the Meetings module is visited.
+    clearDraft(mode);
     state.draft = null;
     state.dirtyDraft = false;
     state.draftSource = "";
@@ -364,6 +368,9 @@ export function renderWorkMeetingsModule({
 
     const form = document.createElement("form");
     form.className = "meeting-form";
+    // Token-based controls can be conditionally hidden between workflow steps;
+    // use explicit submit-time validation to avoid browser focus errors.
+    form.noValidate = true;
 
     const fields = document.createElement("div");
     fields.className = "meeting-fields";
@@ -1325,9 +1332,14 @@ export function renderWorkMeetingsModule({
     modalBody.className = "meeting-modal-body";
     modalBody.append(fields);
 
+    const saveValidationMessage = document.createElement("p");
+    saveValidationMessage.className = "field-help";
+    saveValidationMessage.setAttribute("role", "alert");
+    saveValidationMessage.setAttribute("aria-live", "assertive");
+
     const modalFooter = document.createElement("div");
     modalFooter.className = "meeting-modal-footer";
-    modalFooter.append(autoSaveText, actions);
+    modalFooter.append(autoSaveText, saveValidationMessage, actions);
 
     form.append(modalHeader, modalBody, modalFooter);
     modal.appendChild(form);
@@ -1457,6 +1469,24 @@ export function renderWorkMeetingsModule({
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       syncDraft();
+      saveValidationMessage.textContent = "";
+
+      const meetingValidationErrors = [];
+      if (!state.draft.name) {
+        meetingValidationErrors.push("Meeting name is required.");
+      }
+      if (!state.draft.date) {
+        meetingValidationErrors.push("Meeting date is required.");
+      }
+      if (state.draft.type === "one-on-one" && (!Array.isArray(state.draft.attendeeIds) || state.draft.attendeeIds.length !== 1)) {
+        meetingValidationErrors.push("1:1 meetings require exactly one attendee.");
+      }
+
+      if (meetingValidationErrors.length) {
+        saveValidationMessage.textContent = meetingValidationErrors.join(" ");
+        alert(meetingValidationErrors.join("\n"));
+        return;
+      }
 
       const linkedUpdateRows = normaliseDraftLinkedUpdates(state.draft.draftLinkedUpdates, state.draft.chairId);
 
@@ -1491,7 +1521,9 @@ export function renderWorkMeetingsModule({
       });
 
       if (validationErrors.length) {
-        linkedUpdateValidationMessage.textContent = validationErrors.join(" ");
+        const errorText = validationErrors.join(" ");
+        linkedUpdateValidationMessage.textContent = errorText;
+        saveValidationMessage.textContent = errorText;
         alert(validationErrors.join("\n"));
         return;
       }
@@ -1503,6 +1535,7 @@ export function renderWorkMeetingsModule({
       // 2) Create linked updates second so each update can reference `meetingId` safely.
       const result = saveMeeting(mode, state.draft, state.draftSource);
       if (!result.ok) {
+        saveValidationMessage.textContent = result.error;
         alert(result.error);
         return;
       }
@@ -1738,7 +1771,7 @@ function renderWeeklyCalendar(state, meetingsInRange, allMeetings, range, onSele
     card.className = "calendar-day";
     card.addEventListener("click", () => {
       state.selectedCalendarMeetingId = "";
-      onOpenMeeting?.(buildDefaultMeeting(date));
+      onOpenMeeting?.(buildDefaultMeeting(date), { tab: "plan" });
     });
 
     const heading = document.createElement("strong");
