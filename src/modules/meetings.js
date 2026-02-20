@@ -332,6 +332,10 @@ export function renderWorkMeetingsModule({
   }
 
   function closeEditor() {
+    // Closing the modal is treated as an explicit discard action for any
+    // local autosave snapshot. This prevents stale drafts from re-opening
+    // unexpectedly the next time the Meetings module is visited.
+    clearDraft(mode);
     state.draft = null;
     state.dirtyDraft = false;
     state.draftSource = "";
