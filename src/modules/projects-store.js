@@ -20,6 +20,16 @@ export const PROJECT_PERSON_ROLES = [
 ];
 
 /**
+ * RAID statuses are type-specific to preserve clear workflow semantics.
+ */
+export const PROJECT_RAID_STATUSES = {
+  risk: ["Open", "Mitigated", "Closed"],
+  action: ["Open", "In Progress", "Done"],
+  issue: ["Open", "Blocked", "Resolved"],
+  decision: ["Proposed", "Approved", "Reversed"]
+};
+
+/**
  * Loads projects from localStorage and normalises to a safe shape.
  */
 export function loadProjects(mode = "work") {
@@ -175,6 +185,69 @@ export function upsertProjectPersonLink(mode = "work", projectId, personId, role
 }
 
 /**
+ * Creates or updates a typed RAID entry for a specific project.
+ */
+export function upsertProjectRaidEntry(mode = "work", projectId, entryType, payload, editingId = "") {
+  const projects = loadProjects(mode);
+  const index = projects.findIndex((project) => project.id === projectId);
+  if (index < 0) {
+    return { ok: false, error: "Project no longer exists." };
+  }
+
+  const normalisedType = normaliseRaidType(entryType);
+  if (!normalisedType) {
+    return { ok: false, error: "Unsupported RAID type." };
+  }
+
+  const validation = validateRaidPayload(normalisedType, payload);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const now = new Date().toISOString();
+  const project = projects[index];
+  const nextRaid = { ...project.raid };
+  const bucketKey = `${normalisedType}s`;
+  const bucket = [...(nextRaid[bucketKey] || [])];
+
+  if (editingId) {
+    const recordIndex = bucket.findIndex((entry) => entry.id === editingId);
+    if (recordIndex < 0) {
+      return { ok: false, error: "RAID item no longer exists." };
+    }
+    bucket[recordIndex] = normaliseRaidEntry(normalisedType, {
+      ...bucket[recordIndex],
+      ...payload,
+      id: editingId,
+      updatedAt: now
+    });
+    nextRaid[bucketKey] = bucket;
+  } else {
+    const nextEntry = normaliseRaidEntry(normalisedType, {
+      ...payload,
+      id: generateId(`project-${normalisedType}`),
+      createdAt: now,
+      updatedAt: now
+    });
+    bucket.unshift(nextEntry);
+    nextRaid[bucketKey] = bucket;
+  }
+
+  projects[index] = {
+    ...project,
+    raid: nextRaid,
+    updatedAt: now,
+    lastUpdatedByField: {
+      ...project.lastUpdatedByField,
+      raid: now
+    }
+  };
+
+  persistProjects(mode, projects);
+  return { ok: true, project: projects[index] };
+}
+
+/**
  * Returns project links for a person to support person-edit UX.
  */
 export function loadPersonProjectLinks(mode = "work", personId) {
@@ -249,6 +322,7 @@ export function normaliseProject(project) {
             createdAt: entry.createdAt || new Date().toISOString()
           }))
       : [],
+    raid: normaliseProjectRaid(project.raid),
     createdAt: project.createdAt || new Date().toISOString(),
     updatedAt: project.updatedAt || new Date().toISOString(),
     lastUpdatedByField:
@@ -256,6 +330,124 @@ export function normaliseProject(project) {
         ? project.lastUpdatedByField
         : {}
   };
+}
+
+function normaliseProjectRaid(value) {
+  const raw = typeof value === "object" && value !== null ? value : {};
+  return {
+    risks: normaliseRaidEntryList("risk", raw.risks),
+    actions: normaliseRaidEntryList("action", raw.actions),
+    issues: normaliseRaidEntryList("issue", raw.issues),
+    decisions: normaliseRaidEntryList("decision", raw.decisions)
+  };
+}
+
+function normaliseRaidEntryList(type, value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => normaliseRaidEntry(type, entry))
+    .filter((entry) => entry && entry.title && entry.description && entry.date);
+}
+
+function normaliseRaidType(type) {
+  return ["risk", "action", "issue", "decision"].includes(type) ? type : "";
+}
+
+function validateRaidPayload(type, payload) {
+  if (!payload?.title || !payload?.description || !payload?.date) {
+    return { ok: false, error: "Title, description, and date are required." };
+  }
+  if (type === "risk") {
+    if (!Number.isFinite(Number(payload.likelihood)) || !Number.isFinite(Number(payload.impact))) {
+      return { ok: false, error: "Risks require likelihood and impact (1-5)." };
+    }
+    if (!Array.isArray(payload.mitigatingActions) || !payload.mitigatingActions.length) {
+      return { ok: false, error: "Risks require at least one mitigating action." };
+    }
+  }
+  if (type === "issue" && (!Array.isArray(payload.mitigatingActions) || !payload.mitigatingActions.length)) {
+    return { ok: false, error: "Issues require at least one mitigating action." };
+  }
+  if (type === "decision" && (!payload.optionsConsidered || !payload.decisionMade)) {
+    return { ok: false, error: "Decisions require options considered and decision made." };
+  }
+  return { ok: true };
+}
+
+function normaliseRaidEntry(type, value) {
+  const entry = typeof value === "object" && value !== null ? value : {};
+  const likelihood = clampRiskScore(entry.likelihood);
+  const impact = clampRiskScore(entry.impact);
+  const riskLevel = likelihood * impact;
+  const statusList = PROJECT_RAID_STATUSES[type] || ["Open"];
+
+  const base = {
+    id: entry.id || generateId(`project-${type}`),
+    title: String(entry.title || "").trim(),
+    description: String(entry.description || "").trim(),
+    date: normaliseDateString(entry.date),
+    meetingIds: Array.isArray(entry.meetingIds) ? Array.from(new Set(entry.meetingIds.map((item) => String(item).trim()).filter(Boolean))) : [],
+    status: statusList.includes(entry.status) ? entry.status : statusList[0],
+    createdAt: entry.createdAt || new Date().toISOString(),
+    updatedAt: entry.updatedAt || new Date().toISOString()
+  };
+
+  if (type === "risk") {
+    return {
+      ...base,
+      likelihood,
+      impact,
+      level: riskLevel,
+      mitigatingActions: normaliseStringList(entry.mitigatingActions)
+    };
+  }
+  if (type === "action") {
+    return {
+      ...base,
+      detailsLog: normaliseActionDetailsLog(entry.detailsLog)
+    };
+  }
+  if (type === "issue") {
+    return {
+      ...base,
+      mitigatingActions: normaliseStringList(entry.mitigatingActions)
+    };
+  }
+  return {
+    ...base,
+    optionsConsidered: String(entry.optionsConsidered || "").trim(),
+    decisionMade: String(entry.decisionMade || "").trim()
+  };
+}
+
+function normaliseStringList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function normaliseActionDetailsLog(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => ({
+      id: entry?.id || generateId("project-action-log"),
+      text: String(entry?.text || "").trim(),
+      date: normaliseDateString(entry?.date)
+    }))
+    .filter((entry) => entry.text && entry.date);
+}
+
+function clampRiskScore(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+  return Math.min(5, Math.max(1, parsed));
 }
 
 /**
