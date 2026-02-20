@@ -26,7 +26,8 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     isEditorOpen: openComposer,
     editingId: "",
     viewingId: "",
-    feedback: ""
+    feedback: "",
+    isRaidPanelOpen: false
   };
 
   const section = document.createElement("section");
@@ -230,18 +231,30 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     }
     updatesSection.append(updatesTitle, updatesList);
 
-    const renderProjectRaidSection = (activeProject) => {
-      const sectionEl = document.createElement("section");
-      sectionEl.className = "project-detail-section";
+    const renderProjectRaidDrawer = (activeProject) => {
+      const overlay = document.createElement("div");
+      overlay.className = "project-raid-drawer-overlay";
+      overlay.tabIndex = -1;
 
-      const titleEl = document.createElement("h2");
-      titleEl.textContent = "RAID log";
+      const drawer = document.createElement("form");
+      drawer.className = "project-raid-drawer";
 
-      const exportButton = document.createElement("button");
-      exportButton.type = "button";
-      exportButton.className = "module-button-secondary";
-      exportButton.textContent = "Export RAID to PDF";
-      exportButton.addEventListener("click", () => exportRaidAsPdf(activeProject));
+      const headerEl = document.createElement("header");
+      headerEl.className = "project-raid-drawer-header";
+      const headingEl = document.createElement("h3");
+      headingEl.textContent = "Add to RAID log";
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "module-button-secondary";
+      closeButton.textContent = "Close";
+      closeButton.addEventListener("click", () => {
+        state.isRaidPanelOpen = false;
+        renderModule();
+      });
+      headerEl.append(headingEl, closeButton);
+
+      const bodyEl = document.createElement("div");
+      bodyEl.className = "project-raid-drawer-body";
 
       const typeSelect = document.createElement("select");
       typeSelect.className = "field-input";
@@ -266,21 +279,11 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
       impactInput.input.min = "1";
       impactInput.input.max = "5";
 
-      const saveButton = document.createElement("button");
-      saveButton.type = "button";
-      saveButton.className = "enter-mode-button";
-      saveButton.textContent = "Add RAID item";
-
-      const formWrap = document.createElement("div");
-      formWrap.className = "project-raid-inline-form";
-      formWrap.append(typeSelect, statusWrap, titleInput.wrapper, dateInput.wrapper, descriptionInput.wrapper, detailsInput.wrapper, likelihoodInput.wrapper, impactInput.wrapper, saveButton);
-
       const setStatusOptions = () => {
         statusSelect.innerHTML = "";
         const selectedType = typeSelect.value;
         (PROJECT_RAID_STATUSES[selectedType] || ["Open"]).forEach((status) => addOption(statusSelect, status, status));
         const isRisk = selectedType === "risk";
-        const isIssue = selectedType === "issue";
         likelihoodInput.wrapper.hidden = !isRisk;
         impactInput.wrapper.hidden = !isRisk;
         detailsInput.wrapper.querySelector("textarea").placeholder = selectedType === "decision"
@@ -290,7 +293,19 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
             : "Mitigating actions, one per line";
       };
 
-      saveButton.addEventListener("click", () => {
+      typeSelect.addEventListener("change", setStatusOptions);
+      setStatusOptions();
+
+      const footerEl = document.createElement("footer");
+      footerEl.className = "project-raid-drawer-footer";
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.className = "enter-mode-button";
+      saveButton.textContent = "Add RAID item";
+      footerEl.appendChild(saveButton);
+
+      drawer.addEventListener("submit", (event) => {
+        event.preventDefault();
         const type = typeSelect.value;
         const details = detailsInput.textarea.value.split("\n").map((line) => line.trim()).filter(Boolean);
         const payload = {
@@ -309,7 +324,7 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
           payload.mitigatingActions = details;
         } else if (type === "action") {
           payload.detailsLog = details.map((text) => ({ text, date: payload.date }));
-        } else if (type === "decision") {
+        } else {
           payload.optionsConsidered = details[0] || "";
           payload.decisionMade = details.slice(1).join(" ") || "";
         }
@@ -321,11 +336,50 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
         }
 
         state.feedback = "RAID entry added.";
+        state.isRaidPanelOpen = false;
         renderModule();
       });
 
-      setStatusOptions();
-      typeSelect.addEventListener("change", setStatusOptions);
+      bodyEl.append(typeSelect, statusWrap, titleInput.wrapper, dateInput.wrapper, descriptionInput.wrapper, detailsInput.wrapper, likelihoodInput.wrapper, impactInput.wrapper);
+      drawer.append(headerEl, bodyEl, footerEl);
+      overlay.appendChild(drawer);
+
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) {
+          state.isRaidPanelOpen = false;
+          renderModule();
+        }
+      });
+
+      return overlay;
+    };
+
+    const renderProjectRaidSection = (activeProject) => {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = "project-detail-section";
+
+      const titleEl = document.createElement("h2");
+      titleEl.textContent = "RAID log";
+
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "project-raid-actions";
+
+      const openDrawerButton = document.createElement("button");
+      openDrawerButton.type = "button";
+      openDrawerButton.className = "enter-mode-button";
+      openDrawerButton.textContent = "Add to RAID log";
+      openDrawerButton.addEventListener("click", () => {
+        state.isRaidPanelOpen = true;
+        renderModule();
+      });
+
+      const exportButton = document.createElement("button");
+      exportButton.type = "button";
+      exportButton.className = "module-button-secondary";
+      exportButton.textContent = "Export RAID to PDF";
+      exportButton.addEventListener("click", () => exportRaidAsPdf(activeProject));
+
+      actionsRow.append(openDrawerButton, exportButton);
 
       const list = document.createElement("div");
       list.className = "project-raid-groups";
@@ -353,11 +407,14 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
         list.appendChild(card);
       });
 
-      sectionEl.append(titleEl, exportButton, formWrap, list);
+      sectionEl.append(titleEl, actionsRow, list);
       return sectionEl;
     };
 
     wrap.append(back, command, summary, taskSection, updatesSection, renderProjectRaidSection(project), buildLinkedEntitiesCard(project, people));
+    if (state.isRaidPanelOpen) {
+      wrap.appendChild(renderProjectRaidDrawer(project));
+    }
     return wrap;
   }
 

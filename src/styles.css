@@ -4510,3 +4510,71 @@ button {
   from { opacity: 0; transform: translateY(6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/*
+ * RAID actions keep primary create/export controls aligned without consuming
+ * excessive vertical space in the project details viewport.
+ */
+.project-raid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/*
+ * RAID drawer mirrors existing task slide-over behaviour so users get a
+ * consistent panel interaction pattern across modules.
+ */
+.project-raid-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 1200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.project-raid-drawer {
+  width: clamp(360px, 40vw, 560px);
+  max-width: calc(100vw - 16px);
+  height: 100vh;
+  margin: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.project-raid-drawer-header,
+.project-raid-drawer-footer {
+  position: sticky;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, black);
+  z-index: 2;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.project-raid-drawer-header {
+  top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-raid-drawer-footer {
+  bottom: 0;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.project-raid-drawer-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.85rem;
+}
