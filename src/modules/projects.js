@@ -5,7 +5,9 @@ import {
   loadProjects,
   normaliseProject,
   saveProject,
-  upsertProjectPersonLink
+  upsertProjectPersonLink,
+  upsertProjectRaidEntry,
+  PROJECT_RAID_STATUSES
 } from "./projects-store.js";
 import { loadTasks } from "./tasks.js";
 import { buildEntityTokenMultiSelectField, readEntityTokenHiddenValues } from "./select-controls.js";
@@ -228,7 +230,134 @@ export function renderWorkProjectsModule({ mode = "work", people = [], meetings 
     }
     updatesSection.append(updatesTitle, updatesList);
 
-    wrap.append(back, command, summary, taskSection, updatesSection, buildLinkedEntitiesCard(project, people));
+    const renderProjectRaidSection = (activeProject) => {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = "project-detail-section";
+
+      const titleEl = document.createElement("h2");
+      titleEl.textContent = "RAID log";
+
+      const exportButton = document.createElement("button");
+      exportButton.type = "button";
+      exportButton.className = "module-button-secondary";
+      exportButton.textContent = "Export RAID to PDF";
+      exportButton.addEventListener("click", () => exportRaidAsPdf(activeProject));
+
+      const typeSelect = document.createElement("select");
+      typeSelect.className = "field-input";
+      ["risk", "action", "issue", "decision"].forEach((type) => addOption(typeSelect, type, type.toUpperCase()));
+
+      const titleInput = buildLabeledInput("Title", "text", "", true);
+      const dateInput = buildLabeledInput("Date", "date", new Date().toISOString().slice(0, 10), true);
+      const descriptionInput = buildTextArea("Description", "");
+      const detailsInput = buildTextArea("Type details (one per line)", "");
+
+      const statusWrap = document.createElement("label");
+      statusWrap.className = "field-label";
+      statusWrap.textContent = "Status";
+      const statusSelect = document.createElement("select");
+      statusSelect.className = "field-input";
+      statusWrap.appendChild(statusSelect);
+
+      const likelihoodInput = buildLabeledInput("Likelihood (1-5)", "number", "3");
+      likelihoodInput.input.min = "1";
+      likelihoodInput.input.max = "5";
+      const impactInput = buildLabeledInput("Impact (1-5)", "number", "3");
+      impactInput.input.min = "1";
+      impactInput.input.max = "5";
+
+      const saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "enter-mode-button";
+      saveButton.textContent = "Add RAID item";
+
+      const formWrap = document.createElement("div");
+      formWrap.className = "project-raid-inline-form";
+      formWrap.append(typeSelect, statusWrap, titleInput.wrapper, dateInput.wrapper, descriptionInput.wrapper, detailsInput.wrapper, likelihoodInput.wrapper, impactInput.wrapper, saveButton);
+
+      const setStatusOptions = () => {
+        statusSelect.innerHTML = "";
+        const selectedType = typeSelect.value;
+        (PROJECT_RAID_STATUSES[selectedType] || ["Open"]).forEach((status) => addOption(statusSelect, status, status));
+        const isRisk = selectedType === "risk";
+        const isIssue = selectedType === "issue";
+        likelihoodInput.wrapper.hidden = !isRisk;
+        impactInput.wrapper.hidden = !isRisk;
+        detailsInput.wrapper.querySelector("textarea").placeholder = selectedType === "decision"
+          ? "Line 1: options considered\nLine 2: decision made"
+          : selectedType === "action"
+            ? "Action progress log entries, one per line"
+            : "Mitigating actions, one per line";
+      };
+
+      saveButton.addEventListener("click", () => {
+        const type = typeSelect.value;
+        const details = detailsInput.textarea.value.split("\n").map((line) => line.trim()).filter(Boolean);
+        const payload = {
+          title: titleInput.input.value.trim(),
+          description: descriptionInput.textarea.value.trim(),
+          date: dateInput.input.value,
+          status: statusSelect.value,
+          meetingIds: []
+        };
+
+        if (type === "risk") {
+          payload.likelihood = Number(likelihoodInput.input.value || 1);
+          payload.impact = Number(impactInput.input.value || 1);
+          payload.mitigatingActions = details;
+        } else if (type === "issue") {
+          payload.mitigatingActions = details;
+        } else if (type === "action") {
+          payload.detailsLog = details.map((text) => ({ text, date: payload.date }));
+        } else if (type === "decision") {
+          payload.optionsConsidered = details[0] || "";
+          payload.decisionMade = details.slice(1).join(" ") || "";
+        }
+
+        const result = upsertProjectRaidEntry(mode, activeProject.id, type, payload);
+        if (!result.ok) {
+          window.alert(result.error);
+          return;
+        }
+
+        state.feedback = "RAID entry added.";
+        renderModule();
+      });
+
+      setStatusOptions();
+      typeSelect.addEventListener("change", setStatusOptions);
+
+      const list = document.createElement("div");
+      list.className = "project-raid-groups";
+      ["risk", "action", "issue", "decision"].forEach((type) => {
+        const card = document.createElement("article");
+        const heading = document.createElement("h3");
+        heading.textContent = `${type.toUpperCase()} (${(activeProject.raid?.[`${type}s`] || []).length})`;
+        card.appendChild(heading);
+        const items = activeProject.raid?.[`${type}s`] || [];
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-state";
+          empty.textContent = "No entries yet.";
+          card.appendChild(empty);
+        } else {
+          const ul = document.createElement("ul");
+          items.slice(0, 5).forEach((item) => {
+            const li = document.createElement("li");
+            const suffix = type === "risk" ? ` · L${item.level}` : "";
+            li.textContent = `${item.date} · ${item.title} · ${item.status}${suffix}`;
+            ul.appendChild(li);
+          });
+          card.appendChild(ul);
+        }
+        list.appendChild(card);
+      });
+
+      sectionEl.append(titleEl, exportButton, formWrap, list);
+      return sectionEl;
+    };
+
+    wrap.append(back, command, summary, taskSection, updatesSection, renderProjectRaidSection(project), buildLinkedEntitiesCard(project, people));
     return wrap;
   }
 
@@ -755,6 +884,28 @@ function buildTextArea(label, value) {
   textarea.value = value;
   wrapper.appendChild(textarea);
   return { wrapper, textarea };
+}
+
+
+function exportRaidAsPdf(project) {
+  const raid = project.raid || { risks: [], actions: [], issues: [], decisions: [] };
+  const printWindow = window.open("", "_blank", "noopener,noreferrer");
+  if (!printWindow) {
+    window.alert("Unable to open print preview window.");
+    return;
+  }
+
+  const renderType = (label, entries) => {
+    const items = entries.length
+      ? `<ul>${entries.map((entry) => `<li><strong>${entry.title}</strong> (${entry.status}) — ${entry.date}<br>${entry.description}</li>`).join("")}</ul>`
+      : "<p>No entries.</p>";
+    return `<section><h2>${label}</h2>${items}</section>`;
+  };
+
+  printWindow.document.write(`<!doctype html><html><head><title>${project.title} RAID</title></head><body><h1>${project.title} RAID log</h1>${renderType("Risks", raid.risks || [])}${renderType("Actions", raid.actions || [])}${renderType("Issues", raid.issues || [])}${renderType("Decisions", raid.decisions || [])}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
 }
 
 function addOption(select, value, label) {

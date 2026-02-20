@@ -1,4 +1,4 @@
-import { loadProjects } from "./projects-store.js";
+import { loadProjects, upsertProjectRaidEntry, PROJECT_RAID_STATUSES } from "./projects-store.js";
 import { loadVersionedCollection, persistVersionedCollection, safeJsonParse, safeJsonWrite } from "./storage-core.js";
 import {
   buildUpdateOwnerOptions,
@@ -312,7 +312,8 @@ export function renderWorkMeetingsModule({
 
     state.draft = {
       ...meeting,
-      draftLinkedUpdates: normaliseDraftLinkedUpdates(meeting.draftLinkedUpdates, meeting.chairId)
+      draftLinkedUpdates: normaliseDraftLinkedUpdates(meeting.draftLinkedUpdates, meeting.chairId),
+      draftRaidEntries: normaliseDraftRaidEntries(meeting.draftRaidEntries)
     };
     state.dirtyDraft = false;
     state.draftSource = source;
@@ -1097,7 +1098,150 @@ export function renderWorkMeetingsModule({
       attachedUpdatesList
     );
 
-    reviewScreen.append(reviewLayout, attachedUpdatesSection);
+    const raidSection = document.createElement("section");
+    raidSection.className = "meeting-raid-section";
+    const raidHeading = document.createElement("h3");
+    raidHeading.textContent = "Project RAID capture";
+    const raidInfo = document.createElement("p");
+    raidInfo.className = "module-intro";
+    raidInfo.textContent = "Add RAID items inline. Items are created against the linked project when this meeting is saved.";
+    const raidList = document.createElement("div");
+    raidList.className = "meeting-raid-draft-list";
+
+    const raidTypeField = buildSingleSelectField({
+      label: "Type",
+      options: [
+        { value: "risk", label: "Risk" },
+        { value: "action", label: "Action" },
+        { value: "issue", label: "Issue" },
+        { value: "decision", label: "Decision" }
+      ],
+      value: "risk"
+    });
+    const raidTitle = buildLabeledInput("Title", "text", "", true);
+    const raidDate = buildLabeledInput("Date", "date", state.draft.date || isoDateToday(), true);
+    const raidDescription = document.createElement("label");
+    raidDescription.className = "field-label";
+    raidDescription.textContent = "Description";
+    const raidDescriptionInput = document.createElement("textarea");
+    raidDescriptionInput.className = "field-input";
+    raidDescriptionInput.rows = 3;
+    raidDescription.appendChild(raidDescriptionInput);
+    const raidDetails = document.createElement("label");
+    raidDetails.className = "field-label";
+    raidDetails.textContent = "Type details";
+    const raidDetailsInput = document.createElement("textarea");
+    raidDetailsInput.className = "field-input";
+    raidDetailsInput.rows = 3;
+    raidDetailsInput.placeholder = "Mitigating actions or notes (one per line).";
+    raidDetails.appendChild(raidDetailsInput);
+    const riskLikelihood = buildLabeledInput("Likelihood (1-5)", "number", "3");
+    riskLikelihood.input.min = "1";
+    riskLikelihood.input.max = "5";
+    const riskImpact = buildLabeledInput("Impact (1-5)", "number", "3");
+    riskImpact.input.min = "1";
+    riskImpact.input.max = "5";
+    const raidStatusField = buildSingleSelectField({ label: "Status", options: [], value: "" });
+
+    const refreshRaidFormByType = () => {
+      const selectedType = raidTypeField.select.value;
+      raidStatusField.select.innerHTML = "";
+      (PROJECT_RAID_STATUSES[selectedType] || ["Open"]).forEach((status) => addOption(raidStatusField.select, status, status));
+      riskLikelihood.wrapper.hidden = selectedType !== "risk";
+      riskImpact.wrapper.hidden = selectedType !== "risk";
+      raidDetailsInput.placeholder = selectedType === "decision"
+        ? "Line 1: options considered\nLine 2: decision made"
+        : selectedType === "action"
+          ? "Progress log entries, one per line"
+          : "Mitigating actions, one per line";
+    };
+
+    const renderRaidDraftRows = () => {
+      raidList.innerHTML = "";
+      const rows = normaliseDraftRaidEntries(state.draft.draftRaidEntries);
+      state.draft.draftRaidEntries = rows;
+      if (!rows.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No RAID items staged from this meeting yet.";
+        raidList.appendChild(empty);
+        return;
+      }
+      rows.forEach((row, index) => {
+        const card = document.createElement("article");
+        card.className = "meeting-linked-update-row";
+        const heading = document.createElement("strong");
+        heading.textContent = `${row.type.toUpperCase()} · ${row.title}`;
+        const meta = document.createElement("p");
+        meta.className = "module-intro";
+        meta.textContent = `${row.date} · ${row.status}`;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "module-button-secondary";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", () => {
+          state.draft.draftRaidEntries.splice(index, 1);
+          state.dirtyDraft = true;
+          renderRaidDraftRows();
+        });
+        card.append(heading, meta, remove);
+        raidList.appendChild(card);
+      });
+    };
+
+    const addRaidRowButton = document.createElement("button");
+    addRaidRowButton.type = "button";
+    addRaidRowButton.className = "module-button-secondary";
+    addRaidRowButton.textContent = "Stage RAID item";
+    addRaidRowButton.addEventListener("click", () => {
+      const type = raidTypeField.select.value;
+      const lines = raidDetailsInput.value.split("\n").map((line) => line.trim()).filter(Boolean);
+      const row = {
+        type,
+        title: raidTitle.input.value.trim(),
+        description: raidDescriptionInput.value.trim(),
+        date: raidDate.input.value,
+        status: raidStatusField.select.value,
+        likelihood: Number(riskLikelihood.input.value || 1),
+        impact: Number(riskImpact.input.value || 1),
+        details: lines
+      };
+      const validated = validateDraftRaidEntry(row);
+      if (validated.error) {
+        alert(validated.error);
+        return;
+      }
+      state.draft.draftRaidEntries.push(validated.value);
+      state.dirtyDraft = true;
+      raidTitle.input.value = "";
+      raidDescriptionInput.value = "";
+      raidDetailsInput.value = "";
+      renderRaidDraftRows();
+    });
+
+    raidTypeField.select.addEventListener("change", refreshRaidFormByType);
+    refreshRaidFormByType();
+    renderRaidDraftRows();
+
+    const raidForm = document.createElement("div");
+    raidForm.className = "meeting-linked-update-composer";
+    raidForm.append(
+      raidTypeField.wrapper,
+      raidStatusField.wrapper,
+      raidTitle.wrapper,
+      raidDate.wrapper,
+      raidDescription,
+      raidDetails,
+      riskLikelihood.wrapper,
+      riskImpact.wrapper,
+      addRaidRowButton,
+      raidList
+    );
+
+    raidSection.hidden = !state.draft.projectId;
+    raidSection.append(raidHeading, raidInfo, raidForm);
+
+    reviewScreen.append(reviewLayout, attachedUpdatesSection, raidSection);
 
     const syncWorkflowScreen = () => {
       const activeStep = state.workflowStep || "plan";
@@ -1278,6 +1422,7 @@ export function renderWorkMeetingsModule({
         renderLinkedUpdateRows();
       }
       state.draft.projectId = projectSelect.value;
+      raidSection.hidden = !state.draft.projectId;
       state.draft.allowPostStatusEdits = toggle.checked;
       if (!notesInput.disabled) {
         state.draft.notes = notesInput.value;
@@ -1416,6 +1561,47 @@ export function renderWorkMeetingsModule({
 
         const decisionCount = decisionRows.length;
         message = `${message} ${createdCount} linked update${createdCount === 1 ? "" : "s"} created. ${decisionCount} decision${decisionCount === 1 ? "" : "s"} captured.`;
+      }
+
+      const raidErrors = [];
+      let raidCreatedCount = 0;
+      const raidRows = normaliseDraftRaidEntries(state.draft.draftRaidEntries);
+      if (state.draft.projectId && raidRows.length) {
+        raidRows.forEach((raidRow, index) => {
+          const payload = {
+            title: raidRow.title,
+            description: raidRow.description,
+            date: raidRow.date,
+            status: raidRow.status,
+            meetingIds: [result.meetingId]
+          };
+          if (raidRow.type === "risk") {
+            payload.likelihood = raidRow.likelihood;
+            payload.impact = raidRow.impact;
+            payload.mitigatingActions = raidRow.details;
+          } else if (raidRow.type === "issue") {
+            payload.mitigatingActions = raidRow.details;
+          } else if (raidRow.type === "action") {
+            payload.detailsLog = raidRow.details.map((text) => ({ text, date: raidRow.date }));
+          } else {
+            payload.optionsConsidered = raidRow.details[0] || "";
+            payload.decisionMade = raidRow.details.slice(1).join(" ");
+          }
+
+          const raidResult = upsertProjectRaidEntry(mode, state.draft.projectId, raidRow.type, payload);
+          if (!raidResult.ok) {
+            raidErrors.push(`RAID item ${index + 1}: ${raidResult.error}`);
+            return;
+          }
+          raidCreatedCount += 1;
+        });
+      }
+
+      if (raidErrors.length) {
+        alert(["Meeting saved, but some RAID items failed:", ...raidErrors].join("\n"));
+      }
+      if (raidCreatedCount > 0) {
+        message = `${message} ${raidCreatedCount} RAID item${raidCreatedCount === 1 ? "" : "s"} captured.`;
       }
 
       state.feedback = message;
@@ -1904,7 +2090,8 @@ function buildDefaultMeeting(date, prefill = null) {
     allowPostStatusEdits: false,
     archived: false,
     draftLinkedUpdates: [],
-    decisions: []
+    decisions: [],
+    draftRaidEntries: []
   };
 }
 
@@ -2199,7 +2386,8 @@ export function normaliseMeeting(meeting) {
       typeof meeting.lastUpdatedByField === "object" && meeting.lastUpdatedByField !== null
         ? meeting.lastUpdatedByField
         : {},
-    decisions: normaliseMeetingDecisions(meeting.decisions)
+    decisions: normaliseMeetingDecisions(meeting.decisions),
+    draftRaidEntries: normaliseDraftRaidEntries(meeting.draftRaidEntries)
   };
 }
 
@@ -2237,6 +2425,53 @@ function normaliseDraftLinkedUpdates(value, fallbackOwnerId = "") {
   return rows;
 }
 
+
+function normaliseDraftRaidEntries(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => validateDraftRaidEntry(entry).value)
+    .filter(Boolean);
+}
+
+function validateDraftRaidEntry(value) {
+  if (!value || typeof value !== "object") {
+    return { value: null, error: "Invalid RAID entry." };
+  }
+
+  const type = ["risk", "action", "issue", "decision"].includes(value.type) ? value.type : "risk";
+  const title = String(value.title || "").trim();
+  const description = String(value.description || "").trim();
+  const date = String(value.date || "").trim();
+  const details = Array.isArray(value.details) ? value.details.map((line) => String(line || "").trim()).filter(Boolean) : [];
+  const statuses = PROJECT_RAID_STATUSES[type] || ["Open"];
+  const status = statuses.includes(value.status) ? value.status : statuses[0];
+
+  if (!title || !description || !date) {
+    return { value: null, error: "RAID entries require title, description, and date." };
+  }
+  if ((type === "risk" || type === "issue") && !details.length) {
+    return { value: null, error: `${toTitleCase(type)} entries require mitigating actions.` };
+  }
+  if (type === "decision" && details.length < 2) {
+    return { value: null, error: "Decisions require options considered and decision made." };
+  }
+
+  const normalised = {
+    type,
+    title,
+    description,
+    date,
+    status,
+    likelihood: Number.parseInt(String(value.likelihood || 1), 10),
+    impact: Number.parseInt(String(value.impact || 1), 10),
+    details
+  };
+
+  return { value: normalised, error: "" };
+}
 
 function normaliseMeetingDecisions(value) {
   if (!Array.isArray(value)) {
@@ -2316,7 +2551,8 @@ function loadDraft(mode) {
   const meetingDraft = normaliseMeeting(parsed);
   return {
     ...meetingDraft,
-    draftLinkedUpdates: normaliseDraftLinkedUpdates(parsed.draftLinkedUpdates, meetingDraft.chairId)
+    draftLinkedUpdates: normaliseDraftLinkedUpdates(parsed.draftLinkedUpdates, meetingDraft.chairId),
+    draftRaidEntries: normaliseDraftRaidEntries(parsed.draftRaidEntries)
   };
 }
 
