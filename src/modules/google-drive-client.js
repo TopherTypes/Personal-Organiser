@@ -34,6 +34,7 @@ const LOGICAL_TO_FILE = Object.freeze({
   "work.people": FILE_NAMES.work,
   "work.sprints": FILE_NAMES.work,
   "work.meetings": FILE_NAMES.work,
+  "work.updates": FILE_NAMES.work,
   "personal.tasks": FILE_NAMES.personal,
   "personal.projects": FILE_NAMES.personal,
   "personal.people": FILE_NAMES.personal,
