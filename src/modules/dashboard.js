@@ -234,7 +234,9 @@ function renderWorkOverviewDashboard(uiContext = {}) {
 
     const activeProjects = projects.filter((project) => !["completed", "cancelled", "archived"].includes(String(project.status).toLowerCase()));
     const atRiskProjects = selectProjectsNeedingAttention(activeProjects, today).slice(0, 4);
-    const pendingUpdates = updates.reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
+    const pendingUpdates = updates
+      .filter((update) => update.lifecycle === "active")
+      .reduce((count, update) => count + update.toUpdate.filter((item) => item.status === "pending").length, 0);
     const activeSprintCount = sprints.filter((sprint) => sprint.status === "active").length;
 
     const metrics = document.createElement("div");
@@ -2004,12 +2006,33 @@ function createEmptyPeopleState({ hasFilters, onClear, onAdd }) {
  * Creates create/edit form with required MVP fields.
  */
 function createPersonForm({ mode, person, onCancel, onSave }) {
+  const overlay = document.createElement("div");
+  overlay.className = "task-drawer-overlay people-form-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onCancel();
+    }
+  });
+
   const form = document.createElement("form");
-  form.className = "people-form";
+  form.className = "people-form task-drawer project-editor-drawer";
+
+  const header = document.createElement("header");
+  header.className = "task-drawer-header";
 
   const heading = document.createElement("h2");
   heading.textContent = person ? "Edit contact" : "New contact";
-  form.appendChild(heading);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button project-icon-button";
+  closeButton.textContent = "✕";
+  closeButton.setAttribute("aria-label", "Close contact form");
+  closeButton.addEventListener("click", onCancel);
+  header.append(heading, closeButton);
+  form.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "task-drawer-body";
 
   const fields = {
     name: createField("Name", "text", person?.name || "", true),
@@ -2032,9 +2055,9 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
   personTypeRow.append(personTypeLabel, personTypeControl);
 
   for (const field of Object.values(fields)) {
-    form.appendChild(field.row);
+    body.appendChild(field.row);
   }
-  form.appendChild(personTypeRow);
+  body.appendChild(personTypeRow);
 
   const governance = document.createElement("details");
   const governanceSummary = document.createElement("summary");
@@ -2055,7 +2078,7 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
   cadenceUnit.value = person?.cadenceUnit || "";
   cadenceUnitRow.append(cadenceUnitLabel, cadenceUnit);
   governance.append(cadenceInterval.row, cadenceUnitRow);
-  form.appendChild(governance);
+  body.appendChild(governance);
 
   const projectsSection = document.createElement("details");
   const projectsSummary = document.createElement("summary");
@@ -2065,7 +2088,7 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
   const existingLinks = person ? loadPersonProjectLinks(mode, person.id) : [];
   const linkControls = buildPersonProjectLinkControls(projects, existingLinks);
   projectsSection.appendChild(linkControls.wrap);
-  form.appendChild(projectsSection);
+  body.appendChild(projectsSection);
 
   const actions = document.createElement("div");
   actions.className = "person-actions";
@@ -2082,7 +2105,8 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
   saveButton.textContent = person ? "Save changes" : "Create contact";
 
   actions.append(cancelButton, saveButton);
-  form.appendChild(actions);
+  body.appendChild(actions);
+  form.appendChild(body);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2100,7 +2124,8 @@ function createPersonForm({ mode, person, onCancel, onSave }) {
     });
   });
 
-  return form;
+  overlay.appendChild(form);
+  return overlay;
 }
 
 
@@ -2385,7 +2410,12 @@ function savePersonCadence(mode, personId, cadenceInterval, cadenceUnit) {
       ...person,
       cadenceInterval: intervalValue,
       cadenceUnit: cadenceUnit || null,
-      updatedAt: now
+      updatedAt: now,
+      lastUpdatedByField: {
+        ...person.lastUpdatedByField,
+        cadenceInterval: now,
+        cadenceUnit: now
+      }
     });
   });
 

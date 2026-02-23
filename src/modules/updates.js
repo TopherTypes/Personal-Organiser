@@ -36,7 +36,7 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       recipientId: "all",
       sort: "updated",
       groupBy: "none",
-      showArchived: false,
+      lifecycle: "active",
       overdueOnly: false,
       dueSoonOnly: false,
       needsAttentionOnly: false,
@@ -89,6 +89,8 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
   const controls = buildFilterControls(filters, people, state.filters, () => render());
 
   function render() {
+    // Re-render is state-driven, so remove stale drawer instances before appending a fresh one.
+    section.querySelectorAll(".task-drawer-overlay").forEach((node) => node.remove());
     const updates = loadUpdates(mode);
     const visible = selectVisibleUpdates({ updates, meetings, people, filters: state.filters });
 
@@ -99,31 +101,6 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     feedback.textContent = state.feedback;
 
     tbody.innerHTML = "";
-
-    if (state.editorId === "__new__") {
-      tbody.appendChild(
-        buildEditorRow({
-          people,
-          meetings,
-          projects,
-          onSave: (draft) => {
-            const result = saveUpdate(mode, draft, "", people);
-            if (!result.ok) {
-              state.feedback = result.error || "Unable to create update.";
-              render();
-              return;
-            }
-            state.feedback = "Update created.";
-            state.editorId = "";
-            render();
-          },
-          onCancel: () => {
-            state.editorId = "";
-            render();
-          }
-        })
-      );
-    }
 
     if (!visible.length) {
       const tr = document.createElement("tr");
@@ -247,6 +224,31 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
         );
       }
     }
+
+    if (state.editorId === "__new__") {
+      section.appendChild(
+        buildUpdatesCreateDrawer({
+          people,
+          meetings,
+          projects,
+          onSave: (draft) => {
+            const result = saveUpdate(mode, draft, "", people);
+            if (!result.ok) {
+              state.feedback = result.error || "Unable to create update.";
+              render();
+              return;
+            }
+            state.feedback = "Update created.";
+            state.editorId = "";
+            render();
+          },
+          onCancel: () => {
+            state.editorId = "";
+            render();
+          }
+        })
+      );
+    }
   }
 
   render();
@@ -344,19 +346,20 @@ function syncSelectOptions(select, options, selectedValue) {
 
 function renderSignalBar(container, updates, filters, onChange) {
   container.innerHTML = "";
-  const active = updates.filter((item) => item.lifecycle === UPDATE_LIFECYCLE.ACTIVE).length;
+  const activeUpdates = updates.filter((item) => item.lifecycle === UPDATE_LIFECYCLE.ACTIVE);
+  const active = activeUpdates.length;
   const archived = updates.filter((item) => item.lifecycle === UPDATE_LIFECYCLE.ARCHIVED).length;
-  const overdue = updates.filter((item) => isOverdue(item) && selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
-  const dueSoon = updates.filter((item) => isDueSoon(item) && selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
-  const needsAttention = updates.filter((item) => selectPendingPeopleCount(item) > 0 && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
-  const meetingLinked = updates.filter((item) => item.meetingId && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
-  const unlinked = updates.filter((item) => !item.meetingId && item.lifecycle !== UPDATE_LIFECYCLE.DELETED).length;
+  const overdue = activeUpdates.filter((item) => isOverdue(item) && selectPendingPeopleCount(item) > 0).length;
+  const dueSoon = activeUpdates.filter((item) => isDueSoon(item) && selectPendingPeopleCount(item) > 0).length;
+  const needsAttention = activeUpdates.filter((item) => selectPendingPeopleCount(item) > 0).length;
+  const meetingLinked = activeUpdates.filter((item) => item.meetingId).length;
+  const unlinked = activeUpdates.filter((item) => !item.meetingId).length;
 
   const chips = [
-    [filters.showArchived ? "Archived" : "Active", filters.showArchived ? archived : active, () => {
-      filters.showArchived = !filters.showArchived;
+    [filters.lifecycle === "archived" ? "Archived" : "Active", filters.lifecycle === "archived" ? archived : active, () => {
+      filters.lifecycle = filters.lifecycle === "archived" ? "active" : "archived";
       onChange();
-    }],
+    }, filters.lifecycle === "archived"],
     ["Overdue", overdue, () => {
       filters.overdueOnly = !filters.overdueOnly;
       onChange();
@@ -400,8 +403,20 @@ function buildEditorRow({ people, meetings, projects, update = null, onSave, onC
   tr.className = "tasks-editor-row";
   const td = document.createElement("td");
   td.colSpan = 9;
+  const form = buildUpdateEditorForm({ people, meetings, projects, update, onSave, onCancel, inline: true });
+
+  td.appendChild(form);
+  tr.appendChild(td);
+  return tr;
+}
+
+/**
+ * Uses the same form fields across inline edit rows and drawer-based creation
+ * so validation, defaults, and save payload shape stay fully consistent.
+ */
+function buildUpdateEditorForm({ people, meetings, projects, update = null, onSave, onCancel, inline = false }) {
   const form = document.createElement("form");
-  form.className = "task-inline-editor";
+  form.className = inline ? "task-inline-editor" : "task-drawer task-editor-drawer";
 
   const seed = update || normaliseUpdate({});
 
@@ -480,9 +495,39 @@ function buildEditorRow({ people, meetings, projects, update = null, onSave, onC
     });
   });
 
-  td.appendChild(form);
-  tr.appendChild(td);
-  return tr;
+  return form;
+}
+
+function buildUpdatesCreateDrawer({ people, meetings, projects, onSave, onCancel }) {
+  const overlay = document.createElement("div");
+  overlay.className = "task-drawer-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      onCancel();
+    }
+  });
+
+  const form = buildUpdateEditorForm({ people, meetings, projects, onSave, onCancel, inline: false });
+  const header = document.createElement("header");
+  header.className = "task-drawer-header";
+  const title = document.createElement("h2");
+  title.textContent = "New update";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "ghost-button project-icon-button";
+  close.textContent = "✕";
+  close.setAttribute("aria-label", "Close create update panel");
+  close.addEventListener("click", onCancel);
+  header.append(title, close);
+
+  const body = document.createElement("div");
+  body.className = "task-drawer-body";
+  const children = Array.from(form.children);
+  body.append(...children);
+  form.append(header, body);
+
+  overlay.appendChild(form);
+  return overlay;
 }
 
 function labelWrap(label, control) {
@@ -524,7 +569,7 @@ function selectVisibleUpdates({ updates, meetings, people, filters }) {
   const today = new Date();
   return updates
     .filter((item) => item.lifecycle !== UPDATE_LIFECYCLE.DELETED)
-    .filter((item) => (filters.showArchived ? item.lifecycle === UPDATE_LIFECYCLE.ARCHIVED : item.lifecycle === UPDATE_LIFECYCLE.ACTIVE))
+    .filter((item) => (filters.lifecycle === "archived" ? item.lifecycle === UPDATE_LIFECYCLE.ARCHIVED : item.lifecycle === UPDATE_LIFECYCLE.ACTIVE))
     .filter((item) => (filters.type === "all" ? true : item.type === filters.type))
     .filter((item) => (filters.ownerId === "all" ? true : item.ownerId === filters.ownerId))
     .filter((item) => (filters.recipientId === "all" ? true : item.recipients.some((recipient) => recipient.personId === filters.recipientId)))
