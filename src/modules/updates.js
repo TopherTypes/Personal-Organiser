@@ -60,7 +60,13 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     state.editorId = "__new__";
     render();
   });
-  header.append(title, createButton);
+
+  // Explicit archive toggle in the header improves discoverability beyond the signal chips.
+  const archivedToggleButton = document.createElement("button");
+  archivedToggleButton.type = "button";
+  archivedToggleButton.className = "secondary-button";
+
+  header.append(title, archivedToggleButton, createButton);
 
   const feedback = document.createElement("p");
   feedback.className = "feedback";
@@ -100,6 +106,12 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
     feedback.hidden = !state.feedback;
     feedback.textContent = state.feedback;
 
+    archivedToggleButton.textContent = state.filters.lifecycle === "archived" ? "View active" : "View archived";
+    archivedToggleButton.onclick = () => {
+      state.filters.lifecycle = state.filters.lifecycle === "archived" ? "active" : "archived";
+      render();
+    };
+
     tbody.innerHTML = "";
 
     if (!visible.length) {
@@ -110,6 +122,30 @@ export function renderWorkUpdatesModule({ mode = "work", people = [], meetings =
       td.textContent = "No updates match the current filters.";
       tr.appendChild(td);
       tbody.appendChild(tr);
+      if (state.editorId === "__new__") {
+        section.appendChild(
+          buildUpdatesCreateDrawer({
+            people,
+            meetings,
+            projects,
+            onSave: (draft) => {
+              const result = saveUpdate(mode, draft, "", people);
+              if (!result.ok) {
+                state.feedback = result.error || "Unable to create update.";
+                render();
+                return;
+              }
+              state.feedback = "Update created.";
+              state.editorId = "";
+              render();
+            },
+            onCancel: () => {
+              state.editorId = "";
+              render();
+            }
+          })
+        );
+      }
       return;
     }
 
@@ -305,6 +341,15 @@ function buildFilterControls(container, people, state, onChange) {
     onChange();
   });
 
+  // Lifecycle filter is duplicated in controls to keep archived navigation visible in dense tables.
+  const lifecycle = buildSelect([
+    ["active", "Lifecycle: active"],
+    ["archived", "Lifecycle: archived"]
+  ], state.lifecycle, (value) => {
+    state.lifecycle = value;
+    onChange();
+  });
+
   const groupBy = buildSelect([
     ["none", "Group: none"],
     ["owner", "Group: owner"],
@@ -314,7 +359,7 @@ function buildFilterControls(container, people, state, onChange) {
     onChange();
   });
 
-  container.append(search, type, owner, recipient, sort, groupBy);
+  container.append(search, type, owner, recipient, sort, lifecycle, groupBy);
 
   return {
     sync(nextPeople) {

@@ -3303,21 +3303,27 @@ textarea.field-input {
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
-  align-items: center;
+  align-items: flex-start;
 }
 
 .project-v2-title {
   min-width: 0;
   font-size: 0.98rem;
-  white-space: nowrap;
+  /* Long project names may contain wide words; clamp to two lines to avoid card overflow. */
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .project-v2-top-right {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .project-recent-dot {
@@ -3948,7 +3954,8 @@ button {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.62);
-  z-index: 1200;
+  /* Keep drawers above sticky app bars so forms are never partially hidden. */
+  z-index: 4000;
   display: flex;
   justify-content: flex-end;
 }
