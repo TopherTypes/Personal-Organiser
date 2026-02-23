@@ -4578,3 +4578,26 @@ button {
   display: grid;
   gap: 0.85rem;
 }
+
+/*
+ * Prevent action controls from overflowing project cards on narrower desktop widths.
+ * Wrapping preserves button accessibility without truncating controls off-card.
+ */
+.project-v2-top-right,
+.project-v2-actions {
+  flex-wrap: wrap;
+}
+
+.project-v2-actions {
+  justify-content: flex-start;
+}
+
+/*
+ * People + updates "create new" now use slide-over drawers for consistency with
+ * other creation workflows (tasks/projects), so cap width and maintain scroll safety.
+ */
+.people-form-overlay .people-form,
+.task-editor-drawer {
+  width: min(760px, 100%);
+  max-width: 760px;
+}

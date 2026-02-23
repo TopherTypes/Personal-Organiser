@@ -493,26 +493,34 @@ async function performSyncCycle(driveClient, { onStageChange } = {}) {
     if (merged.document !== null) {
       const nextRaw = JSON.stringify(merged.document);
       const previousRaw = localStorage.getItem(descriptor.localKey);
+      const remoteRaw = JSON.stringify(remoteDoc);
+      const shouldWriteLocal = previousRaw !== nextRaw;
+      const shouldPushRemote = remoteRaw !== nextRaw;
 
-      // Backup convention: before replacing a primary dataset record, snapshot the prior value
-      // under backups/<document-id>/<ISO timestamp> so rollback always targets the exact dataset.
-      const backupRecord = writeDatasetBackup({
-        documentId: descriptor.id,
-        localStorageKey: descriptor.localKey,
-        previousRaw,
-        nextRaw,
-        reason: "sync-overwrite"
-      });
+      // Backup only when local storage is actually being overwritten.
+      if (shouldWriteLocal) {
+        const backupRecord = writeDatasetBackup({
+          documentId: descriptor.id,
+          localStorageKey: descriptor.localKey,
+          previousRaw,
+          nextRaw,
+          reason: "sync-overwrite"
+        });
 
-      if (backupRecord) {
-        backupCount += 1;
+        if (backupRecord) {
+          backupCount += 1;
+        }
+
+        localStorage.setItem(descriptor.localKey, nextRaw);
       }
 
-      localStorage.setItem(descriptor.localKey, nextRaw);
-      onStageChange?.("pushing");
-      await driveClient.pushDocument(descriptor.id, merged.document);
+      // Skip remote writes when merge output already matches Drive state.
+      if (shouldPushRemote) {
+        onStageChange?.("pushing");
+        await driveClient.pushDocument(descriptor.id, merged.document);
+      }
 
-      // Invariant: shadow snapshot mirrors remote truth, so it only advances after a successful push.
+      // Shadow mirrors the post-merge truth regardless of whether push was required.
       shadowDocs[descriptor.id] = merged.document;
     }
   }
