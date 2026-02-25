@@ -6,6 +6,15 @@ import {
 } from "./storage-export.js";
 import { listDatasetBackups } from "./dataset-backups.js";
 import { SYNCABLE_DOCUMENTS } from "./sync.js";
+import {
+  METRIC_TYPES,
+  deactivateMetricDefinition,
+  getMetricTypeLabel,
+  listMetricGroups,
+  loadPersonalMetricDefinitions,
+  savePersonalMetricDefinitions,
+  upsertMetricDefinition
+} from "./personal-metrics.js";
 
 export const SETTINGS_STORAGE_KEY = "second-brain.ui.settings.v1";
 export const ONBOARDING_COMPLETED_STORAGE_KEY = "second-brain.ui.onboarding.completed.v1";
@@ -76,8 +85,26 @@ export function renderSettingsModule({
 
   const list = document.createElement("div");
   list.className = "settings-list";
+  list.appendChild(renderGeneralSettingsPanel({ settings, onSettingsChange }));
 
-  list.append(
+  const dataManagement = createDataManagementSection({ onDataRestore });
+  const syncConflictSection = createSyncConflictSection({ syncState, onResolveSyncConflicts });
+  const backupsSection = createBackupsSection({ onBackupRestore, onDataRestore });
+  const destructiveSection = createDestructiveResetSection({ onFullDataReset });
+
+  section.append(title, intro, list, dataManagement, syncConflictSection, backupsSection, destructiveSection);
+  return section;
+}
+
+/**
+ * Reusable block for general app preferences used by both legacy page settings
+ * and the new settings modal dialog.
+ */
+export function renderGeneralSettingsPanel({ settings, onSettingsChange }) {
+  const panel = document.createElement("div");
+  panel.className = "settings-list";
+
+  panel.append(
     createSelectSetting({
       label: "Theme",
       hint: "Choose the app appearance that is easiest on your eyes.",
@@ -117,13 +144,184 @@ export function renderSettingsModule({
     })
   );
 
-  const dataManagement = createDataManagementSection({ onDataRestore });
-  const syncConflictSection = createSyncConflictSection({ syncState, onResolveSyncConflicts });
-  const backupsSection = createBackupsSection({ onBackupRestore, onDataRestore });
-  const destructiveSection = createDestructiveResetSection({ onFullDataReset });
+  return panel;
+}
 
-  section.append(title, intro, list, dataManagement, syncConflictSection, backupsSection, destructiveSection);
-  return section;
+/**
+ * Metric-settings editor with version-aware edits so only current/future dates
+ * are affected by create/edit/remove actions.
+ */
+export function renderMetricSettingsPanel() {
+  const wrap = document.createElement("section");
+  wrap.className = "settings-data-management metric-settings-panel";
+
+  const title = document.createElement("h2");
+  title.textContent = "Metric settings";
+
+  const hint = document.createElement("p");
+  hint.className = "module-intro";
+  hint.textContent =
+    "Create and version daily-log metrics. Edits and removals apply from the chosen active-from date onward and never rewrite historic records.";
+
+  const feedback = document.createElement("p");
+  feedback.className = "feedback";
+  feedback.hidden = true;
+
+  const table = document.createElement("table");
+  table.className = "updates-table";
+  table.innerHTML = "<thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Group</th><th>Active from</th><th>Active until</th><th>Actions</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+
+  const form = document.createElement("form");
+  form.className = "meeting-form settings-metric-form";
+
+  const idField = buildField("Metric ID", "text", true);
+  const nameField = buildField("Name", "text", true);
+  const typeField = document.createElement("label");
+  typeField.className = "field-label";
+  typeField.textContent = "Type of metric";
+  const typeInput = document.createElement("select");
+  typeInput.className = "field-input";
+  typeInput.append(
+    buildOption(METRIC_TYPES.TEXT, "Text"),
+    buildOption(METRIC_TYPES.NUMBER, "Number"),
+    buildOption(METRIC_TYPES.BOOLEAN, "Yes / No")
+  );
+  typeField.appendChild(typeInput);
+
+  const groupingField = buildField("Grouping", "text", true);
+  const groupListId = `metric-group-list-${Date.now()}`;
+  groupingField.input.setAttribute("list", groupListId);
+  const groupList = document.createElement("datalist");
+  groupList.id = groupListId;
+
+  const activeFromField = buildField("Active from", "date", true);
+  activeFromField.input.value = new Date().toISOString().slice(0, 10);
+
+  const actions = document.createElement("div");
+  actions.className = "task-inline-editor-actions";
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Save metric";
+  const resetButton = document.createElement("button");
+  resetButton.type = "button";
+  resetButton.className = "secondary-button";
+  resetButton.textContent = "Clear form";
+  actions.append(saveButton, resetButton);
+
+  form.append(idField.wrap, nameField.wrap, typeField, groupingField.wrap, activeFromField.wrap, groupList, actions);
+
+  const state = {
+    editingMetricId: ""
+  };
+
+  function setFeedback(message) {
+    feedback.hidden = !message;
+    feedback.textContent = message;
+  }
+
+  function updateGroupingOptions(definitions) {
+    groupList.innerHTML = "";
+    listMetricGroups(definitions).forEach((group) => {
+      const option = document.createElement("option");
+      option.value = group;
+      groupList.appendChild(option);
+    });
+  }
+
+  function populateForm(definition) {
+    state.editingMetricId = definition.id;
+    idField.input.value = definition.id;
+    nameField.input.value = definition.name;
+    typeInput.value = definition.type;
+    groupingField.input.value = definition.grouping;
+    activeFromField.input.value = new Date().toISOString().slice(0, 10);
+  }
+
+  function clearForm() {
+    state.editingMetricId = "";
+    form.reset();
+    activeFromField.input.value = new Date().toISOString().slice(0, 10);
+  }
+
+  function renderTable() {
+    const definitions = loadPersonalMetricDefinitions().sort((first, second) => {
+      if (first.id !== second.id) {
+        return first.id.localeCompare(second.id);
+      }
+      return first.activeFrom.localeCompare(second.activeFrom);
+    });
+    updateGroupingOptions(definitions);
+    tbody.innerHTML = "";
+
+    definitions.forEach((definition) => {
+      const row = document.createElement("tr");
+      row.append(
+        buildCell(definition.id),
+        buildCell(definition.name),
+        buildCell(getMetricTypeLabel(definition.type)),
+        buildCell(definition.grouping),
+        buildCell(definition.activeFrom),
+        buildCell(definition.activeUntil || "Current"),
+        buildActionsCell([
+          smallButton("Edit", () => populateForm(definition)),
+          smallButton("Remove", () => {
+            const today = new Date().toISOString().slice(0, 10);
+            const nextDefinitions = deactivateMetricDefinition(loadPersonalMetricDefinitions(), definition.id, { today });
+            savePersonalMetricDefinitions(nextDefinitions);
+            setFeedback(`Metric \"${definition.name}\" removed for today/future dates.`);
+            renderTable();
+          })
+        ])
+      );
+      tbody.appendChild(row);
+    });
+
+    if (!definitions.length) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 7;
+      emptyCell.className = "empty-state";
+      emptyCell.textContent = "No metric definitions available.";
+      emptyRow.appendChild(emptyCell);
+      tbody.appendChild(emptyRow);
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const result = upsertMetricDefinition(loadPersonalMetricDefinitions(), {
+      id: idField.input.value.trim(),
+      name: nameField.input.value.trim(),
+      type: typeInput.value,
+      grouping: groupingField.input.value.trim(),
+      activeFrom: activeFromField.input.value
+    }, {
+      previousId: state.editingMetricId,
+      today: new Date().toISOString().slice(0, 10)
+    });
+
+    if (!result.ok) {
+      setFeedback(result.error || "Unable to save metric definition.");
+      return;
+    }
+
+    savePersonalMetricDefinitions(result.definitions);
+    setFeedback("Metric definition saved.");
+    clearForm();
+    renderTable();
+  });
+
+  resetButton.addEventListener("click", () => {
+    clearForm();
+    setFeedback("");
+  });
+
+  wrap.append(title, hint, feedback, form, table);
+  renderTable();
+  return wrap;
 }
 
 /**
@@ -519,6 +717,42 @@ function formatBackupTime(timestamp) {
   }
 
   return `${Math.floor(elapsedHours / 24)}d ago`;
+}
+
+function buildField(label, type, required = false) {
+  const wrap = document.createElement("label");
+  wrap.className = "field-label";
+  wrap.textContent = label;
+
+  const input = document.createElement("input");
+  input.className = "field-input";
+  input.type = type;
+  input.required = required;
+
+  wrap.appendChild(input);
+  return { wrap, input };
+}
+
+function buildCell(text) {
+  const cell = document.createElement("td");
+  cell.textContent = text;
+  return cell;
+}
+
+function buildActionsCell(buttons) {
+  const cell = document.createElement("td");
+  cell.className = "tasks-row-actions";
+  buttons.forEach((button) => cell.appendChild(button));
+  return cell;
+}
+
+function smallButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
 }
 
 function createActionButton(label, onClick) {

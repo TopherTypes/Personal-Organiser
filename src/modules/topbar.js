@@ -7,7 +7,8 @@ export function renderTopBar({
   onModeChange,
   syncState,
   onSyncAction,
-  onOpenCommandPalette
+  onOpenCommandPalette,
+  onOpenSettings
 }) {
   const header = document.createElement("header");
   header.className = "top-bar";
@@ -42,7 +43,14 @@ export function renderTopBar({
   commandPaletteButton.setAttribute("aria-label", "Open command palette");
   commandPaletteButton.addEventListener("click", () => onOpenCommandPalette());
 
-  accountCluster.append(modeSwitch, commandPaletteButton, renderSyncStatus(syncState, onSyncAction));
+  const settingsButton = document.createElement("button");
+  settingsButton.type = "button";
+  settingsButton.className = "button button-secondary";
+  settingsButton.textContent = "Settings";
+  settingsButton.setAttribute("aria-label", "Open settings");
+  settingsButton.addEventListener("click", () => onOpenSettings?.());
+
+  accountCluster.append(modeSwitch, commandPaletteButton, settingsButton, renderSyncStatus(syncState, onSyncAction));
 
   header.append(brand, accountCluster);
   return header;

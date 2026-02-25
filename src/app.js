@@ -3,7 +3,7 @@ import { renderTopBar } from "./modules/topbar.js";
 import { renderSidebar } from "./modules/sidebar.js";
 // Cache-bust dashboard module import so clients always fetch the latest navigation/module wiring.
 import { renderLandingDashboard, renderModeDashboard } from "./modules/dashboard.js?v=2026-02-18-3";
-import { loadSettings, saveSettings } from "./modules/settings.js";
+import { loadSettings, renderGeneralSettingsPanel, renderMetricSettingsPanel, saveSettings } from "./modules/settings.js";
 import { createSyncSubsystem } from "./modules/sync.js";
 import { isOnboardingComplete, renderOnboardingModule } from "./modules/onboarding.js";
 import { restoreDatasetBackup } from "./modules/dataset-backups.js";
@@ -66,6 +66,10 @@ const state = {
     isOpen: false,
     query: "",
     selectedIndex: 0
+  },
+  settingsDialog: {
+    isOpen: false,
+    activeTab: "general"
   }
 };
 
@@ -150,7 +154,9 @@ function renderTopBarInPlace() {
     onModeChange: handleModeChange,
     syncState: state.sync,
     onSyncAction: handleSyncAction,
-    onOpenCommandPalette: openCommandPalette
+    onOpenCommandPalette: openCommandPalette,
+    onOpenSettings: () => openSettingsDialog(),
+    onOpenSettings: () => openSettingsDialog()
   });
 
   existingTopBar.replaceWith(nextTopBar);
@@ -172,7 +178,8 @@ function renderApp() {
     onModeChange: handleModeChange,
     syncState: state.sync,
     onSyncAction: handleSyncAction,
-    onOpenCommandPalette: openCommandPalette
+    onOpenCommandPalette: openCommandPalette,
+    onOpenSettings: () => openSettingsDialog()
   });
 
   const content = document.createElement("div");
@@ -229,7 +236,9 @@ function renderApp() {
     onTriggerAction: handleQuickAction
   });
 
-  shell.append(topBar, content, footer, initialSyncModal, commandPalette, quickActions);
+  const settingsDialog = renderSettingsDialog();
+
+  shell.append(topBar, content, footer, initialSyncModal, commandPalette, quickActions, settingsDialog);
   appRoot.appendChild(shell);
 
   state.meetingPrefillByMode[state.activeMode] = null;
@@ -257,6 +266,89 @@ function renderCommandPaletteLayer() {
     onMoveSelection: moveCommandPaletteSelection
   });
 }
+
+function renderSettingsDialog() {
+  if (!state.settingsDialog.isOpen) {
+    return document.createElement("div");
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "meeting-modal-overlay settings-action-modal-overlay";
+
+  const dialog = document.createElement("section");
+  dialog.className = "meeting-modal settings-action-modal";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", "Application settings");
+
+  const title = document.createElement("h2");
+  title.textContent = "Settings";
+
+  const tabs = document.createElement("div");
+  tabs.className = "people-tabs";
+  const generalTab = document.createElement("button");
+  generalTab.type = "button";
+  generalTab.className = "secondary-button";
+  generalTab.textContent = "General settings";
+  generalTab.addEventListener("click", () => {
+    state.settingsDialog.activeTab = "general";
+    renderApp();
+  });
+  const metricTab = document.createElement("button");
+  metricTab.type = "button";
+  metricTab.className = "secondary-button";
+  metricTab.textContent = "Metric settings";
+  metricTab.addEventListener("click", () => {
+    state.settingsDialog.activeTab = "metrics";
+    renderApp();
+  });
+
+  if (state.settingsDialog.activeTab === "general") {
+    generalTab.classList.add("active");
+  } else {
+    metricTab.classList.add("active");
+  }
+
+  tabs.append(generalTab, metricTab);
+
+  const content = document.createElement("div");
+  content.className = "settings-dialog-content";
+  if (state.settingsDialog.activeTab === "general") {
+    content.appendChild(renderGeneralSettingsPanel({
+      settings: state.settings,
+      onSettingsChange: handleSettingsChange
+    }));
+  } else {
+    content.appendChild(renderMetricSettingsPanel());
+  }
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "secondary-button";
+  close.textContent = "Close";
+  close.addEventListener("click", closeSettingsDialog);
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeSettingsDialog();
+    }
+  });
+
+  dialog.append(title, tabs, content, close);
+  overlay.appendChild(dialog);
+  return overlay;
+}
+
+function openSettingsDialog() {
+  state.settingsDialog.isOpen = true;
+  renderApp();
+}
+
+function closeSettingsDialog() {
+  state.settingsDialog.isOpen = false;
+  renderApp();
+}
+
 
 /**
  * Marks first-sync UX as complete after the first successful sync cycle.

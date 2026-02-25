@@ -12,8 +12,7 @@ export const MODULES_BY_MODE = {
     { key: "meetings", label: "Meetings", icon: "🗓️" },
     { key: "people", label: "People", icon: "👥" },
     { key: "updates", label: "Updates", icon: "📝" },
-    { key: "notes", label: "Notes", icon: "📒" },
-    { key: "settings", label: "Settings / Sync", icon: "⚙️" }
+    { key: "notes", label: "Notes", icon: "📒" }
   ],
   personal: [
     { key: "dashboard", label: "Dashboard", icon: "🏠" },
@@ -23,7 +22,6 @@ export const MODULES_BY_MODE = {
     { key: "exercise-log", label: "Exercise Log", icon: "🏃" },
     { key: "people", label: "People", icon: "👥" },
     { key: "calendar", label: "Calendar", icon: "📆" },
-    { key: "notes", label: "Notes", icon: "📒" },
-    { key: "settings", label: "Settings / Sync", icon: "⚙️" }
+    { key: "notes", label: "Notes", icon: "📒" }
   ]
 };

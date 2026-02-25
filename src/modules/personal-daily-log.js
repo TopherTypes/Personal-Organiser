@@ -1,10 +1,18 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import {
+  METRIC_TYPES,
+  coerceLegacyEntryValues,
+  getMetricTypeLabel,
+  loadPersonalMetricDefinitions,
+  selectMetricsForDate
+} from "./personal-metrics.js";
 
 const PERSONAL_DAILY_LOG_KEY = buildPersonalStorageKey("daily-log", 1);
 
 /**
- * Daily log for nutrition/exercise summaries per spec 5.2 and section 6.1.
+ * Daily log module now resolves a date-scoped metric schema from settings so
+ * users can evolve tracked fields without mutating historic records.
  */
 export function renderPersonalDailyLogModule() {
   const section = document.createElement("section");
@@ -13,16 +21,18 @@ export function renderPersonalDailyLogModule() {
   const title = document.createElement("h1");
   title.textContent = "Personal Daily Log";
 
+  const intro = document.createElement("p");
+  intro.className = "module-intro";
+  intro.textContent =
+    "Capture day-level wellbeing notes against configurable metrics. Metric definitions are managed in Settings → Metric settings.";
+
   const form = document.createElement("form");
   form.className = "meeting-form";
 
-  const date = buildInput("Date", "date", true);
-  date.input.value = new Date().toISOString().slice(0, 10);
-  const nutrition = buildTextarea("Nutrition summary");
-  const exercise = buildTextarea("Exercise summary");
-  const mood = buildInput("Mood (1-10)", "number", false);
-  mood.input.min = "1";
-  mood.input.max = "10";
+  const dateField = buildInput("Date", "date", true);
+  dateField.input.value = new Date().toISOString().slice(0, 10);
+  const dynamicFieldsHost = document.createElement("div");
+  dynamicFieldsHost.className = "daily-log-dynamic-fields";
 
   const save = document.createElement("button");
   save.type = "submit";
@@ -31,22 +41,79 @@ export function renderPersonalDailyLogModule() {
 
   const list = document.createElement("div");
 
-  form.append(date.wrap, nutrition.wrap, exercise.wrap, mood.wrap, save);
+  form.append(dateField.wrap, dynamicFieldsHost, save);
+
+  const fieldRegistry = new Map();
+
+  function renderDynamicFields() {
+    fieldRegistry.clear();
+    dynamicFieldsHost.innerHTML = "";
+
+    const definitions = loadPersonalMetricDefinitions();
+    const activeMetrics = selectMetricsForDate(definitions, dateField.input.value);
+
+    if (!activeMetrics.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No active metrics for this date. Add one in Settings → Metric settings.";
+      dynamicFieldsHost.appendChild(empty);
+      return;
+    }
+
+    const groups = new Map();
+    activeMetrics.forEach((metric) => {
+      if (!groups.has(metric.grouping)) {
+        groups.set(metric.grouping, []);
+      }
+      groups.get(metric.grouping).push(metric);
+    });
+
+    groups.forEach((metrics, groupLabel) => {
+      const group = document.createElement("fieldset");
+      group.className = "daily-log-metric-group";
+
+      const legend = document.createElement("legend");
+      legend.textContent = groupLabel;
+      group.appendChild(legend);
+
+      metrics.forEach((metric) => {
+        const field = buildMetricInput(metric);
+        fieldRegistry.set(metric.id, { input: field.input, type: metric.type, metricName: metric.name });
+        group.appendChild(field.wrap);
+      });
+
+      dynamicFieldsHost.appendChild(group);
+    });
+  }
+
+  dateField.input.addEventListener("change", renderDynamicFields);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const entries = loadEntries();
+    const values = {};
+
+    fieldRegistry.forEach(({ input, type }, metricId) => {
+      if (type === METRIC_TYPES.BOOLEAN) {
+        values[metricId] = input.checked ? "true" : "false";
+        return;
+      }
+      values[metricId] = input.value.trim();
+    });
+
     const payload = {
       id: generateId("dlog_"),
-      date: date.input.value,
-      nutrition: nutrition.input.value.trim(),
-      exercise: exercise.input.value.trim(),
-      mood: mood.input.value,
+      date: dateField.input.value,
+      values,
       createdAt: new Date().toISOString()
     };
+
     entries.unshift(payload);
     persistEntries(entries);
     renderList();
+    form.reset();
+    dateField.input.value = new Date().toISOString().slice(0, 10);
+    renderDynamicFields();
   });
 
   function renderList() {
@@ -60,6 +127,8 @@ export function renderPersonalDailyLogModule() {
       return;
     }
 
+    const definitions = loadPersonalMetricDefinitions();
+
     entries.forEach((entry) => {
       const card = document.createElement("article");
       card.className = "project-card";
@@ -67,24 +136,41 @@ export function renderPersonalDailyLogModule() {
       const heading = document.createElement("h3");
       heading.textContent = entry.date;
 
-      const nutritionLine = document.createElement("p");
-      nutritionLine.innerHTML = `<strong>Nutrition:</strong> ${entry.nutrition || "-"}`;
+      const metricsForDate = selectMetricsForDate(definitions, entry.date);
+      const values = coerceLegacyEntryValues(entry);
 
-      const exerciseLine = document.createElement("p");
-      exerciseLine.innerHTML = `<strong>Exercise:</strong> ${entry.exercise || "-"}`;
+      const details = document.createElement("div");
+      details.className = "daily-log-entry-details";
 
-      const moodLine = document.createElement("p");
-      const moodLabel = document.createElement("strong");
-      moodLabel.textContent = "Mood: ";
-      const moodChip = buildMoodChip(entry.mood);
-      moodLine.append(moodLabel, moodChip);
+      metricsForDate.forEach((metric) => {
+        if (!(metric.id in values)) {
+          return;
+        }
 
-      card.append(heading, nutritionLine, exerciseLine, moodLine);
+        const line = document.createElement("p");
+        const label = document.createElement("strong");
+        label.textContent = `${metric.name}: `;
+        line.appendChild(label);
+
+        const metricValue = renderMetricValue(metric, values[metric.id]);
+        line.appendChild(metricValue);
+        details.appendChild(line);
+      });
+
+      if (!details.childElementCount) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No metric values recorded for active fields.";
+        details.appendChild(empty);
+      }
+
+      card.append(heading, details);
       list.appendChild(card);
     });
   }
 
-  section.append(title, form, list);
+  section.append(title, intro, form, list);
+  renderDynamicFields();
   renderList();
   return section;
 }
@@ -104,6 +190,64 @@ function loadEntries() {
 
 function persistEntries(entries) {
   localStorage.setItem(PERSONAL_DAILY_LOG_KEY, JSON.stringify(entries));
+}
+
+/**
+ * Renders an input control based on the configured metric type.
+ */
+function buildMetricInput(metric) {
+  if (metric.type === METRIC_TYPES.BOOLEAN) {
+    const wrap = document.createElement("label");
+    wrap.className = "field-label checkbox-field";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "field-input";
+
+    const text = document.createElement("span");
+    text.textContent = `${metric.name} (${getMetricTypeLabel(metric.type)})`;
+
+    wrap.append(input, text);
+    return { wrap, input };
+  }
+
+  const type = metric.type === METRIC_TYPES.NUMBER ? "number" : "text";
+  const wrap = document.createElement("label");
+  wrap.className = "field-label";
+  wrap.textContent = `${metric.name} (${getMetricTypeLabel(metric.type)})`;
+
+  const input = metric.type === METRIC_TYPES.TEXT
+    ? document.createElement("textarea")
+    : document.createElement("input");
+
+  input.className = "field-input";
+  if (metric.type === METRIC_TYPES.TEXT) {
+    input.classList.add("field-textarea");
+  } else {
+    input.type = type;
+  }
+
+  wrap.appendChild(input);
+  return { wrap, input };
+}
+
+function renderMetricValue(metric, rawValue) {
+  if (metric.type === METRIC_TYPES.BOOLEAN) {
+    const chip = document.createElement("span");
+    chip.className = "personal-log-chip personal-log-chip-neutral";
+    chip.textContent = String(rawValue) === "true" ? "Yes" : "No";
+    return chip;
+  }
+
+  if (metric.id === "mood") {
+    const moodLine = document.createElement("span");
+    moodLine.appendChild(buildMoodChip(rawValue));
+    return moodLine;
+  }
+
+  const text = document.createElement("span");
+  text.textContent = rawValue || "-";
+  return text;
 }
 
 /**
@@ -148,16 +292,6 @@ function buildInput(labelText, type, required) {
   input.className = "field-input";
   input.type = type;
   input.required = required;
-  wrap.appendChild(input);
-  return { wrap, input };
-}
-
-function buildTextarea(labelText) {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-  const input = document.createElement("textarea");
-  input.className = "field-input field-textarea";
   wrap.appendChild(input);
   return { wrap, input };
 }
