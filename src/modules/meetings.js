@@ -16,6 +16,7 @@ import {
   buildEntityTokenSingleSelectField,
   readEntityTokenHiddenValues
 } from "./select-controls.js";
+import { saveTask } from "./tasks.js";
 const MEETINGS_STORAGE_KEY = "second-brain.work.meetings.work";
 const MEETINGS_SCHEMA_VERSION = 1;
 
@@ -190,7 +191,10 @@ export function renderWorkMeetingsModule({
     requestEditorClose();
   });
 
-  section.append(header, controls, split, modalOverlay);
+  const afterMeetingPanelHost = document.createElement("div");
+  afterMeetingPanelHost.className = "meeting-after-workflow-host";
+
+  section.append(header, controls, afterMeetingPanelHost, split, modalOverlay);
 
   function renderModule() {
     const range = state.view === "week" ? weekRange(state.anchorDate) : monthRange(state.anchorDate);
@@ -287,6 +291,30 @@ export function renderWorkMeetingsModule({
       feedback.textContent = state.feedback;
       calendarPane.prepend(feedback);
     }
+
+    afterMeetingPanelHost.innerHTML = "";
+    if (state.afterMeetingWorkflow?.meetingId) {
+      const panel = renderAfterMeetingWorkflowPanel({
+        mode,
+        workflow: state.afterMeetingWorkflow,
+        people,
+        onChange: (nextWorkflow, message = "") => {
+          state.afterMeetingWorkflow = nextWorkflow;
+          if (message) {
+            state.feedback = message;
+          }
+          renderModule();
+        },
+        onDismiss: () => {
+          state.afterMeetingWorkflow = null;
+          renderModule();
+        }
+      });
+      if (panel) {
+        afterMeetingPanelHost.appendChild(panel);
+      }
+    }
+
     state.feedback = "";
 
     setUnsavedChangesGuard(Boolean(state.dirtyDraft));
@@ -1638,6 +1666,7 @@ export function renderWorkMeetingsModule({
       }
 
       state.feedback = message;
+      state.afterMeetingWorkflow = buildAfterMeetingWorkflowState(mode, result.meetingId);
       state.draft = null;
       state.dirtyDraft = false;
       clearDraft(mode);
@@ -1703,6 +1732,7 @@ function createMeetingsUiState(mode, initialPrefill) {
     attachedUpdateEditingId: "",
     attachedUpdateFeedback: "",
     reviewComposerDraft: buildDefaultLinkedUpdateDraft(""),
+    afterMeetingWorkflow: null,
     returnFocusElement: null
   };
 
@@ -2124,6 +2154,8 @@ function buildDefaultMeeting(date, prefill = null) {
     archived: false,
     draftLinkedUpdates: [],
     decisions: [],
+    decisionFollowUps: [],
+    actionFollowUps: [],
     draftRaidEntries: []
   };
 }
@@ -2420,6 +2452,8 @@ export function normaliseMeeting(meeting) {
         ? meeting.lastUpdatedByField
         : {},
     decisions: normaliseMeetingDecisions(meeting.decisions),
+    decisionFollowUps: normaliseMeetingFollowUps(meeting.decisionFollowUps),
+    actionFollowUps: normaliseMeetingFollowUps(meeting.actionFollowUps),
     draftRaidEntries: normaliseDraftRaidEntries(meeting.draftRaidEntries)
   };
 }
@@ -2545,6 +2579,288 @@ function appendMeetingDecisions(mode, meetingId, decisions) {
     };
   });
   persistMeetings(mode, updated);
+}
+
+
+function normaliseMeetingFollowUps(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const sourceKey = String(entry.sourceKey || "").trim().toLowerCase();
+      if (!sourceKey) {
+        return null;
+      }
+      return {
+        sourceKey,
+        taskId: String(entry.taskId || "").trim(),
+        updateId: String(entry.updateId || "").trim(),
+        createdAt: String(entry.createdAt || "")
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Post-save after-meeting workflow summary.
+ *
+ * Source-of-truth boundary:
+ * - Meeting record keeps lightweight follow-up links (`actionFollowUps` / `decisionFollowUps`).
+ * - Canonical task/update content remains in Tasks/Updates modules.
+ */
+function buildAfterMeetingWorkflowState(mode, meetingId) {
+  const meeting = loadMeetings(mode).find((item) => item.id === meetingId);
+  if (!meeting) {
+    return null;
+  }
+
+  const actionItems = extractActionItemsFromNotes(meeting.notes);
+  const decisionItems = extractDecisionItemsForWorkflow(meeting);
+  const unresolvedRaidItems = normaliseDraftRaidEntries(meeting.draftRaidEntries)
+    .filter((item) => ["risk", "issue"].includes(item.type))
+    .filter((item) => !["closed", "resolved", "mitigated"].includes(String(item.status || "").toLowerCase()));
+
+  const actionFollowUpKeys = new Set(normaliseMeetingFollowUps(meeting.actionFollowUps).map((item) => item.sourceKey));
+  const decisionFollowUpKeys = new Set(normaliseMeetingFollowUps(meeting.decisionFollowUps).map((item) => item.sourceKey));
+
+  return {
+    meetingId,
+    meetingName: meeting.name || "Untitled meeting",
+    chairId: meeting.chairId || "",
+    attendeeIds: parseEntityIdList(meeting.attendeeIds),
+    projectId: meeting.projectId || "",
+    date: meeting.date || isoDateToday(),
+    missingActionItems: actionItems
+      .filter((item) => !actionFollowUpKeys.has(item.sourceKey))
+      .filter((item) => !item.ownerId || !item.dueDate),
+    decisionItemsWithoutLinks: decisionItems.filter((item) => !decisionFollowUpKeys.has(item.sourceKey)),
+    unresolvedRaidItems
+  };
+}
+
+function extractActionItemsFromNotes(notes) {
+  return String(notes || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /\[action\]|^[-*]\s*action\b/i.test(line))
+    .map((line) => {
+      const ownerMatch = line.match(/owner:\s*@?([\w-]+)/i);
+      const dueMatch = line.match(/due:\s*(\d{4}-\d{2}-\d{2})/i);
+      const cleanedText = line
+        .replace(/^[-*]\s*/g, "")
+        .replace(/\[action\]/ig, "")
+        .replace(/^action\s*:?/ig, "")
+        .replace(/owner:\s*@?[\w-]+/ig, "")
+        .replace(/due:\s*\d{4}-\d{2}-\d{2}/ig, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return {
+        sourceKey: cleanedText.toLowerCase(),
+        text: cleanedText,
+        ownerId: ownerMatch ? ownerMatch[1] : "",
+        dueDate: dueMatch ? dueMatch[1] : ""
+      };
+    })
+    .filter((item) => item.text);
+}
+
+function extractDecisionItemsForWorkflow(meeting) {
+  const parsedFromNotes = String(meeting.notes || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /\[decision\]|^[-*]\s*decision\b/i.test(line))
+    .map((line) => line.replace(/^[-*]\s*/g, "").replace(/\[decision\]/ig, "").replace(/^decision\s*:?/ig, "").trim())
+    .filter(Boolean);
+
+  const structured = normaliseMeetingDecisions(meeting.decisions).map((decision) => decision.text);
+  return [...new Set([...structured, ...parsedFromNotes])].map((text) => ({ sourceKey: text.toLowerCase(), text }));
+}
+
+function appendMeetingFollowUpLink(mode, meetingId, type, linkEntry) {
+  const meetings = loadMeetings(mode);
+  const now = new Date().toISOString();
+  const followUpField = type === "action" ? "actionFollowUps" : "decisionFollowUps";
+  const updated = meetings.map((meeting) => {
+    if (meeting.id !== meetingId) {
+      return meeting;
+    }
+    const existing = normaliseMeetingFollowUps(meeting[followUpField]);
+    const withoutDuplicate = existing.filter((row) => row.sourceKey !== linkEntry.sourceKey);
+    return {
+      ...meeting,
+      [followUpField]: [...withoutDuplicate, { ...linkEntry, createdAt: now }],
+      updatedAt: now
+    };
+  });
+  persistMeetings(mode, updated);
+}
+
+function renderAfterMeetingWorkflowPanel({ mode, workflow, people, onChange, onDismiss }) {
+  const meeting = loadMeetings(mode).find((item) => item.id === workflow.meetingId);
+  if (!meeting) {
+    return null;
+  }
+
+  const panel = document.createElement("section");
+  panel.className = "meeting-after-workflow-panel";
+
+  const heading = document.createElement("h3");
+  heading.textContent = `After meeting: ${workflow.meetingName}`;
+
+  const summary = document.createElement("p");
+  summary.className = "module-intro";
+  summary.textContent = [
+    `Actions missing owner/due date: ${workflow.missingActionItems.length}`,
+    `Decisions without linked updates/tasks: ${workflow.decisionItemsWithoutLinks.length}`,
+    `Unresolved risks/issues: ${workflow.unresolvedRaidItems.length}`
+  ].join(" · ");
+
+  const batchRow = document.createElement("div");
+  batchRow.className = "meeting-update-row-metadata";
+  const ownerField = buildSingleSelectField({
+    label: "Batch owner",
+    options: buildUpdateOwnerOptions(selectActivePeople(people)),
+    value: workflow.chairId || ""
+  });
+  const dueField = buildLabeledInput("Batch due date", "date", workflow.date || isoDateToday());
+  const applyBatchButton = document.createElement("button");
+  applyBatchButton.type = "button";
+  applyBatchButton.className = "module-button-secondary";
+  applyBatchButton.textContent = "Apply to unstructured actions";
+  applyBatchButton.addEventListener("click", () => {
+    workflow.missingActionItems = workflow.missingActionItems.map((item) => ({
+      ...item,
+      ownerId: item.ownerId || ownerField.select.value,
+      dueDate: item.dueDate || dueField.input.value
+    }));
+    onChange({ ...workflow }, "Batch owner/due date applied to action rows.");
+  });
+  batchRow.append(ownerField.wrapper, dueField.wrapper, applyBatchButton);
+
+  const actionsList = document.createElement("div");
+  workflow.missingActionItems.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "meeting-update-row";
+    const text = document.createElement("p");
+    text.className = "module-intro";
+    text.textContent = `${item.text} · Owner: ${item.ownerId || "Missing"} · Due: ${item.dueDate || "Missing"}`;
+    const convertButton = document.createElement("button");
+    convertButton.type = "button";
+    convertButton.className = "module-button-secondary";
+    convertButton.textContent = "Convert action → task";
+    convertButton.disabled = !item.ownerId || !item.dueDate;
+    convertButton.addEventListener("click", () => {
+      const result = saveTask(mode, {
+        title: item.text,
+        effort: 5,
+        impact: 5,
+        status: "Ready",
+        assigneeId: item.ownerId === "me" ? "" : item.ownerId,
+        projectId: workflow.projectId || "",
+        scheduleDate: "",
+        dueDate: item.dueDate,
+        recurrence: "none",
+        customRecurrence: "",
+        blockedByTaskIds: [],
+        blockingTaskIds: [],
+        notes: `Created from meeting: ${workflow.meetingName}`,
+        archived: false
+      });
+      if (!result.ok) {
+        window.alert(result.error || "Unable to convert action to task.");
+        return;
+      }
+      appendMeetingFollowUpLink(mode, workflow.meetingId, "action", {
+        sourceKey: item.sourceKey,
+        taskId: "created"
+      });
+      onChange(buildAfterMeetingWorkflowState(mode, workflow.meetingId), "Action converted to task.");
+    });
+    row.append(text, convertButton);
+    actionsList.appendChild(row);
+  });
+
+  const decisionsList = document.createElement("div");
+  workflow.decisionItemsWithoutLinks.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "meeting-update-row";
+    const text = document.createElement("p");
+    text.className = "module-intro";
+    text.textContent = item.text;
+    const convertButton = document.createElement("button");
+    convertButton.type = "button";
+    convertButton.className = "module-button-secondary";
+    convertButton.textContent = "Convert decision → update";
+    convertButton.addEventListener("click", () => {
+      const recipients = workflow.attendeeIds.length ? workflow.attendeeIds : (workflow.chairId ? [workflow.chairId] : []);
+      if (!recipients.length) {
+        window.alert("Decision conversion needs at least one attendee or chair to receive the update.");
+        return;
+      }
+      const result = saveUpdate(mode, {
+        text: `Decision follow-up: ${item.text}`,
+        entityType: "update",
+        ownerId: workflow.chairId || "",
+        dueDate: "",
+        toUpdate: recipients.map((personId) => ({ personId, status: "pending", required: true, updatedAt: "" })),
+        meetingId: workflow.meetingId
+      }, "", selectActivePeople(people));
+      if (!result.ok) {
+        window.alert(result.error || "Unable to convert decision to update.");
+        return;
+      }
+      appendMeetingFollowUpLink(mode, workflow.meetingId, "decision", {
+        sourceKey: item.sourceKey,
+        updateId: "created"
+      });
+      onChange(buildAfterMeetingWorkflowState(mode, workflow.meetingId), "Decision converted to update.");
+    });
+    row.append(text, convertButton);
+    decisionsList.appendChild(row);
+  });
+
+  const unresolvedList = document.createElement("ul");
+  workflow.unresolvedRaidItems.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = `${toTitleCase(item.type)}: ${item.title} (${item.status})`;
+    unresolvedList.appendChild(li);
+  });
+
+  const scheduleButton = document.createElement("button");
+  scheduleButton.type = "button";
+  scheduleButton.className = "enter-mode-button";
+  scheduleButton.textContent = "Schedule check-in";
+  scheduleButton.addEventListener("click", () => {
+    const nextDate = shiftDate(workflow.date || isoDateToday(), 7);
+    const saveResult = saveMeeting(mode, {
+      ...buildDefaultMeeting(nextDate),
+      name: `Check-in: ${workflow.meetingName}`,
+      date: nextDate,
+      attendeeIds: workflow.attendeeIds,
+      chairId: workflow.chairId,
+      projectId: workflow.projectId,
+      notes: `Follow-up for meeting ${workflow.meetingName} (${workflow.date}).`
+    }, "after-meeting-checkin");
+    if (!saveResult.ok) {
+      window.alert(saveResult.error || "Unable to schedule check-in.");
+      return;
+    }
+    onChange(buildAfterMeetingWorkflowState(mode, workflow.meetingId), "Follow-up check-in meeting scheduled.");
+  });
+
+  const dismissButton = document.createElement("button");
+  dismissButton.type = "button";
+  dismissButton.className = "module-button-secondary";
+  dismissButton.textContent = "Dismiss";
+  dismissButton.addEventListener("click", onDismiss);
+
+  panel.append(heading, summary, batchRow, actionsList, decisionsList, unresolvedList, scheduleButton, dismissButton);
+  return panel;
 }
 
 function buildMeetingOutputsSummary(meeting, updatesSnapshot = []) {
