@@ -6,6 +6,7 @@
 export const MODULES_BY_MODE = {
   work: [
     { key: "dashboard", label: "Dashboard", icon: "🏠" },
+    { key: "today-focus", label: "Today Focus", icon: "🎯" },
     { key: "tasks", label: "Tasks", icon: "✅" },
     { key: "projects", label: "Projects", icon: "📁" },
     { key: "sprints", label: "Sprints", icon: "🏁" },
@@ -17,6 +18,7 @@ export const MODULES_BY_MODE = {
   ],
   personal: [
     { key: "dashboard", label: "Dashboard", icon: "🏠" },
+    { key: "today-focus", label: "Today Focus", icon: "🎯" },
     { key: "tasks", label: "Tasks", icon: "✅" },
     { key: "projects", label: "Projects / Timeboxing", icon: "⏱️" },
     { key: "daily-log", label: "Daily Log", icon: "📔" },
