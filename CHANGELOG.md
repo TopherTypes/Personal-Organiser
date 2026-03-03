@@ -17,7 +17,7 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 -
 
 ### Changed
--
+- Reworked Today Focus into a triage cockpit with a shared scope/date bar, explicit Do/Attend/Know sections, uniform row layout, bulk action controls, quick capture modal, and task-linkable daily Top 3 priorities.
 
 ### Deprecated
 -

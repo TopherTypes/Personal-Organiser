@@ -19,6 +19,7 @@ import { renderPersonalExerciseLogModule } from "./personal-exercise-log.js";
 import { renderPersonalPeopleModule } from "./personal-people.js";
 import { renderPersonalCalendarModule } from "./personal-calendar.js";
 import { renderNotesModule } from "./notes.js";
+import { renderTodayFocusModule } from "./today-focus.js";
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { safeJsonParse, safeJsonWrite } from "./storage-core.js";
 import { generateId } from "./id.js";
@@ -123,6 +124,10 @@ export function renderModeDashboard(mode, { activeModule = "dashboard", uiContex
 
   if (mode === "work" && activeModule === "sprints") {
     return renderWorkSprintsModule({ mode });
+  }
+
+  if (["work", "personal"].includes(mode) && activeModule === "today-focus") {
+    return renderTodayFocusModule({ mode, uiContext });
   }
 
   if (mode === "work" && activeModule === "updates") {

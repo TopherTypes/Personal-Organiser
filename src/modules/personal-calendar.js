@@ -210,6 +210,13 @@ function loadEvents() {
 }
 
 /**
+ * Exposes personal calendar events for cross-module aggregation views.
+ */
+export function loadPersonalCalendarEvents() {
+  return loadEvents();
+}
+
+/**
  * Persists the complete event collection as JSON; malformed JSON fallback is handled by loadEvents
  * for corrupted or externally written payloads.
  */
