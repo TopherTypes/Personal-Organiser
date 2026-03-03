@@ -477,7 +477,7 @@ function handleModuleSelect(moduleKey) {
  * open a meeting editor directly) while still delegating route ownership to
  * the application shell.
  */
-function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
+function handleDashboardNavigate({ moduleKey, focus = {}, quickAction = null } = {}) {
   if (!moduleKey || typeof moduleKey !== "string") {
     return;
   }
@@ -490,6 +490,13 @@ function handleDashboardNavigate({ moduleKey, focus = {} } = {}) {
   state.meetingPrefillByMode[state.activeMode] = null;
   state.meetingFocusByMode[state.activeMode] = focus.meetingId || "";
   state.taskPrefillByMode[state.activeMode] = moduleKey === "tasks" ? focus.projectId || "" : "";
+  state.quickActionByMode[state.activeMode] = quickAction && quickAction.moduleKey
+    ? {
+      moduleKey: quickAction.moduleKey,
+      createIntent: quickAction.createIntent,
+      requestedAt: new Date().toISOString()
+    }
+    : null;
   renderApp();
 }
 
