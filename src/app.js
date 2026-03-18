@@ -127,7 +127,7 @@ function maybeAutoOpenInitialSyncReauth() {
   }
 
   state.hasAttemptedInitialReauth = true;
-  void syncSubsystem.signIn();
+  syncSubsystem.signIn().catch((err) => console.error("[app] Auto reauth failed:", err));
 }
 
 
@@ -386,9 +386,6 @@ function baseInitialSyncProgressValue(syncStatus, isSyncing) {
       // If we've already reached push, a later pull represents verification,
       // not a restart, so keep progress near completion.
       return state.initialSyncProgressPeak >= 90 ? 95 : 45;
-      // If we've already reached push, a later pull represents verification,
-      // not a restart, so keep progress near completion.
-      return state.initialSyncProgressPeak >= 90 ? 95 : 45;
     case "merging":
       return 70;
     case "pushing":
@@ -403,9 +400,6 @@ function describeInitialSyncStage(syncStatus) {
     case "auth-check":
       return "Checking account access…";
     case "pulling":
-      return state.initialSyncProgressPeak >= 90
-        ? "Verifying cloud state after upload…"
-        : "Pulling cloud data…";
       return state.initialSyncProgressPeak >= 90
         ? "Verifying cloud state after upload…"
         : "Pulling cloud data…";
@@ -625,12 +619,12 @@ function handleScheduleOneOnOne(person) {
  */
 function handleSyncAction(action) {
   if (action === "sign-in") {
-    void syncSubsystem.signIn();
+    syncSubsystem.signIn().catch((err) => console.error("[app] Sign-in failed:", err));
     return;
   }
 
   if (action === "sync") {
-    void syncSubsystem.syncNow({ reason: "manual" });
+    syncSubsystem.syncNow({ reason: "manual" }).catch((err) => console.error("[app] Manual sync failed:", err));
     return;
   }
 
@@ -787,6 +781,7 @@ function handleGlobalKeydown(event) {
 }
 
 window.addEventListener("keydown", handleGlobalKeydown);
+window.addEventListener("beforeunload", () => syncSubsystem.stop());
 
 applyUserSettings(state.settings);
 syncSubsystem.start();

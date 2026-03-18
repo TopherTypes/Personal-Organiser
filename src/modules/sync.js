@@ -105,14 +105,22 @@ export function createSyncSubsystem({
     conflicts: loadJson(SYNC_CONFLICT_QUEUE_KEY, [])
   };
 
+  const clientId = windowRef.__APP_CONFIG__?.googleClientId || "";
+  if (!clientId) {
+    console.warn("[sync] No Google Client ID configured. Google Drive sync will be unavailable.");
+  }
+
   const authClient = authClientFactory({
-    clientId: windowRef.__APP_CONFIG__?.googleClientId || "",
+    clientId,
     // Default to longest practical sign-in duration by allowing silent token refresh
     // when browser policy and Google cookies permit it.
     sessionLongevityMode: "maximum"
   });
   const driveClient = driveClientFactory({ authClient });
   let loopTimerId = 0;
+  // Tracks any in-flight sync cycle so concurrent callers share the same promise
+  // rather than starting a second overlapping cycle between awaits.
+  let activeSyncPromise = null;
 
   recalculatePendingChanges();
 
@@ -291,6 +299,13 @@ export function createSyncSubsystem({
   }
 
   async function syncNow({ reason } = { reason: "manual" }) {
+    // Return the in-flight promise instead of starting a second concurrent cycle.
+    // Without this guard, two callers could both pass the auth check before either
+    // sets isSyncing:true, resulting in overlapping pull/merge/push cycles.
+    if (activeSyncPromise) {
+      return activeSyncPromise;
+    }
+
     recalculatePendingChanges();
 
     const shouldSkipScheduledSync = reason === "scheduled" && state.pendingChanges <= 0;
@@ -335,55 +350,60 @@ export function createSyncSubsystem({
     // on active sync state can hide/show reliably after each cycle.
     setPartialState({ isSyncing: true, syncStatus: "pulling", errorMessage: "", errorReason: "" });
 
-    try {
-      const result = await withRetry(
-        () =>
-          performSyncCycle(driveClient, {
-            onStageChange: (stage) => setPartialState({ syncStatus: stage })
-          }),
-        DEFAULT_RETRY_POLICY,
-        (attempt) => setPartialState({ retries: attempt })
-      );
+    activeSyncPromise = (async () => {
+      try {
+        const result = await withRetry(
+          () =>
+            performSyncCycle(driveClient, {
+              onStageChange: (stage) => setPartialState({ syncStatus: stage })
+            }),
+          DEFAULT_RETRY_POLICY,
+          (attempt) => setPartialState({ retries: attempt })
+        );
 
-      setPartialState({
-        syncStatus: "idle",
-        retries: 0,
-        conflictCount: result.conflictCount,
-        lastSuccessfulSyncAt: new Date().toISOString(),
-        errorReason: "",
-        infoMessage:
-          result.backupCount > 0
-            ? `Sync complete. Created ${result.backupCount} rollback backup${result.backupCount === 1 ? "" : "s"}.`
-            : "Sync complete.",
-        errorMessage: ""
-      });
+        setPartialState({
+          syncStatus: "idle",
+          retries: 0,
+          conflictCount: result.conflictCount,
+          lastSuccessfulSyncAt: new Date().toISOString(),
+          errorReason: "",
+          infoMessage:
+            result.backupCount > 0
+              ? `Sync complete. Created ${result.backupCount} rollback backup${result.backupCount === 1 ? "" : "s"}.`
+              : "Sync complete.",
+          errorMessage: ""
+        });
 
-      setConflicts(result.conflicts);
-    } catch (error) {
-      const failure = classifySyncFailure(error);
-      const errorCode = typeof error?.code === "string" ? error.code : "unknown";
+        setConflicts(result.conflicts);
+      } catch (error) {
+        const failure = classifySyncFailure(error);
+        const errorCode = typeof error?.code === "string" ? error.code : "unknown";
 
-      // Auth-related transport failures usually mean the runtime no longer has a
-      // usable token. Reset auth state so UI clearly guides the user to reconnect.
-      const authRecoveryState =
-        failure.reason === SYNC_ERROR_REASON.AUTH_EXPIRED
-          ? { authStatus: "signed-out", authSession: null }
-          : {};
+        // Auth-related transport failures usually mean the runtime no longer has a
+        // usable token. Reset auth state so UI clearly guides the user to reconnect.
+        const authRecoveryState =
+          failure.reason === SYNC_ERROR_REASON.AUTH_EXPIRED
+            ? { authStatus: "signed-out", authSession: null }
+            : {};
 
-      setPartialState({
-        ...authRecoveryState,
-        syncStatus: "error",
-        infoMessage: "",
-        errorReason: failure.reason,
-        errorMessage: `${syncFailureMessage(failure.reason)} (${reason}; code: ${errorCode})`
-      });
-    } finally {
-      // Emitting this transition is essential for the initial sync modal. If we
-      // only mutate internal state without notifying listeners, the UI can remain
-      // visually blocked even after sync has already ended.
-      setPartialState({ isSyncing: false });
-      recalculatePendingChanges();
-    }
+        setPartialState({
+          ...authRecoveryState,
+          syncStatus: "error",
+          infoMessage: "",
+          errorReason: failure.reason,
+          errorMessage: `${syncFailureMessage(failure.reason)} (${reason}; code: ${errorCode})`
+        });
+      } finally {
+        // Emitting this transition is essential for the initial sync modal. If we
+        // only mutate internal state without notifying listeners, the UI can remain
+        // visually blocked even after sync has already ended.
+        setPartialState({ isSyncing: false });
+        activeSyncPromise = null;
+        recalculatePendingChanges();
+      }
+    })();
+
+    return activeSyncPromise;
   }
 
   return {

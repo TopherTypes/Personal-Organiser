@@ -95,7 +95,7 @@ export function buildCommandPaletteIndex() {
         mode: "work",
         entityType: "Update",
         moduleKey: "updates",
-        title: update.text,
+        title: update.summary || update.text || "",
         subtitle: update.status || "Pending",
         id: update.id,
         keywords: [update.status, update.personId, update.dueDate]
