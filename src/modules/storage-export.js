@@ -63,21 +63,34 @@ export function buildDatasetExport(scope = "combined") {
 export function downloadDatasetExport(scope = "combined") {
   const payload = buildDatasetExport(scope);
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
   const timestamp = new Date().toISOString().replaceAll(":", "-");
-
-  anchor.href = url;
+  const anchor = document.createElement("a");
   anchor.download = `second-brain-${scope}-export-${timestamp}.json`;
-  anchor.click();
 
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  let url = null;
+  try {
+    url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.click();
+  } finally {
+    // Revoke in a timeout so the browser can complete the download initiation
+    // before the object URL is invalidated. The finally block ensures revocation
+    // even when anchor.click() throws unexpectedly.
+    if (url) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  }
 }
 
 /**
  * Validates an uploaded JSON payload and returns a normalised structure.
  */
 export function parseAndValidateImportPayload(text) {
+  const MAX_IMPORT_BYTES = 50 * 1024 * 1024; // 50 MB
+  if (typeof text === "string" && text.length > MAX_IMPORT_BYTES) {
+    throw new Error(`Import file is too large. Maximum allowed size is ${MAX_IMPORT_BYTES / 1024 / 1024} MB.`);
+  }
+
   const parsed = JSON.parse(text);
 
   if (!parsed || typeof parsed !== "object") {

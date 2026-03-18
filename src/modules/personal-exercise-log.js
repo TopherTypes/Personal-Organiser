@@ -1,5 +1,6 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import { buildInput } from "./form-helpers.js";
 
 const PERSONAL_EXERCISE_LOG_KEY = buildPersonalStorageKey("exercise-log", 1);
 
@@ -107,18 +108,6 @@ function loadEntries() {
   } catch {
     return [];
   }
-}
-
-function buildInput(labelText, type, required) {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-  const input = document.createElement("input");
-  input.type = type;
-  input.className = "field-input";
-  input.required = required;
-  wrap.appendChild(input);
-  return { wrap, input };
 }
 
 /**

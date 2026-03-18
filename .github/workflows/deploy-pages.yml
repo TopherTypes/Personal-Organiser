@@ -38,6 +38,9 @@ jobs:
 
       - name: Stage static site files
         run: |
+          # Validate required static assets exist before staging so a missing file
+          # produces a clear error here rather than a silent gap in the deployed site.
+          test -f favicon.ico || (echo "ERROR: favicon.ico not found" && exit 1)
           # Publish from a clean directory so the artifact always has one source.
           rm -rf _site
           mkdir -p _site

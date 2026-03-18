@@ -1,5 +1,6 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import { buildInput, buildTextarea } from "./form-helpers.js";
 
 const PERSONAL_PEOPLE_KEY = buildPersonalStorageKey("people", 1);
 
@@ -375,30 +376,3 @@ function loadContacts() {
   }
 }
 
-function buildInput(labelText, type, required, value = "") {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-
-  const input = document.createElement("input");
-  input.type = type;
-  input.className = "field-input";
-  input.required = required;
-  input.value = value;
-  wrap.appendChild(input);
-
-  return { wrap, input };
-}
-
-function buildTextarea(labelText, value = "") {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-
-  const input = document.createElement("textarea");
-  input.className = "field-input field-textarea";
-  input.value = value;
-  wrap.appendChild(input);
-
-  return { wrap, input };
-}

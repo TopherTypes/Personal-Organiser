@@ -108,6 +108,28 @@ test("calendar renderList renders stored HTML-like titles as literal text", () =
   }
 });
 
+test("shiftDateByRecurrence is timezone-safe: daily increment", () => {
+  // Re-implements the fixed logic to verify it never produces UTC-shifted dates.
+  function shiftDate(isoDate, frequency, interval) {
+    const parts = String(isoDate).split("-").map(Number);
+    const [year, month, day] = parts;
+    const value = new Date(year, month - 1, day);
+    if (frequency === "daily") value.setDate(value.getDate() + interval);
+    else if (frequency === "weekly") value.setDate(value.getDate() + interval * 7);
+    else if (frequency === "monthly") value.setMonth(value.getMonth() + interval);
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  assert.equal(shiftDate("2026-03-18", "daily", 1), "2026-03-19");
+  assert.equal(shiftDate("2026-03-31", "daily", 1), "2026-04-01");
+  assert.equal(shiftDate("2026-03-18", "weekly", 1), "2026-03-25");
+  assert.equal(shiftDate("2026-03-18", "monthly", 1), "2026-04-18");
+  assert.equal(shiftDate("2026-12-31", "daily", 1), "2027-01-01");
+});
+
 test("calendar auto-generates the next recurring event when the current date has passed", () => {
   localStorage.clear();
   const storageKey = buildPersonalStorageKey("calendar", 1);

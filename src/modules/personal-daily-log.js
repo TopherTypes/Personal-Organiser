@@ -1,5 +1,6 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
+import { buildInput, buildTextarea } from "./form-helpers.js";
 
 const PERSONAL_DAILY_LOG_KEY = buildPersonalStorageKey("daily-log", 1);
 
@@ -140,24 +141,3 @@ function getMoodBand(score) {
   return { className: "personal-log-chip-mood-high", label: "High" };
 }
 
-function buildInput(labelText, type, required) {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-  const input = document.createElement("input");
-  input.className = "field-input";
-  input.type = type;
-  input.required = required;
-  wrap.appendChild(input);
-  return { wrap, input };
-}
-
-function buildTextarea(labelText) {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-  const input = document.createElement("textarea");
-  input.className = "field-input field-textarea";
-  wrap.appendChild(input);
-  return { wrap, input };
-}

@@ -1,6 +1,7 @@
 import { buildPersonalStorageKey } from "./personal-keys.js";
 import { generateId } from "./id.js";
 import { loadVersionedCollection, persistVersionedCollection } from "./storage-core.js";
+import { buildInput } from "./form-helpers.js";
 
 /**
  * Personal calendar entries are stored under a versioned key to support safe future schema changes.
@@ -191,6 +192,10 @@ export function renderPersonalCalendarModule({ focusCreateForm = false } = {}) {
 /**
  * Loads calendar entries defensively and returns an empty array when localStorage contains
  * no value, malformed JSON, or a non-array payload.
+ *
+ * Side-effect: when recurrence generation produces new entries, those are opportunistically
+ * persisted so they survive future loads. The persist is wrapped in try/catch so a storage
+ * failure (e.g. quota exceeded) never prevents entries from being returned to the caller.
  */
 function loadEvents() {
   const events = loadVersionedCollection({
@@ -203,7 +208,11 @@ function loadEvents() {
 
   const withGeneratedRecurring = generateRecurringEvents(events);
   if (withGeneratedRecurring.length !== events.length) {
-    persistEvents(withGeneratedRecurring);
+    try {
+      persistEvents(withGeneratedRecurring);
+    } catch (err) {
+      console.warn("[personal-calendar] Could not persist generated recurrences:", err);
+    }
   }
 
   return withGeneratedRecurring;
@@ -285,18 +294,6 @@ function collectEditedEventValues(entry) {
     date: trimmedDate,
     notes: notesInput.trim()
   };
-}
-
-function buildInput(labelText, type, required) {
-  const wrap = document.createElement("label");
-  wrap.className = "field-label";
-  wrap.textContent = labelText;
-  const input = document.createElement("input");
-  input.type = type;
-  input.className = "field-input";
-  input.required = required;
-  wrap.appendChild(input);
-  return { wrap, input };
 }
 
 function normaliseRecurrenceMeta(recurrenceMeta) {
@@ -382,7 +379,17 @@ function generateRecurringEvents(events) {
 }
 
 function shiftDateByRecurrence(isoDate, frequency, interval) {
-  const value = new Date(`${isoDate}T00:00:00`);
+  // Parse date parts directly to avoid timezone-offset issues that arise when
+  // constructing a Date from an ISO string and then calling toISOString() (UTC).
+  // Using new Date(year, month, day) gives a local midnight value whose local
+  // parts can be read back with getFullYear/getMonth/getDate safely in all zones.
+  const parts = String(isoDate).split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return "";
+  }
+
+  const [year, month, day] = parts;
+  const value = new Date(year, month - 1, day);
   if (Number.isNaN(value.getTime())) {
     return "";
   }
@@ -397,5 +404,8 @@ function shiftDateByRecurrence(isoDate, frequency, interval) {
     return "";
   }
 
-  return value.toISOString().slice(0, 10);
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
